@@ -1,0 +1,334 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth ----------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String? // nullable — OAuth-only accounts never set one
+  displayName  String
+  firstName    String?
+  lastName     String?
+  username     String?  @unique
+  avatarUrl    String?
+  phoneNumber  String?
+  themePreference String @default("emerald-gold")
+  isSuperAdmin Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  oauthAccounts  OAuthAccount[]
+  refreshTokens  RefreshToken[]
+
+  ownedClubs      Club[]              @relation("ClubOwner")
+  clubAdminOf     ClubAdmin[]
+  clubMemberOf    ClubMember[]
+  joinRequests    ClubJoinRequest[]
+  buyInRequests   BuyInRequest[]      @relation("BuyInRequester")
+  startedSessions PokerSession[]      @relation("SessionStarter")
+}
+
+enum OAuthProvider {
+  GOOGLE
+}
+
+model OAuthAccount {
+  id             String        @id @default(cuid())
+  provider       OAuthProvider
+  providerUserId String
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  familyId   String
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+// ---------- Clubs ----------
+
+model Club {
+  id                 String   @id @default(cuid())
+  name               String
+  code               String   @unique
+  description        String?
+  ownerId            String
+  owner              User     @relation("ClubOwner", fields: [ownerId], references: [id])
+  maxCapacity        Int      @default(50)
+  // How the table's buy-in ceiling is decided:
+  //   MATCH_HIGHEST — a request may be as large as the biggest bank anyone
+  //                   currently holds; the first buy-in of a session is
+  //                   unbounded and sets the opening reference
+  //   UNCAPPED      — no ceiling at all, players police it themselves
+  buyInMode          String   @default("MATCH_HIGHEST")
+  minBuyIn           Int      @default(1000)
+  maxBuyIn           Int      @default(5000)
+  devaluationFactor  Int      @default(1)
+  enableDevaluation  Boolean  @default(false)
+  clubPotBalance     Int      @default(0)
+  // Off by default: the leaderboard exposes every member's lifetime net
+  // profit, buy-ins and biggest win/loss to whoever can see it, so a club
+  // opts into that rather than out of it. Owner-controlled from club settings.
+  leaderboardVisibleToPlayers Boolean @default(false)
+
+  // ---- Settlement Rules (config-driven Cashout Engine — see settlementEngine.ts) ----
+  // Rake is two independent charges, either or both of which may be zero.
+  // Both fund the Club Pot.
+  //   sessionRakeAmount — flat fee for the night, charged to nobody in particular
+  //   winnersCutPercent — % of each winner's profit
+  // rakeEnabled/rakeMethod/rakeValue are the older single-rule fields, kept so
+  // existing clubs keep settling identically until they're migrated over.
+  sessionRakeAmount  Int      @default(0)
+  winnersCutPercent  Int      @default(0)
+  rakeEnabled        Boolean  @default(false)
+  rakeMethod         String   @default("PERCENT_PROFIT") // PERCENT_PROFIT | PERCENT_CASHOUT | FIXED_PER_WINNER | FIXED_PER_SESSION | CUSTOM
+  rakeValue          Int      @default(5) // percent (whole number) for PERCENT_* methods, flat points for FIXED_* methods
+  potEnabled         Boolean  @default(false)
+  mismatchStrategy   String   @default("PROPORTIONAL_WINNERS") // PROPORTIONAL_WINNERS | EQUAL_WINNERS | EQUAL_ALL | SHORTFALL_TO_POT | EXCESS_FROM_POT | MANUAL | CUSTOM
+  rakeOrder          String   @default("MISMATCH_FIRST") // MISMATCH_FIRST | RAKE_FIRST
+  winnerDefinition   String   @default("PROFIT_POSITIVE") // PROFIT_POSITIVE | TOP_N | MANUAL | CUSTOM
+  winnerTopN         Int      @default(1)
+  roundingRule       String   @default("NONE") // NONE | NEAREST_1 | NEAREST_5 | NEAREST_10
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  admins              ClubAdmin[]
+  members             ClubMember[]
+  joinRequests        ClubJoinRequest[]
+  sessions            PokerSession[]
+  buyInRequests       BuyInRequest[]
+  cashOutSettlements  CashOutSettlement[]
+  potLogs             ClubPotLog[]
+  historicalRecords   HistoricalSessionRecord[]
+  pendingChanges      PendingChangeRequest[]
+  auditLogs           AuditLog[]
+}
+
+model ClubAdmin {
+  clubId String
+  userId String
+  club   Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([clubId, userId])
+}
+
+model ClubMember {
+  clubId   String
+  userId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime @default(now())
+
+  @@id([clubId, userId])
+}
+
+enum JoinRequestStatus {
+  pending
+  accepted
+  rejected
+}
+
+model ClubJoinRequest {
+  id        String            @id @default(cuid())
+  clubId    String
+  club      Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    JoinRequestStatus @default(pending)
+  createdAt DateTime          @default(now())
+
+  @@index([clubId])
+  @@index([userId])
+}
+
+// ---------- Sessions (Lazy Dealer + Virtual Table game engine) ----------
+
+enum SessionType {
+  OFFLINE
+  LAZY_DEALER
+  VIRTUAL_TABLE
+}
+
+enum SessionStatus {
+  active
+  settled
+}
+
+model PokerSession {
+  id           String        @id @default(cuid())
+  clubId       String
+  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionName  String
+  sessionType  SessionType
+  status       SessionStatus @default(active)
+  startedById  String
+  startedBy    User          @relation("SessionStarter", fields: [startedById], references: [id])
+  createdAt    DateTime      @default(now())
+  endedAt      DateTime?
+
+  // Flexible engine state (handNumber, dealerSeat, street, potSize, communityCards,
+  // deck, playerSeats, currentHighBet, currentTurnSeat, turnStartedAt,
+  // winningAnnouncement, actionLog, blinds/buy-in config, assignedDealer, etc.)
+  // — mirrors the Firestore document shape 1:1 so the existing pure engine
+  // functions can move here almost unchanged.
+  engineState Json @default("{}")
+
+  buyInRequests BuyInRequest[]
+  handHistory   HandHistory[]
+
+  @@index([clubId])
+  @@index([status])
+}
+
+model BuyInRequest {
+  id           String   @id @default(cuid())
+  sessionId    String
+  session      PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  clubId       String
+  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation("BuyInRequester", fields: [userId], references: [id])
+  amount       Int
+  status       String   @default("pending") // pending | approved | rejected
+  requestedBy  String
+  approvedBy   String?
+  createdAt    DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([clubId])
+}
+
+model CashOutSettlement {
+  id               String   @id @default(cuid())
+  clubId           String
+  club             Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionId        String
+  sessionType      String?
+  dayNumber        Int?
+  isDeleted        Boolean  @default(false)
+  settledBy        String
+  totalBuyIns      Int
+  totalCashOuts    Int
+  totalWinnersCut  Int
+  rakeCollected    Int
+  potAdjustment    Int
+  playerSummaries  Json
+  settledAt        DateTime @default(now())
+  notes            String?
+
+  @@index([clubId])
+}
+
+model ClubPotLog {
+  id        String   @id @default(cuid())
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionId String?
+  amount    Int
+  source    String // fixed_rake | winners_cut | buyin_leftover | manual_adjustment
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([clubId])
+}
+
+model HistoricalSessionRecord {
+  id           String   @id @default(cuid())
+  clubId       String
+  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionDate  String
+  sessionTitle String
+  sessionType  String?
+  dayNumber    Int?
+  isDeleted    Boolean  @default(false)
+  playerStats  Json
+  notes        String?
+  importedBy   String
+  createdAt    DateTime @default(now())
+
+  @@index([clubId])
+}
+
+model PendingChangeRequest {
+  id              String   @id @default(cuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionId       String
+  sessionTitle    String
+  requestType     String // edit_session | delete_session
+  requestedBy     String
+  requestedByName String
+  requestedAt     DateTime @default(now())
+  status          String   @default("pending")
+  approvedBy      String?
+  approvedByName  String?
+  actionDate      DateTime?
+  changes         Json?
+  reason          String?
+
+  @@index([clubId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  clubId         String
+  club           Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionId      String?
+  sessionTitle   String?
+  action         String
+  changedBy      String
+  changedByName  String
+  approvedBy     String?
+  approvedByName String?
+  details        String
+  changes        Json?
+  createdAt      DateTime @default(now())
+
+  @@index([clubId])
+}
+
+model HandHistory {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  clubId          String
+  handNumber      Int
+  dealerSeat      Int
+  smallBlind      Int
+  bigBlind        Int
+  communityCards  Json
+  potTotal        Int
+  winnerNames     String[]
+  winningHandDesc String
+  timestamp       String
+  createdAt       DateTime @default(now())
+
+  @@index([sessionId])
+}

@@ -1,0 +1,117 @@
+import type { Request, Response } from 'express';
+import { z } from 'zod';
+import * as offlineSessionsService from './offlineSessions.service.js';
+
+const startSchema = z.object({
+  sessionType: z.enum(['OFFLINE', 'LAZY_DEALER']),
+  sessionName: z.string().min(1).max(80),
+  assignedDealerUid: z.string().optional(),
+  assignedDealerName: z.string().optional(),
+  smallBlind: z.number().int().positive().optional(),
+  bigBlind: z.number().int().positive().optional(),
+  minBuyIn: z.number().int().positive().optional(),
+  maxBuyIn: z.number().int().positive().optional(),
+  maxPlayers: z.number().int().positive().optional(),
+  skipBlindLimit: z.number().int().min(0).max(2).optional(),
+});
+
+export async function startSession(req: Request, res: Response) {
+  const input = startSchema.parse(req.body);
+  const session = await offlineSessionsService.startSession(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, input);
+  return res.status(201).json(session);
+}
+
+export async function getActive(req: Request, res: Response) {
+  const session = await offlineSessionsService.getActiveOfflineSession(req.params.clubId);
+  return res.json(session);
+}
+
+export async function joinSession(req: Request, res: Response) {
+  const session = await offlineSessionsService.joinSession(req.params.sessionId, req.user!.sub);
+  return res.json(session);
+}
+
+export async function requestSitIn(req: Request, res: Response) {
+  const session = await offlineSessionsService.requestSitIn(req.params.sessionId, req.params.clubId, req.user!.sub);
+  return res.status(201).json(session);
+}
+
+const sitInDecisionSchema = z.object({ userId: z.string().min(1) });
+
+export async function decideSitIn(req: Request, res: Response) {
+  const { userId } = sitInDecisionSchema.parse(req.body);
+  const session = await offlineSessionsService.decideSitIn(
+    req.params.sessionId,
+    req.params.clubId,
+    req.user!.sub,
+    req.user!.isSuperAdmin,
+    userId,
+    req.params.decision === 'approve'
+  );
+  return res.json(session);
+}
+
+const cashOutSchema = z.object({ amount: z.number().int().nonnegative(), userId: z.string().optional() });
+
+export async function requestCashOut(req: Request, res: Response) {
+  const { amount, userId } = cashOutSchema.parse(req.body);
+  const session = await offlineSessionsService.requestCashOut(
+    req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
+  return res.status(201).json(session);
+}
+
+const cashOutDecisionSchema = z.object({ userId: z.string().min(1) });
+
+export async function decideCashOut(req: Request, res: Response) {
+  const { userId } = cashOutDecisionSchema.parse(req.body);
+  const session = await offlineSessionsService.decideCashOut(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin,
+    userId, req.params.decision === 'approve');
+  return res.json(session);
+}
+
+const buyInSchema = z.object({ amount: z.number().int().positive(), userId: z.string().optional() });
+
+export async function requestBuyIn(req: Request, res: Response) {
+  const { amount, userId } = buyInSchema.parse(req.body);
+  const request = await offlineSessionsService.requestBuyIn(req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
+  return res.status(201).json(request);
+}
+
+export async function listBuyInRequests(req: Request, res: Response) {
+  const requests = await offlineSessionsService.listBuyInRequests(req.params.sessionId);
+  return res.json(requests);
+}
+
+export async function decideBuyInRequest(req: Request, res: Response) {
+  const approve = req.params.decision === 'approve';
+  const session = await offlineSessionsService.decideBuyInRequest(
+    req.params.sessionId,
+    req.user!.sub,
+    req.user!.isSuperAdmin,
+    req.params.requestId,
+    approve
+  );
+  return res.json(session);
+}
+
+const settleSchema = z.object({
+  entries: z.array(
+    z.object({
+      userId: z.string().min(1),
+      // Same floor as recording a back-dated night: someone with no buy-in
+      // didn't play, and a zero would make them a "winner" on any cash-out
+      // while distorting the mismatch and the pot.
+      buyIn: z.number().positive('Every player needs a buy-in greater than zero'),
+      cashOut: z.number().nonnegative(),
+      manualWinner: z.boolean().optional(),
+    })
+  ),
+  mismatchAcknowledged: z.boolean().optional(),
+});
+
+export async function settleSession(req: Request, res: Response) {
+  const input = settleSchema.parse(req.body);
+  const settlement = await offlineSessionsService.settleSession(req.params.sessionId, req.user!.sub, req.user!.isSuperAdmin, input);
+  return res.status(201).json(settlement);
+}

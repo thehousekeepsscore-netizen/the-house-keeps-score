@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User account profiles",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "isSuperUser": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["createdAt"]
+    },
+    "clubs": {
+      "title": "Clubs",
+      "description": "Poker clubs created by players",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "description": { "type": "string" },
+        "maxCapacity": { "type": "integer" },
+        "minBuyIn": { "type": "integer" },
+        "maxBuyIn": { "type": "integer" },
+        "fixedRake": { "type": "integer" },
+        "winnersCutPercent": { "type": "number" },
+        "devaluationFactor": { "type": "number" },
+        "enableDevaluation": { "type": "boolean" },
+        "clubPotBalance": { "type": "number" },
+        "adminUids": { "type": "array" },
+        "memberUids": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "createdAt", "createdBy"]
+    },
+    "club_requests": {
+      "title": "Club Requests",
+      "description": "Player requests to join a poker club",
+      "properties": {
+        "clubId": { "type": "string" },
+        "clubName": { "type": "string" },
+        "userId": { "type": "string" },
+        "userDisplayName": { "type": "string" },
+        "userAvatarUrl": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["clubId", "userId", "status", "createdAt"]
+    },
+    "sessions": {
+      "title": "Poker Sessions",
+      "description": "Scorekeeping poker sessions inside a club",
+      "properties": {
+        "clubId": { "type": "string" },
+        "sessionName": { "type": "string" },
+        "status": { "type": "string" },
+        "activePlayerUids": { "type": "array" },
+        "startedBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "endedAt": { "type": "string" }
+      },
+      "required": ["clubId", "status", "createdAt"]
+    },
+    "buy_in_requests": {
+      "title": "Buy In Requests",
+      "description": "Bank/buy-in requests for players during a session",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "clubId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userDisplayName": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "requestedBy": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["sessionId", "clubId", "userId", "amount", "status", "createdAt"]
+    },
+    "cash_outs": {
+      "title": "Cash Out Settlements",
+      "description": "Session cash out calculations and settlement records",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "clubId": { "type": "string" },
+        "settledBy": { "type": "string" },
+        "totalBuyIns": { "type": "number" },
+        "totalCashOuts": { "type": "number" },
+        "totalWinnersCut": { "type": "number" },
+        "rakeCollected": { "type": "number" },
+        "potAdjustment": { "type": "number" },
+        "playerSummaries": { "type": "array" },
+        "settledAt": { "type": "string" }
+      },
+      "required": ["sessionId", "clubId", "settledBy", "settledAt"]
+    },
+    "club_pot_logs": {
+      "title": "Club Pot Logs",
+      "description": "Ledger of transactions contributing to the Club Pot",
+      "properties": {
+        "clubId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "amount": { "type": "number" },
+        "source": { "type": "string" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["clubId", "amount", "source", "createdAt"]
+    },
+    "historical_records": {
+      "title": "Historical Records",
+      "description": "Imported physical/paper poker session records",
+      "properties": {
+        "clubId": { "type": "string" },
+        "sessionDate": { "type": "string" },
+        "sessionTitle": { "type": "string" },
+        "playerStats": { "type": "array" },
+        "notes": { "type": "string" },
+        "importedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["clubId", "sessionDate", "createdAt"]
+    }
+  }
+}

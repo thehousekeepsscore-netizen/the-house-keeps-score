@@ -1,0 +1,6 @@
+{
+  "name": "The House Keeps Score Poker",
+  "description": "Private room digital dealer and scorekeeper for Texas Hold'em poker",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

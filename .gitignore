@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+# Every .env variant except the committed template. The bare `.env` rule alone
+# missed things like `.env.bak.1234` and `.env.production`, any one of which
+# would carry a live key into the first commit.
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+apps/api/generated/
+apps/web/dist/
+.turbo/
+coverage/
