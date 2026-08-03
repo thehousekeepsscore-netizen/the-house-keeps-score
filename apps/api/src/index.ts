@@ -5,15 +5,24 @@ import { prisma } from "./lib/prisma.js";
 import { describeMessaging } from "./lib/messaging.js";
 import { describeSeedCredentialRisk } from "./lib/seedGuard.js";
 import { initSocket } from "./realtime/socket.js";
-import { sweepExpiredTurns } from "./modules/sessions/sessions.service.js";
+// STOPPED alongside the Virtual Table route unmount in app.ts — see below.
+// import { sweepExpiredTurns } from "./modules/sessions/sessions.service.js";
 import { expireStaleRequests } from "./modules/offlineSessions/offlineSessions.service.js";
 
 const httpServer = createServer(app);
 initSocket(httpServer);
 
-setInterval(() => {
-  sweepExpiredTurns().catch((err) => console.error("Turn timeout sweep failed:", err));
-}, 1000);
+// Virtual Table turn-timeout sweep — STOPPED, since the routes that create
+// those sessions are unmounted in app.ts. It ran once per second against
+// PokerSession, i.e. ~86,400 queries a day, and had nothing to act on: the one
+// VIRTUAL_TABLE row in the database sits at street "Showdown" with
+// currentTurnSeat null, which the sweep's own guard skips.
+//
+// Restore this together with the route mounts, not on its own.
+//
+// setInterval(() => {
+//   sweepExpiredTurns().catch((err) => console.error("Turn timeout sweep failed:", err));
+// }, 1000);
 
 // Auto-reject buy-in/sit-in/cash-out requests left un-actioned past their TTL.
 // The decide* paths enforce the deadline exactly on their own; this only keeps

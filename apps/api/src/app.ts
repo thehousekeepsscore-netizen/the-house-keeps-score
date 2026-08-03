@@ -4,7 +4,8 @@ import cookieParser from "cookie-parser";
 import { env } from "./env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { clubsRouter } from "./modules/clubs/clubs.routes.js";
-import { clubSessionsRouter, sessionsRouter } from "./modules/sessions/sessions.routes.js";
+// UNMOUNTED before first deployment — see the note at the route mounts below.
+// import { clubSessionsRouter, sessionsRouter } from "./modules/sessions/sessions.routes.js";
 import { offlineSessionsRouter } from "./modules/offlineSessions/offlineSessions.routes.js";
 import { clubRecordsRouter } from "./modules/clubRecords/clubRecords.routes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -33,8 +34,33 @@ app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api/clubs", clubsRouter);
-app.use("/api/clubs/:clubId/sessions", clubSessionsRouter);
-app.use("/api/sessions", sessionsRouter);
+// ---------------------------------------------------------------------------
+// Virtual Table (turn-based poker engine) — UNMOUNTED before first deployment.
+//
+// The frontend for this feature is unreachable: nothing imports VirtualTableView
+// or LazyDealerConsole, and neither appears in the production bundle (verified
+// against a real `vite build`). The backend, however, was still mounted and
+// accepting authenticated requests.
+//
+// That mattered because endSession writes to CashOutSettlement
+// (sessions.service.ts:367) — the same table real cash-outs use — and neither
+// the history query (clubRecords.service.ts:264) nor the leaderboard query
+// (line 377) filters on sessionType. So a virtual-table row would appear in
+// real history and count toward real profit totals. Creation was also ungated:
+// createVirtualTableSession performs no club membership or role check, unlike
+// every other money route (compare clubsService.assertClubAdmin in
+// offlineSessions.startSession).
+//
+// It never reached computeSettlement, clubPotBalance or the pot ledger, so this
+// was an integrity risk to what players *see*, not to the money itself.
+//
+// Nothing is deleted. To revive the feature, uncomment the import above and the
+// two lines below — but gate creation on club membership and add a sessionType
+// filter to the history and leaderboard queries first.
+//
+// app.use("/api/clubs/:clubId/sessions", clubSessionsRouter);
+// app.use("/api/sessions", sessionsRouter);
+// ---------------------------------------------------------------------------
 app.use("/api/clubs/:clubId/offline-sessions", offlineSessionsRouter);
 app.use("/api/clubs/:clubId", clubRecordsRouter);
 
