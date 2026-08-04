@@ -6,6 +6,7 @@ import { MergedHostDisplayView } from './components/MergedHostDisplayView';
 import { LoginPage } from './components/LoginPage';
 import { SplashScreen } from './components/SplashScreen';
 import { ChipCardDecoration } from './components/ChipCardDecoration';
+import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
 import { ClubDashboardView } from './components/ClubDashboardView';
 import { ClubDetailView } from './components/ClubDetailView';
@@ -87,16 +88,9 @@ export default function App() {
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Google OAuth redirects here after login (this app has no router, so we
-  // just check the path directly and clean the URL back to '/').
-  useEffect(() => {
-    if (window.location.pathname !== '/oauth/callback') return;
-    const code = new URLSearchParams(window.location.search).get('code');
-    window.history.replaceState({}, '', '/');
-    if (code) {
-      exchangeOAuthCode(code).catch(err => console.error('OAuth exchange failed:', err));
-    }
-  }, [exchangeOAuthCode]);
+  // The OAuth landing effect lives further down, below addToast — it needs to
+  // surface failures as toasts, and referencing addToast in a dependency array
+  // above its own declaration would be a temporal dead zone error.
 
   // Sync logged in user display name and avatar
   useEffect(() => {
@@ -162,6 +156,53 @@ export default function App() {
   const handleDismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
+  /**
+   * Where the Google OAuth round trip lands. This app has no router, so the
+   * path is inspected directly.
+   *
+   * Two landing paths, both of which must end with the URL rewritten to '/':
+   *
+   *   /oauth/callback?code=...   success — exchange the one-time code
+   *   /login?error=...           failure — oauth.google.ts:46 and :84
+   *
+   * The failure path was previously unhandled: the SPA fallback served
+   * index.html, this effect returned early because the path wasn't
+   * /oauth/callback, and the user was left on the signed-out screen with
+   * "?error=oauth_state" still in the address bar and no explanation. The
+   * commonest cause is benign — OAuth state lives in an in-memory Map
+   * (ephemeralStore.ts), so any API restart mid-flow invalidates it — which
+   * makes "try again" the correct advice rather than a dead end.
+   *
+   * replaceState in both branches keeps the callback URL out of history, so
+   * Back never re-enters a completed OAuth flow.
+   */
+  useEffect(() => {
+    const { pathname, search } = window.location;
+    const params = new URLSearchParams(search);
+
+    if (pathname === '/oauth/callback') {
+      const code = params.get('code');
+      window.history.replaceState({}, '', '/');
+      if (code) {
+        exchangeOAuthCode(code).catch(err => {
+          console.error('OAuth exchange failed:', err);
+          addToast('Sign-in failed', 'Could not complete Google sign-in. Please try again.', 'warning');
+        });
+      }
+      return;
+    }
+
+    if (pathname === '/login') {
+      const error = params.get('error');
+      window.history.replaceState({}, '', '/');
+      if (error === 'oauth_state') {
+        addToast('Sign-in expired', 'That sign-in attempt timed out. Please try again.', 'warning');
+      } else if (error) {
+        addToast('Sign-in failed', 'Google sign-in could not be completed. Please try again.', 'warning');
+      }
+    }
+  }, [exchangeOAuthCode, addToast]);
 
   const activeSkippedSeats = useMemo(() => {
     return calculateSkippedSeats(seats, dealerSeat);
@@ -611,6 +652,17 @@ export default function App() {
           onLeaveTable={() => setViewState('lobby')}
         />
       )}
+
+      {/*
+        App-level toasts, rendered outside every view branch.
+
+        Until now the only consumer of `toasts` was MergedHostDisplayView
+        (part of the unreachable local table game), so anything addToast()
+        produced on the login screen, the dashboard or a club was created and
+        silently discarded. ClubDetailView sidesteps this with its own local
+        toast state and its own container.
+      */}
+      <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
 }
