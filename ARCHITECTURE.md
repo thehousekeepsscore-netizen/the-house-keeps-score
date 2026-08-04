@@ -385,6 +385,49 @@ socket payload carries identifiers, not state.
 
 ---
 
+## 6a. Authentication (single-writer state machine)
+
+`AuthProvider` (`lib/auth-context.tsx`) is the **sole owner** of authentication
+state. Nothing else may establish a session; consumers read `user`, `status` and
+`phase` and never write them.
+
+```
+initialising ─┬─ oauth-exchange ─┬─ authenticated
+              │                  └─ (failure) ─┐
+              └──────────────────── refreshing ─┴─ authenticated
+                                                 └─ unauthenticated
+```
+
+Exactly one path reaches a terminal state. `status` ('loading' | 'authenticated'
+| 'unauthenticated') is derived from `phase` and preserves the older contract.
+
+**Why it is built this way.** It previously was not. The refresh bootstrap lived
+in `AuthProvider` while the `/oauth/callback` code exchange lived in an
+independent effect in `App.tsx`. Both wrote the same state, and on the callback
+page both ran at once: the exchange established a session, while the refresh —
+which had no cookie yet — 401'd and its `catch` cleared the user, the phase and
+the access token. Whichever finished last won. Measured production latencies
+were 0.37–0.60s for the refresh against 0.53–0.70s for the exchange: overlapping
+ranges, so the outcome turned on network jitter. That is what produced
+intermittent "I signed in but I'm on the login screen, it works if I retry".
+
+Three invariants hold the fix in place:
+
+1. **Single writer.** Every `setAccessToken` call lives in this file. The OAuth
+   code is consumed inside the startup routine, not by a consumer.
+2. **Sequential, not concurrent.** The refresh runs only if there is no code, or
+   if the exchange failed. On success the routine returns before reaching it.
+3. **Monotonic startup.** `markSignedOut()` refuses to clear a live session; only
+   an explicit `logout()` may, via `markSignedOut(true)`. Even a future stray
+   async failure cannot downgrade an established session.
+
+A `startupRan` ref guards the routine against React StrictMode's development
+double-invoke, which would otherwise consume the one-time OAuth code twice.
+
+**Rule for future work:** anything needing authentication state consumes it from
+this provider. New sign-in methods become new transitions inside this machine,
+not new effects elsewhere.
+
 ## 7. Navigation Architecture
 
 - **Routing library** — none.

@@ -76,7 +76,7 @@ const calculateSkippedSeats = (seats: Seat[], dealerSeat: number): number[] => {
 export default function App() {
   const [viewState, setViewState] = useState<'lobby' | 'host' | 'player' | 'register' | 'profileSetup' | 'clubDashboard' | 'clubDetail'>('register');
   const [selectedClub, setSelectedClub] = useState<Club | null>(null);
-  const { user: authUser, status: authStatus, logout, exchangeOAuthCode } = useAuth();
+  const { user: authUser, status: authStatus, logout, authError, clearAuthError } = useAuth();
   useApplyTheme(authUser?.themePreference);
   const [tableCode, setTableCode] = useState('7742');
   const [tableCodeInput, setTableCodeInput] = useState('7742');
@@ -158,51 +158,31 @@ export default function App() {
   }, []);
 
   /**
-   * Where the Google OAuth round trip lands. This app has no router, so the
-   * path is inspected directly.
+   * Surfaces authentication failures. It does not *establish* authentication —
+   * AuthProvider is the single writer of auth state, and it consumes the
+   * /oauth/callback code itself during startup.
    *
-   * Two landing paths, both of which must end with the URL rewritten to '/':
-   *
-   *   /oauth/callback?code=...   success — exchange the one-time code
-   *   /login?error=...           failure — oauth.google.ts:46 and :84
-   *
-   * The failure path was previously unhandled: the SPA fallback served
-   * index.html, this effect returned early because the path wasn't
-   * /oauth/callback, and the user was left on the signed-out screen with
-   * "?error=oauth_state" still in the address bar and no explanation. The
-   * commonest cause is benign — OAuth state lives in an in-memory Map
-   * (ephemeralStore.ts), so any API restart mid-flow invalidates it — which
-   * makes "try again" the correct advice rather than a dead end.
-   *
-   * replaceState in both branches keeps the callback URL out of history, so
-   * Back never re-enters a completed OAuth flow.
+   * Two sources of failure:
+   *   /login?error=...   the API rejected the flow before returning (oauth.google.ts:46, :84)
+   *   authError          the code came back but the exchange failed
    */
   useEffect(() => {
     const { pathname, search } = window.location;
-    const params = new URLSearchParams(search);
-
-    if (pathname === '/oauth/callback') {
-      const code = params.get('code');
-      window.history.replaceState({}, '', '/');
-      if (code) {
-        exchangeOAuthCode(code).catch(err => {
-          console.error('OAuth exchange failed:', err);
-          addToast('Sign-in failed', 'Could not complete Google sign-in. Please try again.', 'warning');
-        });
-      }
-      return;
+    if (pathname !== '/login') return;
+    const error = new URLSearchParams(search).get('error');
+    window.history.replaceState({}, '', '/');
+    if (error === 'oauth_state') {
+      addToast('Sign-in expired', 'That sign-in attempt timed out. Please try again.', 'warning');
+    } else if (error) {
+      addToast('Sign-in failed', 'Google sign-in could not be completed. Please try again.', 'warning');
     }
+  }, [addToast]);
 
-    if (pathname === '/login') {
-      const error = params.get('error');
-      window.history.replaceState({}, '', '/');
-      if (error === 'oauth_state') {
-        addToast('Sign-in expired', 'That sign-in attempt timed out. Please try again.', 'warning');
-      } else if (error) {
-        addToast('Sign-in failed', 'Google sign-in could not be completed. Please try again.', 'warning');
-      }
-    }
-  }, [exchangeOAuthCode, addToast]);
+  useEffect(() => {
+    if (!authError) return;
+    addToast('Sign-in failed', 'Could not complete Google sign-in. Please try again.', 'warning');
+    clearAuthError();
+  }, [authError, addToast, clearAuthError]);
 
   const activeSkippedSeats = useMemo(() => {
     return calculateSkippedSeats(seats, dealerSeat);
