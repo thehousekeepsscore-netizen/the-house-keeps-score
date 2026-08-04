@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAuth } from './auth-context';
 
 /**
@@ -150,18 +150,17 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     lastUserId.current = id;
   }, [user?.uid, clear]);
 
-  const value = useRef<ResourceCache>({
-    getEntry,
-    subscribe,
-    load,
-    invalidate,
-    invalidatePrefix,
-    update,
-    clear,
-  });
-  value.current = { getEntry, subscribe, load, invalidate, invalidatePrefix, update, clear };
+  // Memoised so the context value keeps a stable identity. Every member is
+  // already useCallback-stable, so this object never needs to change. Rebuilding
+  // it each render would change the identity of `cache` in every consumer, which
+  // would re-run useResource's subscribe and load effects — and resubscribe
+  // useSyncExternalStore — on any unrelated re-render of this provider.
+  const value = useMemo<ResourceCache>(
+    () => ({ getEntry, subscribe, load, invalidate, invalidatePrefix, update, clear }),
+    [getEntry, subscribe, load, invalidate, invalidatePrefix, update, clear]
+  );
 
-  return <ResourceCacheContext.Provider value={value.current}>{children}</ResourceCacheContext.Provider>;
+  return <ResourceCacheContext.Provider value={value}>{children}</ResourceCacheContext.Provider>;
 };
 
 export function useResourceCache(): ResourceCache {

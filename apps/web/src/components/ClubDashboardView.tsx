@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import * as clubsApi from '../lib/clubs-api';
-import { ApiClub } from '../lib/clubs-api';
+import { useResource } from '../lib/resource-cache';
 import { Club, ClubJoinRequest } from '../types';
 import { AccountSettingsModal } from './AccountSettingsModal';
 import { BrandLogo } from './BrandLogo';
@@ -43,6 +43,11 @@ interface ClubDashboardViewProps {
 // itself performs.
 const POLL_INTERVAL_MS = 15_000;
 
+// Cache keys for the shared server-state layer. Exported so mutations elsewhere
+// can invalidate these lists without duplicating the string.
+export const CLUBS_KEY = 'clubs';
+export const JOIN_REQUESTS_KEY = 'clubs:join-requests';
+
 export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   currentUser,
   playerAvatarUrl,
@@ -50,14 +55,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   onProceedToLobby,
   onSignOut
 }) => {
-  const [rawClubs, setRawClubs] = useState<ApiClub[]>([]);
-  // Distinguishes "we haven't heard back yet" from "you genuinely have no
-  // clubs". Without it the empty state — whose main call to action is a large
-  // "Browse Clubs" button — paints on the very first render, so every arrival
-  // here looked like being dumped into Browse. This view unmounts whenever a
-  // club is open (App.tsx:545), so that flash happened on every Back too.
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [requests, setRequests] = useState<ClubJoinRequest[]>([]);
+  // rawClubs / requests / hasLoaded now come from the shared cache below, so
+  // they survive this view being unmounted while a club is open (App.tsx:545).
   const [activeTab, setActiveTab] = useState<'myClubs' | 'browse' | 'create' | 'requests' | 'superuser'>('myClubs');
   const [showAccountSettings, setShowAccountSettings] = useState(false);
 
@@ -90,30 +89,23 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
   const isSuperUser = currentUser.isSuperAdmin;
 
-  const clubs = useMemo(() => rawClubs.map(clubsApi.toClub), [rawClubs]);
+  // Both lists live in the shared cache, so returning from a club renders the
+  // previous data on the first frame instead of refetching from empty.
+  const clubsResource = useResource(CLUBS_KEY, clubsApi.listClubsRaw, { pollMs: POLL_INTERVAL_MS });
+  const requestsResource = useResource(JOIN_REQUESTS_KEY, clubsApi.listJoinRequests, { pollMs: POLL_INTERVAL_MS });
+
+  const rawClubs = useMemo(() => clubsResource.data ?? [], [clubsResource.data]);
+  const requests = useMemo(() => requestsResource.data ?? [], [requestsResource.data]);
+
+  // 'empty' means never loaded, which is the only case that warrants a
+  // skeleton. Stale data still renders while it revalidates behind the scenes.
+  const hasLoaded = clubsResource.status === 'ready';
 
   const refresh = useCallback(async () => {
-    try {
-      const [clubsList, requestsList] = await Promise.all([
-        clubsApi.listClubsRaw(),
-        clubsApi.listJoinRequests(),
-      ]);
-      setRawClubs(clubsList);
-      setRequests(requestsList);
-    } catch (err) {
-      console.error('Failed to load clubs/requests:', err);
-    } finally {
-      // In `finally` so a failed fetch still leaves the skeleton, rather than
-      // pinning the user on a spinner forever. The 15s poll retries anyway.
-      setHasLoaded(true);
-    }
-  }, []);
+    await Promise.all([clubsResource.refresh(), requestsResource.refresh()]);
+  }, [clubsResource, requestsResource]);
 
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [refresh]);
+  const clubs = useMemo(() => rawClubs.map(clubsApi.toClub), [rawClubs]);
 
   // Filter My Clubs vs Browse
   const myClubs = clubs.filter(c =>
