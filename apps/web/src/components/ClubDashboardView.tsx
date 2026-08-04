@@ -51,6 +51,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   onSignOut
 }) => {
   const [rawClubs, setRawClubs] = useState<ApiClub[]>([]);
+  // Distinguishes "we haven't heard back yet" from "you genuinely have no
+  // clubs". Without it the empty state — whose main call to action is a large
+  // "Browse Clubs" button — paints on the very first render, so every arrival
+  // here looked like being dumped into Browse. This view unmounts whenever a
+  // club is open (App.tsx:545), so that flash happened on every Back too.
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [requests, setRequests] = useState<ClubJoinRequest[]>([]);
   const [activeTab, setActiveTab] = useState<'myClubs' | 'browse' | 'create' | 'requests' | 'superuser'>('myClubs');
   const [showAccountSettings, setShowAccountSettings] = useState(false);
@@ -96,6 +102,10 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       setRequests(requestsList);
     } catch (err) {
       console.error('Failed to load clubs/requests:', err);
+    } finally {
+      // In `finally` so a failed fetch still leaves the skeleton, rather than
+      // pinning the user on a spinner forever. The 15s poll retries anyway.
+      setHasLoaded(true);
     }
   }, []);
 
@@ -300,7 +310,18 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               </div>
             </div>
 
-            {myClubs.length === 0 ? (
+            {!hasLoaded ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-label="Loading your clubs">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="p-5 bg-surface border border-line rounded-2xl space-y-3 animate-pulse">
+                    <div className="h-5 w-2/3 bg-surface-alt rounded" />
+                    <div className="h-3 w-full bg-surface-alt rounded" />
+                    <div className="h-3 w-4/5 bg-surface-alt rounded" />
+                    <div className="h-8 w-full bg-surface-alt rounded-xl mt-4" />
+                  </div>
+                ))}
+              </div>
+            ) : myClubs.length === 0 ? (
               <div className="p-8 bg-surface border border-dashed border-line rounded-2xl text-center space-y-3">
                 <ShieldCheck className="w-10 h-10 text-text-muted mx-auto opacity-60" />
                 <p className="text-sm text-text font-medium">You haven't joined any clubs yet.</p>
