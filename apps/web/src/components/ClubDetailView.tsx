@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
+import { useResource } from '../lib/resource-cache';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
@@ -106,6 +107,17 @@ interface ClubDetailViewProps {
 // Mirrors the Prisma default (schema.prisma: maxBuyIn Int @default(5000)) and
 // the API's `input.maxBuyIn ?? 5000`. Only used when a club predates the field
 // being set; every club created through the API carries an explicit value.
+// Stable empty fallbacks. A fresh [] on every render would give every derived
+// useMemo and effect a new dependency identity, so a resource that has not
+// loaded yet would churn the component instead of sitting still.
+const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
+const EMPTY_HISTORY: NormalizedSession[] = [];
+const EMPTY_LEADERBOARD: LeaderboardRow[] = [];
+const EMPTY_POT_LOG: ClubPotLog[] = [];
+const EMPTY_PENDING: PendingChangeRequest[] = [];
+const EMPTY_AUDIT: AuditLog[] = [];
+const EMPTY_DELETED: clubRecordsApi.DeletedSessionRef[] = [];
+
 const DEFAULT_MAX_BUY_IN = 5000;
 
 type ClubTab = 'activeSession' | 'history' | 'leaderboard' | 'pot' | 'pendingApprovals' | 'auditTrail';
@@ -194,17 +206,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [buyInRequests, setBuyInRequests] = useState<BuyInRequest[]>([]);
-  const [potLogs, setPotLogs] = useState<ClubPotLog[]>([]);
-  const [historyData, setHistoryData] = useState<NormalizedSession[]>([]);
-  const [leaderboardData, setLeaderboardData] = useState<LeaderboardRow[]>([]);
-  const [pendingChangeRequests, setPendingChangeRequests] = useState<PendingChangeRequest[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [deletedSessions, setDeletedSessions] = useState<clubRecordsApi.DeletedSessionRef[]>([]);
 
   // Club roster (owner + admins + members) — every user this view could ever
   // need a display name for, since buy-in requesters, history players, and
   // audit log actors are always club members.
-  const [allUsers, setAllUsers] = useState<Record<string, ClubRosterEntry>>({});
 
   // Link Player to Member Modal State
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -632,14 +637,38 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   }, [initialClub.id]);
 
-  const refreshRoster = useCallback(async () => {
-    try {
-      setAllUsers(await clubsApi.getClubRoster(initialClub.id));
-    } catch (err) {
-      console.warn('Failed to refresh club roster:', err);
-    }
-  }, [initialClub.id]);
+/**
+   * Server state for this club lives in the shared cache, keyed by club id.
+   *
+   * Each resource keeps the refreshX name its ~30 call sites already use — the
+   * function is now the cache's refresh rather than a bespoke fetch-and-setState,
+   * so behaviour at the call sites is unchanged while the data itself outlives
+   * this component. Re-entering a club within staleTime costs no requests at
+   * all, and previously-viewed data stays on screen while it revalidates.
+   *
+   * Permission gates are expressed as a null key rather than an early return:
+   * useResource skips a null key entirely, so a non-admin never issues the
+   * request instead of issuing it and discarding the result.
+   *
+   * No `loaded` flags: `status === 'empty'` means never fetched, which is the
+   * only condition that should render a skeleton.
+   */
+  const clubKey = `club:${initialClub.id}`;
+  const canSeeAudit = isOwner || isSuperUser;
 
+  const rosterRes = useResource<Record<string, ClubRosterEntry>>(
+    `${clubKey}:roster`,
+    () => clubsApi.getClubRoster(initialClub.id)
+  );
+  const allUsers = rosterRes.data ?? EMPTY_ROSTER;
+  const refreshRoster = rosterRes.refresh;
+
+  /**
+   * Deliberately NOT migrated in this slice. activeSession has ~22 refresh call
+   * sites, several driven by socket events that expect buyInRequests to reload
+   * alongside it, so it moves in its own commit where that coupling can be
+   * verified rather than assumed.
+   */
   const refreshActiveSession = useCallback(async () => {
     try {
       const session = await offlineSessionsApi.getActiveSession(initialClub.id);
@@ -656,55 +685,51 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   }, [initialClub.id]);
 
-  const refreshHistory = useCallback(async () => {
-    try {
-      setHistoryData(await clubRecordsApi.listHistory(initialClub.id));
-    } catch (err) {
-      console.warn('Failed to refresh history:', err);
-    }
-  }, [initialClub.id]);
+  const historyRes = useResource<NormalizedSession[]>(
+    `${clubKey}:history`,
+    () => clubRecordsApi.listHistory(initialClub.id)
+  );
+  const historyData = historyRes.data ?? EMPTY_HISTORY;
+  const refreshHistory = historyRes.refresh;
 
-  const refreshLeaderboard = useCallback(async () => {
-    try {
-      setLeaderboardData(await clubRecordsApi.getLeaderboard(initialClub.id));
-    } catch {
-      // Leaderboard visibility is owner-toggleable — a 403 here just means
-      // this viewer isn't allowed to see it, not a real failure.
-      setLeaderboardData([]);
-    }
-  }, [initialClub.id]);
+  const leaderboardRes = useResource<LeaderboardRow[]>(
+    `${clubKey}:leaderboard`,
+    // Leaderboard visibility is owner-toggleable — a 403 here means this viewer
+    // is not allowed to see it, not that anything failed.
+    () => clubRecordsApi.getLeaderboard(initialClub.id).catch(() => [] as LeaderboardRow[])
+  );
+  const leaderboardData = leaderboardRes.data ?? EMPTY_LEADERBOARD;
+  const refreshLeaderboard = leaderboardRes.refresh;
 
-  const refreshPotLog = useCallback(async () => {
-    if (!isAdmin) return;
-    try {
-      setPotLogs(await clubRecordsApi.listPotLog(initialClub.id));
-    } catch (err) {
-      console.warn('Failed to refresh pot log:', err);
-    }
-  }, [initialClub.id, isAdmin]);
+  const potLogRes = useResource<ClubPotLog[]>(
+    isAdmin ? `${clubKey}:pot-log` : null,
+    () => clubRecordsApi.listPotLog(initialClub.id)
+  );
+  const potLogs = potLogRes.data ?? EMPTY_POT_LOG;
+  const refreshPotLog = potLogRes.refresh;
 
-  const refreshPendingChanges = useCallback(async () => {
-    if (!isAdmin) return;
-    try {
-      setPendingChangeRequests(await clubRecordsApi.listPendingChanges(initialClub.id));
-    } catch (err) {
-      console.warn('Failed to refresh pending changes:', err);
-    }
-  }, [initialClub.id, isAdmin]);
+  const pendingChangesRes = useResource<PendingChangeRequest[]>(
+    isAdmin ? `${clubKey}:pending-changes` : null,
+    () => clubRecordsApi.listPendingChanges(initialClub.id)
+  );
+  const pendingChangeRequests = pendingChangesRes.data ?? EMPTY_PENDING;
+  const refreshPendingChanges = pendingChangesRes.refresh;
 
-  const refreshAuditTrail = useCallback(async () => {
-    if (!isOwner && !isSuperUser) return;
-    try {
+  // Audit and deleted sessions are always fetched and displayed together, so
+  // they are one resource rather than two — one key, one revalidation.
+  const auditRes = useResource<{ logs: AuditLog[]; deleted: clubRecordsApi.DeletedSessionRef[] }>(
+    canSeeAudit ? `${clubKey}:audit` : null,
+    async () => {
       const [logs, deleted] = await Promise.all([
         clubRecordsApi.listAuditLog(initialClub.id),
         clubRecordsApi.listDeletedSessions(initialClub.id),
       ]);
-      setAuditLogs(logs);
-      setDeletedSessions(deleted);
-    } catch (err) {
-      console.warn('Failed to refresh audit trail:', err);
+      return { logs, deleted };
     }
-  }, [initialClub.id, isOwner, isSuperUser]);
+  );
+  const auditLogs = auditRes.data?.logs ?? EMPTY_AUDIT;
+  const deletedSessions = auditRes.data?.deleted ?? EMPTY_DELETED;
+  const refreshAuditTrail = auditRes.refresh;
 
   // Initial load
   useEffect(() => {
