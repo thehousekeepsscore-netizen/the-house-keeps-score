@@ -1387,6 +1387,95 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // leaderboardData now comes straight from the server (clubRecordsApi.getLeaderboard),
   // pre-aggregated and access-controlled — see refreshLeaderboard() above.
 
+  /**
+   * The club's primary navigation, defined once and rendered in two layouts:
+   * a sticky bottom bar below `md`, and a horizontal strip at `md` and above.
+   *
+   * Previously the bottom bar was the only definition and the whole thing sat
+   * inside a `md:hidden` wrapper, so every tab switcher disappeared at 768px.
+   * Desktop users could reach Session, History, Ranks and Approvals through no
+   * control at all — the tabs rendered, but nothing could select them.
+   *
+   * Keeping one array means the two layouts cannot drift: a tab added here
+   * appears in both, with the same visibility rule and the same badge count.
+   */
+  const pendingBuyInCount = buyInRequests.filter(r => r.status === 'pending').length;
+  const pendingApprovalCount =
+    pendingBuyInCount + pendingChangeRequests.filter(r => r.status === 'pending').length;
+
+  const navItems = useMemo(
+    () =>
+      [
+        {
+          key: 'activeSession',
+          label: 'Session',
+          desktopLabel: 'Active Session',
+          Icon: Play,
+          iconClass: 'fill-current',
+          badge: pendingBuyInCount,
+          visible: true,
+          onSelect: () => setActiveTab('activeSession'),
+        },
+        {
+          key: 'history',
+          label: 'History',
+          desktopLabel: 'History',
+          Icon: History,
+          badge: 0,
+          visible: true,
+          onSelect: () => setActiveTab('history'),
+        },
+        {
+          key: 'leaderboard',
+          label: 'Ranks',
+          desktopLabel: 'Leaderboard',
+          Icon: Trophy,
+          badge: 0,
+          visible: canSeeLeaderboard,
+          onSelect: () => setActiveTab('leaderboard'),
+        },
+        {
+          key: 'pendingApprovals',
+          label: 'Approve',
+          desktopLabel: 'Approvals',
+          Icon: ListChecks,
+          badge: pendingApprovalCount,
+          visible: isAdmin,
+          onSelect: () => setActiveTab('pendingApprovals'),
+        },
+        // Actions rather than tabs — they open a modal, so they never read as
+        // selected. Kept in the same array so both layouts stay in step.
+        {
+          key: 'cashout',
+          label: 'Cashout',
+          desktopLabel: 'Cash Out',
+          Icon: Sliders,
+          badge: 0,
+          visible: isAdmin && !!activeSession,
+          isAction: true,
+          onSelect: openCashoutModal,
+        },
+        {
+          key: 'profile',
+          label: 'Profile',
+          desktopLabel: 'Profile',
+          Icon: UserCircle,
+          badge: 0,
+          visible: true,
+          isAction: true,
+          onSelect: () => setShowProfileModal(true),
+        },
+      ].filter(item => item.visible),
+    [
+      pendingBuyInCount,
+      pendingApprovalCount,
+      canSeeLeaderboard,
+      isAdmin,
+      activeSession,
+      openCashoutModal,
+    ]
+  );
+
   return (
     <div className="min-h-screen bg-bg text-text font-sans flex flex-col">
       
@@ -1494,6 +1583,34 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* pb-40 clears the FAB, which is fixed 80-136px off the bottom — with
           less padding the last control can never be scrolled out from under it. */}
       <main className="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6 pb-40 md:pb-8">
+
+        {/* Desktop navigation. The bottom bar below is hidden at md and up, so
+            without this there is no control that can change tabs on a desktop. */}
+        <nav className="hidden md:flex items-center gap-1 border-b border-line overflow-x-auto">
+          {navItems.map(item => {
+            const isSelected = !item.isAction && activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={item.onSelect}
+                aria-current={isSelected ? 'page' : undefined}
+                className={`relative flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors cursor-pointer border-b-2 -mb-px ${
+                  isSelected
+                    ? 'text-accent border-accent'
+                    : 'text-text-muted border-transparent hover:text-text'
+                }`}
+              >
+                <item.Icon className={`w-4 h-4 ${item.iconClass ?? ''}`} />
+                {item.desktopLabel}
+                {item.badge > 0 && (
+                  <span className="bg-danger text-white font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
         <div className="space-y-6">
             
@@ -3787,83 +3904,33 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         </button>
 
         {/* Sticky Bottom Navigation Bar */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
-          <button
-            onClick={() => setActiveTab('activeSession')}
-            className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-              activeTab === 'activeSession' ? 'text-accent' : 'text-text-muted hover:text-text'
-            }`}
-          >
-            <div className="relative">
-              <Play className="w-5 h-5 fill-current" />
-              {buyInRequests.filter(r => r.status === 'pending').length > 0 && (
-                <span className="absolute -top-1 -right-1.5 bg-danger text-white font-black text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                  {buyInRequests.filter(r => r.status === 'pending').length}
-                </span>
-              )}
-            </div>
-            <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">Session</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-              activeTab === 'history' ? 'text-accent' : 'text-text-muted hover:text-text'
-            }`}
-          >
-            <History className="w-5 h-5" />
-            <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">History</span>
-          </button>
-
-          {canSeeLeaderboard && (
-            <button
-              onClick={() => setActiveTab('leaderboard')}
-              className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-                activeTab === 'leaderboard' ? 'text-accent' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              <Trophy className="w-5 h-5" />
-              <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">Ranks</span>
-            </button>
-          )}
-
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('pendingApprovals')}
-              className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer relative min-h-[48px] justify-center ${
-                activeTab === 'pendingApprovals' ? 'text-accent' : 'text-text-muted hover:text-text'
-              }`}
-            >
-              <div className="relative">
-                <ListChecks className="w-5 h-5" />
-                {(buyInRequests.filter(r => r.status === 'pending').length + pendingChangeRequests.filter(r => r.status === 'pending').length) > 0 && (
-                  <span className="absolute -top-1 -right-1.5 bg-warning text-accent-contrast font-black text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                    {buyInRequests.filter(r => r.status === 'pending').length + pendingChangeRequests.filter(r => r.status === 'pending').length}
+          <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
+            {navItems.map(item => {
+              const isSelected = !item.isAction && activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={item.onSelect}
+                  aria-current={isSelected ? 'page' : undefined}
+                  className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
+                    isSelected ? 'text-accent' : 'text-text-muted hover:text-text'
+                  }`}
+                >
+                  <div className="relative">
+                    <item.Icon className={`w-5 h-5 ${item.iconClass ?? ''}`} />
+                    {item.badge > 0 && (
+                      <span className="absolute -top-1 -right-1.5 bg-danger text-white font-black text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">
+                    {item.label}
                   </span>
-                )}
-              </div>
-              <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">Approve</span>
-            </button>
-          )}
-
-          {isAdmin && activeSession && (
-            <button
-              onClick={openCashoutModal}
-              className="flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center text-text-muted hover:text-text"
-            >
-              <Sliders className="w-5 h-5" />
-              <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">Cashout</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowProfileModal(true)}
-            className="flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center text-text-muted hover:text-text"
-          >
-            <UserCircle className="w-5 h-5" />
-            <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight">Profile</span>
-          </button>
-        </nav>
+                </button>
+              );
+            })}
+          </nav>
       </div>
 
       {/* QUICK LINK PLAYER TO REGISTERED MEMBER MODAL */}
