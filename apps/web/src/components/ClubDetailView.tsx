@@ -539,7 +539,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   const handleSaveClubSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     setSavingSettings(true);
     try {
       // Only the fields a club can still change after creation are sent. The
@@ -891,7 +894,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Start a New Poker Session
   const handleStartSession = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     try {
       // Date-first naming: "Day 8" tells you nothing a month later, whereas
       // the date is the thing people actually recall a night by. The running
@@ -939,7 +945,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Open Edit Session Modal
   const handleOpenEditSession = (session: any) => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     setEditingSession(session);
     // Defensive slice as well as the server-side fix: <input type="date">
     // silently blanks on anything that isn't exactly YYYY-MM-DD.
@@ -1109,7 +1118,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Approve Change Request
   const handleApproveChangeRequest = async (req: PendingChangeRequest) => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     try {
       await clubRecordsApi.decidePendingChange(club.id, req.id, true);
       await refreshPendingChanges();
@@ -1125,7 +1137,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Reject Change Request
   const handleRejectChangeRequest = async (req: PendingChangeRequest) => {
-    if (!isAdmin) return;
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     try {
       await clubRecordsApi.decidePendingChange(club.id, req.id, false);
       await refreshPendingChanges();
@@ -1151,23 +1166,31 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       alert(`🎉 ${sessionTitle} restored! Leaderboard and player statistics recalculated.`);
     } catch (err) {
       console.error('Failed to restore session:', err);
+      pushToast('Could not restore', err instanceof Error ? err.message : 'Please try again.', 'warning');
     }
   };
 
   // Join Active Table
   const handleJoinTable = async () => {
-    if (!activeSession) return;
+    if (!activeSession) {
+      pushToast('No live session', 'There is nothing running right now.', 'warning');
+      return;
+    }
     try {
       await offlineSessionsApi.joinSession(club.id, activeSession.id);
       await refreshActiveSession();
     } catch (err) {
       console.error('Failed to join table:', err);
+      pushToast('Could not join', err instanceof Error ? err.message : 'Please try again.', 'warning');
     }
   };
 
   // Ask to be dealt in — goes to an admin rather than seating immediately.
   const handleRequestSitIn = async () => {
-    if (!activeSession) return;
+    if (!activeSession) {
+      pushToast('No live session', 'There is nothing running right now.', 'warning');
+      return;
+    }
     try {
       await offlineSessionsApi.requestSitIn(club.id, activeSession.id);
       await refreshActiveSession();
@@ -1179,7 +1202,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   };
 
   const handleDecideSitIn = async (userId: string, approve: boolean) => {
-    if (!isAdmin || !activeSession) return;
+    if (!isAdmin || !activeSession) {
+      pushToast(!activeSession ? 'No live session' : 'Not allowed', !activeSession ? 'There is nothing running right now.' : 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     const name = allUsers[userId]?.displayName || 'Player';
     try {
       await offlineSessionsApi.decideSitIn(club.id, activeSession.id, userId, approve);
@@ -1243,7 +1269,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // and the figure is locked into settlement.
   const handleStandUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSession) return;
+    if (!activeSession) {
+      pushToast('No live session', 'There is nothing running right now.', 'warning');
+      return;
+    }
     if (standUpAmount < 0) {
       pushToast('Enter an amount', 'Cash-out cannot be negative.', 'warning');
       return;
@@ -1259,7 +1288,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   };
 
   const handleDecideCashOut = async (userId: string, approve: boolean) => {
-    if (!isAdmin || !activeSession) return;
+    if (!isAdmin || !activeSession) {
+      pushToast(!activeSession ? 'No live session' : 'Not allowed', !activeSession ? 'There is nothing running right now.' : 'Only a Club Admin can do this.', 'warning');
+      return;
+    }
     const name = userId === currentUser.uid ? 'You' : (allUsers[userId]?.displayName || 'Player');
     try {
       await offlineSessionsApi.decideCashOut(club.id, activeSession.id, userId, approve);
@@ -1448,7 +1480,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // reruns when the cash-outs themselves change — leaving "Calculate"
   // permanently disabled on any night where someone stood up.
   const openCashoutModal = () => {
-    if (!activeSession) return;
+    if (!activeSession) {
+      pushToast('No live session', 'There is nothing running right now.', 'warning');
+      return;
+    }
     const initialBuyIns: Record<string, number> = {};
     settlementUids.forEach(uid => {
       initialBuyIns[uid] = activeSessionBuyIns.filter(r => r.userId === uid).reduce((sum, r) => sum + r.amount, 0);
