@@ -180,6 +180,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Real-time data
   const [activeSession, setActiveSession] = useState<PokerSession | null>(null);
+  /**
+   * Distinguishes "we haven't asked yet" from "there is genuinely no session".
+   *
+   * Without it, activeSession starts null and the panel paints "No Active
+   * Poker Session" on the first frame, then swaps to the live table a request
+   * later — telling the user something false before telling them the truth.
+   * Same defect class as the dashboard's Browse flash.
+   *
+   * Set in a `finally`, so a failed request falls through to the empty state
+   * rather than pinning a skeleton forever; the socket events and the next
+   * refresh will correct it.
+   */
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [buyInRequests, setBuyInRequests] = useState<BuyInRequest[]>([]);
   const [potLogs, setPotLogs] = useState<ClubPotLog[]>([]);
   const [historyData, setHistoryData] = useState<NormalizedSession[]>([]);
@@ -638,6 +651,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       }
     } catch (err) {
       console.warn('Failed to refresh active session:', err);
+    } finally {
+      setSessionLoaded(true);
     }
   }, [initialClub.id]);
 
@@ -1670,7 +1685,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* TAB: MERGED ACTIVE SESSION & BUY-INS */}
             {activeTab === 'activeSession' && (
               <div className="space-y-6">
-                {!activeSession ? (
+                {!sessionLoaded ? (
+                  <div
+                    className="p-8 bg-surface border border-line rounded-3xl space-y-4 shadow-xl animate-pulse"
+                    aria-busy="true"
+                    aria-label="Loading table"
+                  >
+                    <div className="h-12 w-12 bg-surface-alt rounded-full mx-auto" />
+                    <div className="h-5 w-56 bg-surface-alt rounded mx-auto" />
+                    <div className="h-3 w-72 bg-surface-alt rounded mx-auto" />
+                    <div className="h-10 w-40 bg-surface-alt rounded-2xl mx-auto mt-2" />
+                  </div>
+                ) : !activeSession ? (
                   <div className="p-8 bg-surface border border-line rounded-3xl text-center space-y-4 shadow-xl">
                     <Clock className="w-12 h-12 text-text-muted mx-auto opacity-60" />
                     <h3 className="text-lg font-bold text-text uppercase tracking-wide">
