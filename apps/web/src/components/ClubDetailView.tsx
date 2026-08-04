@@ -2017,7 +2017,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                     <div className="flex items-center gap-2">
                                       <button
                                         onClick={() => approveBuyInAction.run(req)}
-                                        disabled={cannotSelfApprove}
+                                        disabled={cannotSelfApprove || approveBuyInAction.pending}
                                         className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
                                           cannotSelfApprove 
                                             ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
@@ -2304,7 +2304,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => approveBuyInAction.run(req)}
-                                  disabled={cannotSelfApprove}
+                                  disabled={cannotSelfApprove || approveBuyInAction.pending}
                                   className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
                                     cannotSelfApprove
                                       ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
@@ -2369,7 +2369,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => approveChangeAction.run(req)}
-                                    disabled={cannotSelfApprove}
+                                    disabled={cannotSelfApprove || approveChangeAction.pending}
                                     className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
                                       cannotSelfApprove
                                         ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
@@ -2727,9 +2727,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                 <button
                   type="submit"
-                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg"
+                        disabled={requestBuyInAction.pending}
+                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Buy in {formatPts(buyInAmount)} for {targetName}
+                        {requestBuyInAction.pending ? 'Sending…' : <>Buy in {formatPts(buyInAmount)} for {targetName}</>}
                 </button>
 
                 <button
@@ -3055,9 +3056,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               <button
                 type="submit"
-                className="w-full bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg"
+                      disabled={standUpAction.pending}
+                className="w-full bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Cash out {formatVal(standUpAmount)}
+                      {standUpAction.pending ? 'Sending…' : <>Cash out {formatVal(standUpAmount)}</>}
               </button>
               <button
                 type="button"
@@ -3646,7 +3648,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => promoteAdminAction.run(mUid)}
-                                  disabled={(club.adminUids?.length || 0) >= 3}
+                                  disabled={(club.adminUids?.length || 0) >= 3 || promoteAdminAction.pending}
                                   className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${
                                     (club.adminUids?.length || 0) >= 3
                                       ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
