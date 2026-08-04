@@ -13,3 +13,8 @@ apps/api/generated/
 apps/web/dist/
 .turbo/
 coverage/
+# Vercel CLI working directory. Holds .env.production.local — every production
+# environment variable pulled from the Vercel project — plus build output.
+# Deliberately NOT the CLI's own suggestion of `.env*`, which sits after the
+# `!.env.example` exception above and would silently re-ignore the template.
+.vercel
