@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { env } from "../../env.js";
 import { setEphemeral, consumeEphemeral } from "../../lib/ephemeralStore.js";
-import { findOrCreateOAuthUser } from "./auth.service.js";
+import { findOrCreateOAuthUser, issueTokenPair } from "./auth.service.js";
 import { setRefreshCookie, publicUser } from "./auth.controller.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 
@@ -67,16 +67,27 @@ googleOAuthRouter.get(
       if (!profileRes.ok) throw new Error("userinfo fetch failed");
       const profile = (await profileRes.json()) as { sub: string; email: string; name?: string; picture?: string };
 
-      const ctx = { userAgent: req.headers["user-agent"], ip: req.ip };
-      const result = await findOrCreateOAuthUser(profile.sub, profile.email, profile.name || profile.email.split("@")[0], profile.picture, ctx);
+      const userId = await findOrCreateOAuthUser(
+        profile.sub,
+        profile.email,
+        profile.name || profile.email.split("@")[0],
+        profile.picture
+      );
 
-      setRefreshCookie(res, result.refreshToken);
-
-      // Hand the access token back via a short-lived one-time code instead of
-      // putting the JWT directly in the redirect URL (which would leak into
-      // browser history / server access logs / Referer headers).
+      // No tokens are minted here, and no cookie is set here.
+      //
+      // This response is served by the API's own host, which is not the origin
+      // the user is browsing. A Set-Cookie on it is scoped to that host, so the
+      // browser would never send it back with the app's requests — Google
+      // sign-ins had no persistent session at all as a result. Tokens are
+      // instead minted by /oauth/exchange, which the front end calls
+      // same-origin.
+      //
+      // The one-time code carries only a user id. No access token, no refresh
+      // token, nothing bearer-shaped ever enters the ephemeral store or the
+      // redirect URL (which would leak into history, access logs and Referer).
       const loginCode = crypto.randomBytes(24).toString("hex");
-      setEphemeral(`oauth:code:${loginCode}`, JSON.stringify({ accessToken: result.accessToken, user: publicUser(result.user) }), LOGIN_CODE_TTL_MS);
+      setEphemeral(`oauth:code:${loginCode}`, JSON.stringify({ userId }), LOGIN_CODE_TTL_MS);
 
       res.redirect(`${env.WEB_ORIGIN}/oauth/callback?code=${loginCode}`);
     } catch (err) {
@@ -86,12 +97,36 @@ googleOAuthRouter.get(
   })
 );
 
-googleOAuthRouter.post("/oauth/exchange", (req, res) => {
-  const { code } = req.body as { code?: string };
-  if (!code) return res.status(400).json({ error: "Missing code" });
+/**
+ * Completes a Google sign-in. Called by the front end from its own origin,
+ * which is what makes it the right place to issue the refresh cookie.
+ *
+ * consumeEphemeral is single-use: the code is deleted as it is read, so a
+ * replayed code fails even within its 60s TTL.
+ *
+ * The refresh token is created here, written straight to an httpOnly cookie,
+ * and never appears in the JSON body — so it is unreachable from client-side
+ * JavaScript. Only the access token and the public user object are returned.
+ */
+googleOAuthRouter.post(
+  "/oauth/exchange",
+  asyncHandler(async (req, res) => {
+    const { code } = req.body as { code?: string };
+    if (!code) return res.status(400).json({ error: "Missing code" });
 
-  const raw = consumeEphemeral(`oauth:code:${code}`);
-  if (!raw) return res.status(400).json({ error: "Invalid or expired code" });
+    const raw = consumeEphemeral(`oauth:code:${code}`);
+    if (!raw) return res.status(400).json({ error: "Invalid or expired code" });
 
-  return res.json(JSON.parse(raw));
-});
+    const { userId } = JSON.parse(raw) as { userId: string };
+
+    // ctx is captured from this request rather than the callback: this is the
+    // user's actual browser, so the session audit records the right agent/IP.
+    const { accessToken, refreshToken, user } = await issueTokenPair(userId, {
+      userAgent: req.headers["user-agent"],
+      ip: req.ip,
+    });
+
+    setRefreshCookie(res, refreshToken);
+    return res.json({ accessToken, user: publicUser(user) });
+  })
+);

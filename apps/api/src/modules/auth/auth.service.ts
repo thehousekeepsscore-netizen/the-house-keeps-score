@@ -20,7 +20,7 @@ export function toAuthPayload(user: { id: string; email: string; displayName: st
   return { sub: user.id, email: user.email, displayName: user.displayName, isSuperAdmin: user.isSuperAdmin };
 }
 
-async function issueTokenPair(userId: string, opts: { familyId?: string; userAgent?: string; ip?: string }) {
+export async function issueTokenPair(userId: string, opts: { familyId?: string; userAgent?: string; ip?: string }) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
   const accessToken = signAccessToken(toAuthPayload(user));
 
@@ -137,20 +137,28 @@ export async function logout(presentedToken: string) {
 // otherwise create a brand new account. (Lalwani's version requires an
 // admin-provisioned account to already exist — poker is a consumer app
 // where anyone should be able to sign in with Google directly.)
+/**
+ * Resolves the Google identity to a local user, creating one on first sign-in.
+ *
+ * Deliberately does NOT issue tokens. The token pair is minted later, by
+ * /auth/oauth/exchange, so that the refresh cookie is set on a response served
+ * from the front end's own origin. Minting here would set the cookie on the
+ * Railway callback host, where the browser would scope it to that host and
+ * never send it to the app — which is exactly the bug this split fixes.
+ */
 export async function findOrCreateOAuthUser(
   providerUserId: string,
   email: string,
   displayName: string,
-  avatarUrl: string | undefined,
-  ctx: { userAgent?: string; ip?: string }
-) {
+  avatarUrl: string | undefined
+): Promise<string> {
   const existingLink = await prisma.oAuthAccount.findUnique({
     where: { provider_providerUserId: { provider: "GOOGLE", providerUserId } },
   });
 
   if (existingLink) {
     await prisma.user.update({ where: { id: existingLink.userId }, data: { lastLoginAt: new Date() } });
-    return issueTokenPair(existingLink.userId, ctx);
+    return existingLink.userId;
   }
 
   let user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
@@ -169,5 +177,5 @@ export async function findOrCreateOAuthUser(
   }
 
   await prisma.oAuthAccount.create({ data: { provider: "GOOGLE", providerUserId, userId: user.id } });
-  return issueTokenPair(user.id, ctx);
+  return user.id;
 }
