@@ -458,6 +458,23 @@ export async function requestBuyIn(sessionId: string, clubId: string, userId: st
   // Enforced here, not only in the UI — the cap was previously client-side
   // only and any direct API call sailed past it.
   await assertWithinBuyInCeiling(sessionId, clubId, amount);
+
+  // One pending buy-in per player per session, matching requestSitIn and
+  // requestCashOut. This was the only request endpoint without the rule, and
+  // its absence was not theoretical: a player whose screen appeared frozen
+  // pressed the button around twenty times and created around twenty rows,
+  // every one of which an admin then had to triage.
+  //
+  // Enforced on the server rather than by disabling the button, because a
+  // disabled button only helps a client that is behaving.
+  const pending = await prisma.buyInRequest.findFirst({
+    where: { sessionId, userId, status: 'pending' },
+    select: { id: true },
+  });
+  if (pending) {
+    throw new HttpError(409, 'You already have a buy-in request waiting for approval');
+  }
+
   const request = await prisma.buyInRequest.create({
     data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy: userId },
   });

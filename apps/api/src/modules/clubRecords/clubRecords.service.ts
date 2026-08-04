@@ -170,6 +170,31 @@ export async function createPastSession(
     timestamp: when.toISOString(),
   }));
 
+  // Duplicate protection. Recording a night twice doubles every player's
+  // profit in the history and the leaderboard, and unlike a duplicate buy-in
+  // request nobody has to approve it — it lands straight in the numbers.
+  //
+  // Until now the only thing preventing it was a `savingPast` flag in the UI,
+  // which protects a well-behaved client and nothing else.
+  //
+  // The key is deliberately the club, the date AND the exact figures rather
+  // than club+date alone: two genuinely different sessions on one evening are
+  // plausible, two sessions with an identical set of players and identical
+  // buy-ins and cash-outs to the rupee are not.
+  const sameDay = await prisma.historicalSessionRecord.findMany({
+    where: { clubId, sessionDate: when.toISOString(), isDeleted: false },
+    select: { id: true, playerStats: true },
+  });
+  const fingerprint = (stats: HistoricalPlayerStat[]) =>
+    stats
+      .map((p) => `${p.userId ?? p.userName}:${p.totalBuyIn}:${p.cashOut}`)
+      .sort()
+      .join('|');
+  const incoming = fingerprint(playerStats);
+  if (sameDay.some((r) => fingerprint(r.playerStats as unknown as HistoricalPlayerStat[]) === incoming)) {
+    throw new HttpError(409, 'An identical session for this date has already been recorded');
+  }
+
   const record = await prisma.$transaction(async (tx) => {
     const created = await tx.historicalSessionRecord.create({
       data: {
