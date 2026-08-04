@@ -109,7 +109,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithGoogle = useCallback(() => {
-    window.location.href = '/api/auth/google';
+    // `replace`, not `href`: assigning href pushes a history entry, leaving the
+    // login page in the stack underneath the OAuth flow. Every redirect after
+    // this one (Railway -> Google -> Railway -> WEB_ORIGIN) replaces rather
+    // than pushes, so the whole round trip collapses into this single entry —
+    // and App.tsx rewrites its URL to '/' once the code is exchanged.
+    //
+    // With `href` the browser Back button returned to the login page as a
+    // fresh document load, which boots with no in-memory access token and so
+    // renders the signed-out screen to a user who is signed in.
+    window.location.replace('/api/auth/google');
   }, []);
 
   const exchangeOAuthCode = useCallback(async (code: string) => {
