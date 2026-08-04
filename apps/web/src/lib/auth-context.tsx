@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch, setAccessToken } from './api-client';
 import { AppUser } from './auth-types';
 
@@ -76,6 +77,30 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Where to send the user once a Google sign-in completes.
+ *
+ * The OAuth round trip leaves the document entirely, so the intended path
+ * cannot be held in memory or in history — it has to survive a full navigation
+ * away and back. sessionStorage is the narrowest thing that does: same-origin,
+ * per-tab, and gone when the tab closes.
+ *
+ * This is a path, not data. The rule against persisting cached server state
+ * (money can go stale) does not apply, and nothing here is a credential.
+ */
+const RETURN_TO_KEY = 'auth:returnTo';
+
+/**
+ * Only ever redirect to a path on this origin. Without this check a crafted
+ * value in sessionStorage could turn the login flow into an open redirect.
+ */
+function safeInternalPath(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+  if (raw.startsWith('/oauth/callback') || raw.startsWith('/login')) return null;
+  return raw;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [phase, setPhase] = useState<AuthPhase>('initialising');
@@ -119,6 +144,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * The single authoritative startup path. Consumers read authentication state;
    * they never establish it.
    */
+  const navigate = useNavigate();
+
   const startupRan = useRef(false);
   useEffect(() => {
     // React StrictMode double-invokes effects in development. Without this the
@@ -130,9 +157,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void (async () => {
       const isCallback = window.location.pathname === '/oauth/callback';
       const code = isCallback ? new URLSearchParams(window.location.search).get('code') : null;
-      // Clean the URL before any await, so the callback never lingers in
-      // history and a reload mid-flight cannot replay a spent code.
-      if (isCallback) window.history.replaceState({}, '', '/');
+
+      // Where the user was heading before being sent to Google. Read and
+      // cleared here so a stale value can never leak into a later sign-in.
+      const returnTo = safeInternalPath(sessionStorage.getItem(RETURN_TO_KEY));
+      sessionStorage.removeItem(RETURN_TO_KEY);
+
+      // Replace, never push: the callback URL must not linger in history, and
+      // a reload mid-flight must not be able to replay a spent code. navigate()
+      // rather than history.replaceState so React Router stays in sync.
+      if (isCallback) navigate(returnTo ?? '/', { replace: true });
 
       if (code) {
         setPhase('oauth-exchange');
@@ -160,7 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markSignedOut();
       }
     })();
-  }, [loadMe, markAuthenticated, markSignedOut]);
+  }, [loadMe, markAuthenticated, markSignedOut, navigate]);
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await apiFetch<{ accessToken: string; user: ApiUser }>('/auth/login', {
@@ -188,6 +222,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [markSignedOut]);
 
   const loginWithGoogle = useCallback(() => {
+    // Remember the destination across the redirect chain, so a deep link that
+    // bounced someone to sign-in returns them to it rather than the dashboard.
+    const here = window.location.pathname + window.location.search;
+    const target = safeInternalPath(here);
+    if (target && target !== '/') sessionStorage.setItem(RETURN_TO_KEY, target);
+
     // `replace`, not `href`: assigning href pushes a history entry, leaving the
     // login page in the stack underneath the OAuth flow. Every redirect after
     // this one (Railway -> Google -> Railway -> WEB_ORIGIN) replaces rather
