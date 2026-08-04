@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { useResource } from '../lib/resource-cache';
+import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
@@ -192,6 +192,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     [navigate, initialClub.id]
   );
 
+  const cache = useResourceCache();
   const clubKey = `club:${initialClub.id}`;
 
   /**
@@ -1324,13 +1325,38 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
 
     try {
-      await offlineSessionsApi.requestBuyIn(club.id, activeSession.id, Number(buyInAmount), buyInTargetUser);
-      await refreshActiveSession();
+      const created = await offlineSessionsApi.requestBuyIn(
+        club.id,
+        activeSession.id,
+        Number(buyInAmount),
+        buyInTargetUser
+      );
+
+      // Write the created row straight into the cache instead of refetching.
+      //
+      // The old path awaited requestBuyIn, then refreshActiveSession — which
+      // fetches the session and then the buy-in list, sequentially, because the
+      // second needs the session id from the first. Three round trips at ~400ms
+      // each before the modal closed. The POST response already contains the
+      // row those two GETs were about to return.
+      //
+      // This is not a speculative optimistic write: it runs after the server
+      // has confirmed, so there is nothing to roll back if it fails. The socket
+      // event still reaches every other client, and the next revalidation
+      // reconciles anything this missed.
+      cache.update<{ session: PokerSession | null; buyIns: BuyInRequest[] }>(
+        `${clubKey}:active-session`,
+        (prev) =>
+          prev
+            ? { ...prev, buyIns: [...prev.buyIns, created] }
+            : { session: activeSession, buyIns: [created] }
+      );
+
       pushToast('Buy-in requested', 'Sent to the admins for approval.', 'success');
       setShowBuyInModal(false);
     } catch (err) {
       console.error('Buy-in request error:', err);
-      pushToast('Request failed', 'Could not submit the buy-in.', 'warning');
+      pushToast('Request failed', err instanceof Error ? err.message : 'Could not submit the buy-in.', 'warning');
     }
   };
 

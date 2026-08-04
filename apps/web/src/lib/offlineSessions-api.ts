@@ -135,8 +135,25 @@ export async function listBuyInRequests(clubId: string, sessionId: string): Prom
   return list.map(toBuyInRequest);
 }
 
-export async function requestBuyIn(clubId: string, sessionId: string, amount: number, userId?: string): Promise<void> {
-  await apiFetch(`/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests`, { method: 'POST', body: { amount, userId } });
+/**
+ * Returns the created request rather than discarding it.
+ *
+ * The endpoint already responds 201 with the new row; throwing it away meant
+ * the caller had to re-fetch the session and then the buy-in list just to learn
+ * what it had already been handed — three sequential round trips at roughly
+ * 400ms each before anything appeared on screen.
+ */
+export async function requestBuyIn(
+  clubId: string,
+  sessionId: string,
+  amount: number,
+  userId?: string
+): Promise<BuyInRequest> {
+  const created = await apiFetch<ApiBuyInRequest>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests`,
+    { method: 'POST', body: { amount, userId } }
+  );
+  return toBuyInRequest(created);
 }
 
 export async function decideBuyInRequest(clubId: string, sessionId: string, requestId: string, approve: boolean): Promise<PokerSession | null> {
