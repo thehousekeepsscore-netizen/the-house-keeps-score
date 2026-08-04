@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import * as clubsApi from '../lib/clubs-api';
 import { useResource } from '../lib/resource-cache';
+import { useAction } from '../lib/use-action';
 import { Club, ClubJoinRequest } from '../types';
 import { AccountSettingsModal } from './AccountSettingsModal';
 import { BrandLogo } from './BrandLogo';
@@ -122,6 +123,22 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // My sent join requests
   const mySentRequests = requests.filter(r => r.userId === currentUser.uid);
 
+
+  // Super-admin row actions. These were inline async onClick handlers with no
+  // guard at all — the same double-submit exposure as the approve buttons.
+  const superuserJoinAction = useAction(async (clubId: string) => {
+    await clubsApi.superuserJoin(clubId);
+    await refresh();
+  });
+  const deleteClubAction = useAction(async (clubId: string) => {
+    await clubsApi.deleteClub(clubId);
+    await refresh();
+  });
+  const removeMemberAction = useAction(async (memberId: string, clubId: string) => {
+    await clubsApi.removeMember(clubId, memberId);
+    await refresh();
+  });
+
   // Create Club Handler
   const handleCreateClub = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +196,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   };
 
   // Join Club Request
-  const handleRequestJoinClub = async (club: Club) => {
+  const requestJoin = useAction(async (_clubId: string, club: Club) => {
     const capacity = club.maxCapacity || 50;
     if (club.memberUids?.length >= capacity) {
       alert(`This club has reached its maximum capacity of ${capacity} players.`);
@@ -202,10 +219,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       console.error('Failed to send join request:', err);
       alert('Failed to send join request. Please try again.');
     }
-  };
+  });
 
   // Admin Approve / Reject Request
-  const handleUpdateRequestStatus = async (requestId: string, clubId: string, newStatus: 'accepted' | 'rejected') => {
+  // requestId is the first argument, so each row is guarded independently —
+  // approving one request does not disable the buttons on the others.
+  const decideRequest = useAction(async (requestId: string, clubId: string, newStatus: 'accepted' | 'rejected') => {
     try {
       await clubsApi.decideJoinRequest(clubId, requestId, newStatus === 'accepted');
       await refresh();
@@ -213,7 +232,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       console.error('Failed to update request:', err);
       alert('Failed to process request.');
     }
-  };
+  });
 
   return (
     <div className="min-h-screen bg-bg text-text font-sans flex flex-col">
@@ -492,7 +511,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleRequestJoinClub(club)}
+                            onClick={() => requestJoin.run(club.id, club)}
+                            disabled={requestJoin.isPending(club.id)}
                             className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
                           >
                             <Plus className="w-3.5 h-3.5 text-accent" /> REQUEST TO JOIN
@@ -802,16 +822,18 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleUpdateRequestStatus(req.id, req.clubId, 'accepted')}
-                          className="bg-accent hover:bg-accent text-accent-contrast font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                            onClick={() => decideRequest.run(req.id, req.clubId, 'accepted')}
+                            disabled={decideRequest.isPending(req.id)}
+                            className="bg-accent hover:bg-accent text-accent-contrast font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Check className="w-3.5 h-3.5" /> Accept
+                            <Check className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Accept'}
                         </button>
                         <button
-                          onClick={() => handleUpdateRequestStatus(req.id, req.clubId, 'rejected')}
-                          className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                            onClick={() => decideRequest.run(req.id, req.clubId, 'rejected')}
+                            disabled={decideRequest.isPending(req.id)}
+                            className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <X className="w-3.5 h-3.5" /> Reject
+                            <X className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Reject'}
                         </button>
                       </div>
                     </div>
@@ -941,27 +963,27 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                             {!c.isMember && (
                               <button
                                 onClick={async () => {
-                                  await clubsApi.superuserJoin(c.id);
+                                  await superuserJoinAction.run(c.id);
                                   alert(`Added yourself as Admin to ${c.name}`);
-                                  await refresh();
                                 }}
-                                className="bg-accent text-accent-contrast font-black px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer"
+                                disabled={superuserJoinAction.isPending(c.id)}
+                                className="bg-accent text-accent-contrast font-black px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Super Join as Admin
+                                {superuserJoinAction.isPending(c.id) ? 'Joining…' : 'Super Join as Admin'}
                               </button>
                             )}
 
                             <button
                               onClick={async () => {
                                 if (confirm(`Are you sure you want to delete club "${c.name}"?`)) {
-                                  await clubsApi.deleteClub(c.id);
+                                  await deleteClubAction.run(c.id);
                                   alert(`Deleted ${c.name}`);
-                                  await refresh();
                                 }
                               }}
-                              className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer"
+                              disabled={deleteClubAction.isPending(c.id)}
+                              className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              Delete Club
+                              {deleteClubAction.isPending(c.id) ? 'Deleting…' : 'Delete Club'}
                             </button>
                           </div>
                         </div>
@@ -1008,18 +1030,18 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                           onClick={async () => {
                                             if (confirm(`Are you sure you want to remove user "${m.displayName}" from club "${c.name}"?`)) {
                                               try {
-                                                await clubsApi.removeMember(c.id, m.id);
+                                                await removeMemberAction.run(m.id, c.id);
                                                 alert(`Removed ${m.displayName} from ${c.name}`);
-                                                await refresh();
                                               } catch (err) {
                                                 console.error('Failed to remove user:', err);
                                                 alert('Failed to remove user from club.');
                                               }
                                             }
                                           }}
-                                          className="px-2.5 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors shrink-0"
+                                          disabled={removeMemberAction.isPending(m.id)}
+                                          className="px-2.5 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                          Delete User
+                                          {removeMemberAction.isPending(m.id) ? 'Removing…' : 'Delete User'}
                                         </button>
                                       )}
                                     </div>
