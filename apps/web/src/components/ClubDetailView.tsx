@@ -1304,24 +1304,37 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Approve Buy-In Request
   const handleApproveBuyIn = async (request: BuyInRequest) => {
-    if (!isAdmin || !activeSession) return;
+    // Previously a bare `return`, which made a genuine problem — no live
+    // session, or losing admin rights mid-view — indistinguishable from a
+    // click that never registered.
+    if (!isAdmin || !activeSession) {
+      pushToast('Cannot approve', !activeSession ? 'There is no live session right now.' : 'Only a Club Admin can approve buy-ins.', 'warning');
+      return;
+    }
     try {
       await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, request.id, true);
       await refreshActiveSession();
     } catch (err) {
       console.error('Approve error:', err);
-      alert(err instanceof Error ? err.message : 'Failed to approve buy-in.');
+      pushToast('Could not approve', err instanceof Error ? err.message : 'Failed to approve buy-in.', 'warning');
     }
   };
 
   // Reject Buy-In Request
   const handleRejectBuyIn = async (request: BuyInRequest) => {
-    if (!isAdmin || !activeSession) return;
+    if (!isAdmin || !activeSession) {
+      pushToast('Cannot reject', !activeSession ? 'There is no live session right now.' : 'Only a Club Admin can reject buy-ins.', 'warning');
+      return;
+    }
     try {
       await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, request.id, false);
       await refreshActiveSession();
     } catch (err) {
+      // This used to be console-only, so a rejected reject looked like a dead
+      // button. Every failure the server can return here — expired request,
+      // already decided, no longer admin — now reaches the user.
       console.error('Reject error:', err);
+      pushToast('Could not reject', err instanceof Error ? err.message : 'Failed to reject buy-in.', 'warning');
     }
   };
 
