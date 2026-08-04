@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { LobbyView } from './components/LobbyView';
 import { PlayerView } from './components/PlayerView';
@@ -14,6 +15,8 @@ import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { useApplyTheme } from './lib/theme';
 import { Club } from './types';
+import * as clubsApi from './lib/clubs-api';
+import { useResource, useResourceCache } from './lib/resource-cache';
 
 const SUITS: Suit[] = [
   { symbol: '♠', name: 'spades', color: 'text-zinc-900', isRed: false },
@@ -74,8 +77,11 @@ const calculateSkippedSeats = (seats: Seat[], dealerSeat: number): number[] => {
 };
 
 export default function App() {
-  const [viewState, setViewState] = useState<'lobby' | 'host' | 'player' | 'register' | 'profileSetup' | 'clubDashboard' | 'clubDetail'>('register');
-  const [selectedClub, setSelectedClub] = useState<Club | null>(null);
+  // Navigation state lives in the URL. There is deliberately no viewState or
+  // selectedClub here any more: a second source of truth is what made browser
+  // Back and the address bar disagree with the screen.
+  const navigate = useNavigate();
+  const cache = useResourceCache();
   const { user: authUser, status: authStatus, logout, authError, clearAuthError } = useAuth();
   useApplyTheme(authUser?.themePreference);
   const [tableCode, setTableCode] = useState('7742');
@@ -104,15 +110,8 @@ export default function App() {
       if (authUser.photoURL) {
         setPlayerAvatarUrl(authUser.photoURL);
       }
-      // New accounts (or ones that never finished onboarding) are forced
-      // through profile setup before they can reach the rest of the app.
-      setViewState(prev => {
-        if (!authUser.profileComplete) return 'profileSetup';
-        return prev === 'register' || prev === 'profileSetup' ? 'clubDashboard' : prev;
-      });
     } else {
       setPlayerAvatarUrl('');
-      setViewState('register');
     }
   }, [authUser, authStatus]);
 
@@ -152,6 +151,17 @@ export default function App() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4500);
   }, []);
+
+  /**
+   * Seed before navigating. The dashboard already holds the full Club object,
+   * so writing it into the cache under the key the club route reads means the
+   * destination renders immediately instead of fetching and flashing a
+   * skeleton. It still revalidates in the background.
+   */
+  const handleSelectClub = useCallback((club: Club) => {
+    cache.update<Club>(`club:${club.id}`, () => club);
+    navigate(`/clubs/${club.id}`);
+  }, [cache, navigate]);
 
   const handleDismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -443,7 +453,7 @@ export default function App() {
       { seatNumber: 11, player: null, isSatOut: false, isFolded: false, holeCards: [] },
     ]);
 
-    setViewState('host');
+    // (dead: the local table game has no route — see NAVIGATION-AUDIT.md §4)
     addToast('🎉 Table Created!', `Room Code: ${generatedCode}. Share with players to join!`, 'success');
   };
 
@@ -483,7 +493,7 @@ export default function App() {
 
     setSelectedPlayerSeat(targetSeatNum);
     setTableCode(code);
-    setViewState('player');
+    // (dead: the local table game has no route — see NAVIGATION-AUDIT.md §4)
 
     // Notify Host via BroadcastChannel & Toast
     addToast('🎉 Player Joined!', `${pName} joined and took Seat ${targetSeatNum}!`, 'info');
@@ -539,110 +549,99 @@ export default function App() {
           low-opacity watermark so every screen shares the same brand motif
           without competing with real content. Login has its own full-strength
           hero version already. */}
-      {viewState !== 'register' && <ChipCardDecoration variant="ambient" />}
+      {authUser && <ChipCardDecoration variant="ambient" />}
 
-      {viewState === 'lobby' && (
-        <LobbyView 
-          onCreateTable={handleCreateTable}
-          onJoinTable={handleJoinTable}
-          tableCodeInput={tableCodeInput}
-          setTableCodeInput={setTableCodeInput}
-          playerNameInput={playerNameInput}
-          setPlayerNameInput={setPlayerNameInput}
-          selectedJoinSeat={selectedJoinSeat}
-          setSelectedJoinSeat={setSelectedJoinSeat}
-          seats={seats}
-          errorMessage={errorMessage}
-          onOpenRegister={() => setViewState('register')}
-          currentUser={authUser}
-          playerAvatarUrl={playerAvatarUrl}
-        />
-      )}
-
-      {viewState === 'register' && <LoginPage />}
-
-      {viewState === 'profileSetup' && authUser && <ProfileSetupView />}
-
-      {viewState === 'clubDashboard' && authUser && (
-        <ClubDashboardView 
-          currentUser={authUser}
-          playerAvatarUrl={playerAvatarUrl}
-          onSelectClub={(club) => {
-            setSelectedClub(club);
-            setViewState('clubDetail');
-          }}
-          onProceedToLobby={() => setViewState('lobby')}
-          onSignOut={async () => {
-            await logout();
-            setViewState('register');
-          }}
-        />
-      )}
-
-      {viewState === 'clubDetail' && authUser && selectedClub && (
-        <ClubDetailView
-          club={selectedClub}
-          currentUser={authUser}
-          playerAvatarUrl={playerAvatarUrl}
-          onBackToDashboard={() => setViewState('clubDashboard')}
-        />
-      )}
-
-      {viewState === 'host' && (
-        <MergedHostDisplayView 
-          handNumber={handNumber}
-          street={street}
-          runCount={runCount}
-          deck={deck}
-          boards={boards}
-          seats={seats}
-          setSeats={setSeats}
-          dealerSeat={dealerSeat}
-          setDealerSeat={setDealerSeat}
-          activeSkippedSeats={activeSkippedSeats}
-          handleStartNewHand={handleStartNewHand}
-          handleRevealFlop={handleRevealFlop}
-          handleRevealTurn={handleRevealTurn}
-          handleRevealRiver={handleRevealRiver}
-          handleRunRemainingBoard={handleRunRemainingBoard}
-          handleSetRunMode={handleSetRunMode}
-          handleEndHandAndRotateDealer={handleEndHandAndRotateDealer}
-          tableCode={tableCode}
-          onLeaveTable={() => setViewState('lobby')}
-          isGameStarted={isGameStarted}
-          handleStartGame={handleStartGame}
-          toasts={toasts}
-          onDismissToast={handleDismissToast}
-        />
-      )}
-
-      {viewState === 'player' && (
-        <PlayerView 
-          selectedPlayerSeat={selectedPlayerSeat}
-          setSelectedPlayerSeat={setSelectedPlayerSeat}
-          seats={seats}
-          setSeats={setSeats}
-          handNumber={handNumber}
-          street={street}
-          dealerSeat={dealerSeat}
-          activeSkippedSeats={activeSkippedSeats}
-          boards={boards}
-          deck={deck}
-          tableCode={tableCode}
-          onLeaveTable={() => setViewState('lobby')}
-        />
+      {!authUser ? (
+        <LoginPage />
+      ) : !authUser.profileComplete ? (
+        /* Onboarding is a gate, not a screen you can be sent to at random:
+           any route resolves here until the profile is finished. It is now
+           escapable — ProfileSetupView owns a sign-out — where the old
+           viewState version was a genuine trap. */
+        <ProfileSetupView />
+      ) : (
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ClubDashboardView
+                currentUser={authUser}
+                playerAvatarUrl={playerAvatarUrl}
+                onSelectClub={handleSelectClub}
+                onProceedToLobby={() => { /* legacy table game, unreachable */ }}
+                onSignOut={logout}
+              />
+            }
+          />
+          <Route path="/clubs/:clubId" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
+          {/* /setup is where the profile gate above sends people; once complete
+              it has nothing to show, so it folds back to the dashboard. */}
+          <Route path="/setup" element={<Navigate to="/" replace />} />
+          {/* Unknown URLs — including the OAuth callback, whose code
+              AuthProvider has already consumed and whose URL it has rewritten. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       )}
 
       {/*
-        App-level toasts, rendered outside every view branch.
-
-        Until now the only consumer of `toasts` was MergedHostDisplayView
-        (part of the unreachable local table game), so anything addToast()
-        produced on the login screen, the dashboard or a club was created and
-        silently discarded. ClubDetailView sidesteps this with its own local
-        toast state and its own container.
+        App-level toasts, rendered outside every route.
       */}
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
 }
+
+/**
+ * Resolves :clubId into a club.
+ *
+ * The dashboard seeds the cache before navigating, so arriving from there
+ * paints on the first frame with no request and no skeleton. Arriving cold —
+ * a deep link, a refresh, a shared URL — has nothing cached, so it fetches and
+ * shows a skeleton exactly once.
+ */
+const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>['user']>; playerAvatarUrl: string }> = ({
+  currentUser,
+  playerAvatarUrl,
+}) => {
+  const { clubId } = useParams<{ clubId: string }>();
+  const navigate = useNavigate();
+  const { data: club, status, error } = useResource<Club>(
+    clubId ? `club:${clubId}` : null,
+    () => clubsApi.getClub(clubId!)
+  );
+
+  if (status === 'empty') {
+    if (error) {
+      // A club that does not exist, or one this user cannot see. Better than
+      // silently bouncing to the dashboard, which would look like a bug.
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+          <p className="text-sm font-bold text-text">This club isn't available.</p>
+          <p className="text-xs text-text-muted">It may have been deleted, or you may not be a member.</p>
+          <button
+            onClick={() => navigate('/', { replace: true })}
+            className="bg-accent text-accent-contrast font-bold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer"
+          >
+            Back to my clubs
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-4" aria-busy="true" aria-label="Loading club">
+        <div className="h-14 bg-surface border border-line rounded-2xl animate-pulse" />
+        <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+        <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+      </div>
+    );
+  }
+
+  return (
+    <ClubDetailView
+      club={club!}
+      currentUser={currentUser}
+      playerAvatarUrl={playerAvatarUrl}
+      onBackToDashboard={() => navigate('/')}
+    />
+  );
+};
