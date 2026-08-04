@@ -341,27 +341,38 @@ export async function decideSitIn(
  *
  *   UNCAPPED       — no ceiling.
  *   MATCH_HIGHEST  — a request may be as large as the biggest bank any player
- *                    currently holds. The first buy-in of a session has no
- *                    reference to match, so it is unbounded and becomes the
- *                    opening one. Note this ceiling only ever rises: taking
- *                    the maximum makes your own bank the new reference.
+ *                    currently holds. Before anyone holds one, the club's
+ *                    configured maxBuyIn is the opening ceiling. The ceiling
+ *                    only ever rises: taking the maximum makes your own bank
+ *                    the new reference.
  *
- * Returns null when no ceiling applies.
+ * Returns null only for UNCAPPED clubs, which is the sole case the UI labels
+ * "No limit". A MATCH_HIGHEST club always has a number.
  */
 export async function getBuyInCeiling(sessionId: string, clubId: string): Promise<number | null> {
-  const club = await prisma.club.findUnique({ where: { id: clubId }, select: { buyInMode: true } });
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { buyInMode: true, maxBuyIn: true },
+  });
   if (!club || club.buyInMode === 'UNCAPPED') return null;
 
   const approved = await prisma.buyInRequest.findMany({
     where: { sessionId, status: 'approved' },
     select: { userId: true, amount: true },
   });
-  if (approved.length === 0) return null; // opening buy-in — nothing to match
 
   const banks = new Map<string, number>();
   for (const r of approved) banks.set(r.userId, (banks.get(r.userId) || 0) + r.amount);
-  const highest = Math.max(...banks.values());
-  return highest > 0 ? highest : null;
+  const highest = banks.size > 0 ? Math.max(...banks.values()) : 0;
+
+  // Before anyone holds a bank there is nothing to match, so the club's
+  // configured maxBuyIn is the opening ceiling. Previously this returned null,
+  // which meant the opening buy-in of a night was unbounded no matter what the
+  // club had configured — and the table showed "No limit" while it was true.
+  //
+  // Afterwards the biggest bank at the table takes over, so the ceiling only
+  // ever rises: taking the maximum makes your own bank the new reference.
+  return highest > 0 ? highest : club.maxBuyIn;
 }
 
 async function assertWithinBuyInCeiling(sessionId: string, clubId: string, amount: number) {

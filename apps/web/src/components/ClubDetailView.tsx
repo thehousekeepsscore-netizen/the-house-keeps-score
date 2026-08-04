@@ -103,6 +103,11 @@ interface ClubDetailViewProps {
  * URL slugs for the club's tabs. Hyphenated in the address bar, camelCase in
  * code — the mapping is explicit so neither side has to guess.
  */
+// Mirrors the Prisma default (schema.prisma: maxBuyIn Int @default(5000)) and
+// the API's `input.maxBuyIn ?? 5000`. Only used when a club predates the field
+// being set; every club created through the API carries an explicit value.
+const DEFAULT_MAX_BUY_IN = 5000;
+
 type ClubTab = 'activeSession' | 'history' | 'leaderboard' | 'pot' | 'pendingApprovals' | 'auditTrail';
 
 const TAB_TO_SLUG: Record<ClubTab, string> = {
@@ -531,15 +536,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     : 0;
 
   // Buy-in ceiling. Mirrors getBuyInCeiling() on the server, which is the
-  // authority — this copy only drives the input and the toast.
-  //   UNCAPPED      -> no ceiling
-  //   MATCH_HIGHEST -> the biggest bank anyone currently holds; the opening
-  //                    buy-in of a session has nothing to match, so it's free
-  // Deliberately NOT floored by club.maxBuyIn: min/max no longer participate.
+  // authority — this copy only drives the input, the toast and the display.
+  //   UNCAPPED      -> no ceiling, the only case shown as "No limit"
+  //   MATCH_HIGHEST -> the biggest bank anyone currently holds, or the club's
+  //                    configured maxBuyIn before anyone holds one
+  //
+  // Both branches must stay identical to the server: this number is shown to
+  // players as the amount they may take, so a mismatch either promises a
+  // buy-in the API will reject, or hides headroom they actually have.
   const buyInCeiling: number | null =
-    (club.buyInMode ?? 'MATCH_HIGHEST') === 'UNCAPPED' || largestActiveBank <= 0
+    (club.buyInMode ?? 'MATCH_HIGHEST') === 'UNCAPPED'
       ? null
-      : largestActiveBank;
+      : largestActiveBank > 0
+        ? largestActiveBank
+        : club.maxBuyIn ?? DEFAULT_MAX_BUY_IN;
   // Kept for the existing UI bindings that expect a number.
   const dynamicMaxBuyIn = buyInCeiling ?? Number.MAX_SAFE_INTEGER;
 
