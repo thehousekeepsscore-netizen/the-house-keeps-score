@@ -117,6 +117,7 @@ const EMPTY_POT_LOG: ClubPotLog[] = [];
 const EMPTY_PENDING: PendingChangeRequest[] = [];
 const EMPTY_AUDIT: AuditLog[] = [];
 const EMPTY_DELETED: clubRecordsApi.DeletedSessionRef[] = [];
+const EMPTY_BUY_INS: BuyInRequest[] = [];
 
 const DEFAULT_MAX_BUY_IN = 5000;
 
@@ -190,22 +191,42 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     [navigate, initialClub.id]
   );
 
-  // Real-time data
-  const [activeSession, setActiveSession] = useState<PokerSession | null>(null);
+  const clubKey = `club:${initialClub.id}`;
+
   /**
-   * Distinguishes "we haven't asked yet" from "there is genuinely no session".
+   * The live table: the session and its buy-in requests, as ONE resource.
    *
-   * Without it, activeSession starts null and the panel paints "No Active
-   * Poker Session" on the first frame, then swaps to the live table a request
-   * later — telling the user something false before telling them the truth.
-   * Same defect class as the dashboard's Browse flash.
+   * They are fetched together and must never disagree — the nav bar's pending
+   * badge counts from buyInRequests while the panel renders from session, so a
+   * window where one is fresh and the other stale is visible to the user. Two
+   * cache keys could drift; one cannot. Same reasoning as audit + deleted
+   * sessions.
    *
-   * Set in a `finally`, so a failed request falls through to the empty state
-   * rather than pinning a skeleton forever; the socket events and the next
-   * refresh will correct it.
+   * This is the hot path: 7 of the 11 socket events and 9 mutation sites target
+   * it (see CLUB-RESOURCE-MAP.md). Every one of those call sites still calls
+   * refreshActiveSession(), which now forces a fetch through the cache rather
+   * than running its own — the right primitive for a resource that is on screen.
+   *
+   * sessionLoaded is gone: status === 'empty' already means "never fetched",
+   * which is the only condition that should render the loading skeleton.
    */
-  const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [buyInRequests, setBuyInRequests] = useState<BuyInRequest[]>([]);
+  const sessionRes = useResource<{ session: PokerSession | null; buyIns: BuyInRequest[] }>(
+    `${clubKey}:active-session`,
+    async () => {
+      const session = await offlineSessionsApi.getActiveSession(initialClub.id);
+      const buyIns = session
+        ? await offlineSessionsApi.listBuyInRequests(initialClub.id, session.id)
+        : [];
+      return { session, buyIns };
+    }
+  );
+  const activeSession = sessionRes.data?.session ?? null;
+  const buyInRequests = sessionRes.data?.buyIns ?? EMPTY_BUY_INS;
+  const sessionLoaded = sessionRes.status === 'ready';
+  const refreshActiveSession = sessionRes.refresh;
+
+  // Real-time data
+
 
   // Club roster (owner + admins + members) — every user this view could ever
   // need a display name for, since buy-in requesters, history players, and
@@ -653,7 +674,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * No `loaded` flags: `status === 'empty'` means never fetched, which is the
    * only condition that should render a skeleton.
    */
-  const clubKey = `club:${initialClub.id}`;
   const canSeeAudit = isOwner || isSuperUser;
 
   const rosterRes = useResource<Record<string, ClubRosterEntry>>(
@@ -663,27 +683,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const allUsers = rosterRes.data ?? EMPTY_ROSTER;
   const refreshRoster = rosterRes.refresh;
 
-  /**
-   * Deliberately NOT migrated in this slice. activeSession has ~22 refresh call
-   * sites, several driven by socket events that expect buyInRequests to reload
-   * alongside it, so it moves in its own commit where that coupling can be
-   * verified rather than assumed.
-   */
-  const refreshActiveSession = useCallback(async () => {
-    try {
-      const session = await offlineSessionsApi.getActiveSession(initialClub.id);
-      setActiveSession(session);
-      if (session) {
-        setBuyInRequests(await offlineSessionsApi.listBuyInRequests(initialClub.id, session.id));
-      } else {
-        setBuyInRequests([]);
-      }
-    } catch (err) {
-      console.warn('Failed to refresh active session:', err);
-    } finally {
-      setSessionLoaded(true);
-    }
-  }, [initialClub.id]);
+
 
   const historyRes = useResource<NormalizedSession[]>(
     `${clubKey}:history`,
