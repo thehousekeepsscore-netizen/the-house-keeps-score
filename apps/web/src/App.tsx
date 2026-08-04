@@ -573,7 +573,12 @@ export default function App() {
               />
             }
           />
+          {/* Both forms render the same screen. /clubs/:clubId is the bare
+              club — treated as the session tab — while /clubs/:clubId/:tab
+              addresses a specific one. Kept as two routes rather than an
+              optional segment so a bare club link stays valid forever. */}
           <Route path="/clubs/:clubId" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
+          <Route path="/clubs/:clubId/:tab" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
           {/* /setup is where the profile gate above sends people; once complete
               it has nothing to show, so it folds back to the dashboard. */}
           <Route path="/setup" element={<Navigate to="/" replace />} />

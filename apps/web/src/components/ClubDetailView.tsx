@@ -1,3 +1,4 @@
+import { useNavigate, useParams } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
@@ -98,6 +99,27 @@ interface ClubDetailViewProps {
   onBackToDashboard: () => void;
 }
 
+/**
+ * URL slugs for the club's tabs. Hyphenated in the address bar, camelCase in
+ * code — the mapping is explicit so neither side has to guess.
+ */
+type ClubTab = 'activeSession' | 'history' | 'leaderboard' | 'pot' | 'pendingApprovals' | 'auditTrail';
+
+const TAB_TO_SLUG: Record<ClubTab, string> = {
+  activeSession: 'active-session',
+  history: 'history',
+  leaderboard: 'leaderboard',
+  pot: 'pot',
+  pendingApprovals: 'pending-approvals',
+  auditTrail: 'audit',
+};
+
+// Unknown or missing slugs fall back to the session tab rather than erroring:
+// a stale bookmark should open the club, not a dead end.
+const SLUG_TO_TAB: Record<string, ClubTab> = Object.fromEntries(
+  Object.entries(TAB_TO_SLUG).map(([tab, slug]) => [slug, tab as ClubTab])
+);
+
 export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   club: initialClub,
   currentUser,
@@ -129,7 +151,27 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     !browserOnline ? 'offline' : socketLive ? 'live' : 'reconnecting';
 
   // Core Scorekeeper Tabs
-  const [activeTab, setActiveTab] = useState<'activeSession' | 'history' | 'leaderboard' | 'pot' | 'pendingApprovals' | 'auditTrail'>('activeSession');
+  /**
+   * The selected tab lives in the URL, not in state.
+   *
+   * Each tab is addressable — /clubs/:clubId/history and so on — so a refresh
+   * keeps you on the tab you were reading, the tab can be bookmarked and
+   * shared, and browser Back walks tab -> tab -> club -> dashboard instead of
+   * jumping straight out of the club.
+   *
+   * setActiveTab keeps its name and signature deliberately: every existing call
+   * site works unchanged, it just pushes a history entry now instead of
+   * mutating state.
+   */
+  const navigate = useNavigate();
+  const { tab: tabSlug } = useParams<{ tab?: string }>();
+
+  const activeTab = (SLUG_TO_TAB[tabSlug ?? ''] ?? 'activeSession') as ClubTab;
+
+  const setActiveTab = useCallback(
+    (next: ClubTab) => navigate(`/clubs/${initialClub.id}/${TAB_TO_SLUG[next]}`),
+    [navigate, initialClub.id]
+  );
 
   // Real-time data
   const [activeSession, setActiveSession] = useState<PokerSession | null>(null);
