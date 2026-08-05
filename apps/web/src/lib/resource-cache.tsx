@@ -35,9 +35,14 @@ interface Entry<T = unknown> {
   /** Shared so N components mounting at once produce one request, not N. */
   inFlight: Promise<unknown> | null;
   error: unknown;
+  /**
+   * Bumped on every write. Exists so a rollback can tell whether anything else
+   * touched this entry while a request was in flight — see `restore`.
+   */
+  version: number;
 }
 
-const EMPTY: Entry = { data: undefined, fetchedAt: 0, inFlight: null, error: null };
+const EMPTY: Entry = { data: undefined, fetchedAt: 0, inFlight: null, error: null, version: 0 };
 
 interface ResourceCache {
   getEntry: (key: string) => Entry;
@@ -49,7 +54,22 @@ interface ResourceCache {
   invalidatePrefix: (prefix: string) => void;
   /** Optimistic write. Updates subscribers immediately; revalidation still happens. */
   update: <T>(key: string, updater: (current: T | undefined) => T) => void;
+  /** Captures data plus a version, for a rollback that can detect interference. */
+  snapshot: <T>(key: string) => Snapshot<T>;
+  /**
+   * Undoes one optimistic write.
+   *
+   * Only restores if this entry has not been written again since the snapshot.
+   * If it has, the entry is invalidated rather than overwritten — see the
+   * implementation for why resurrecting a stale snapshot is the worse failure.
+   */
+  restore: <T>(key: string, snap: Snapshot<T>) => void;
   clear: () => void;
+}
+
+export interface Snapshot<T> {
+  data: T | undefined;
+  version: number;
 }
 
 const ResourceCacheContext = createContext<ResourceCache | null>(null);
@@ -93,7 +113,13 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
         .then((data) => {
           recordTiming(key, performance.now() - startedAt);
           const prev = store.current.get(key) ?? EMPTY;
-          store.current.set(key, { data, fetchedAt: Date.now(), inFlight: null, error: null });
+          store.current.set(key, {
+            data,
+            fetchedAt: Date.now(),
+            inFlight: null,
+            error: null,
+            version: prev.version + 1,
+          });
           if (prev.data !== data || prev.inFlight) notify(key);
           return data;
         })
@@ -104,7 +130,7 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
           recordTiming(key, performance.now() - startedAt);
           bump('failedRequests');
           const prev = store.current.get(key) ?? EMPTY;
-          store.current.set(key, { ...prev, inFlight: null, error });
+    store.current.set(key, { ...prev, inFlight: null, error });
           notify(key);
           throw error;
         });
@@ -139,7 +165,43 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     <T,>(key: string, updater: (current: T | undefined) => T) => {
       bump('writeThroughs');
       const prev = store.current.get(key) ?? EMPTY;
-      store.current.set(key, { ...prev, data: updater(prev.data as T | undefined) });
+      store.current.set(key, {
+        ...prev,
+        data: updater(prev.data as T | undefined),
+        version: prev.version + 1,
+      });
+      notify(key);
+    },
+    [notify]
+  );
+
+  const snapshot = useCallback(
+    <T,>(key: string): Snapshot<T> => {
+      const entry = store.current.get(key) ?? EMPTY;
+      return { data: entry.data as T | undefined, version: entry.version };
+    },
+    []
+  );
+
+  const restore = useCallback(
+    <T,>(key: string, snap: Snapshot<T>) => {
+      const current = store.current.get(key) ?? EMPTY;
+
+      // Nothing else wrote while the request was in flight, so the snapshot is
+      // still an accurate description of "before" and can simply go back.
+      if (current.version === snap.version + 1) {
+        store.current.set(key, { ...current, data: snap.data, version: current.version + 1 });
+        notify(key);
+        return;
+      }
+
+      // Something did write — a socket event, another optimistic action, a
+      // revalidation landing. Restoring the snapshot would silently throw that
+      // away, which is worse than the failure being rolled back: it would
+      // resurrect state the server has already moved past. Mark stale instead
+      // and let the next read fetch the truth.
+      bump('invalidations');
+      store.current.set(key, { ...current, fetchedAt: 0 });
       notify(key);
     },
     [notify]
@@ -168,8 +230,8 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
   // would re-run useResource's subscribe and load effects — and resubscribe
   // useSyncExternalStore — on any unrelated re-render of this provider.
   const value = useMemo<ResourceCache>(
-    () => ({ getEntry, subscribe, load, invalidate, invalidatePrefix, update, clear }),
-    [getEntry, subscribe, load, invalidate, invalidatePrefix, update, clear]
+    () => ({ getEntry, subscribe, load, invalidate, invalidatePrefix, update, snapshot, restore, clear }),
+    [getEntry, subscribe, load, invalidate, invalidatePrefix, update, snapshot, restore, clear]
   );
 
   return <ResourceCacheContext.Provider value={value}>{children}</ResourceCacheContext.Provider>;

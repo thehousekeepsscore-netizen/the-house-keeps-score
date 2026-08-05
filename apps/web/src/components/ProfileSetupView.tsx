@@ -168,7 +168,7 @@ export const ProfileSetupView: React.FC = () => {
           <div className="p-4 bg-surface border border-accent/40 rounded-2xl space-y-3 text-center">
             <div className="flex items-center justify-between text-xs font-medium text-text">
               <span>Take a photo</span>
-              <button onClick={handleStopCamera} className="text-text-muted hover:text-text cursor-pointer">
+              <button onClick={handleStopCamera} aria-label="Stop camera" className="text-text-muted hover:text-text cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>

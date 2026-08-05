@@ -1,17 +1,36 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Suit, Card, Seat, Board, ToastMessage } from './types';
-import { LobbyView } from './components/LobbyView';
-import { PlayerView } from './components/PlayerView';
-import { MergedHostDisplayView } from './components/MergedHostDisplayView';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Split out of the entry chunk. None of these is reachable until the user is
+// signed in, so shipping them with the login page delays the one screen every
+// visitor sees. Suspense falls back to the same skeleton shape the routes
+// already use for a cold cache, so a slow chunk looks like a slow fetch rather
+// than a blank frame.
+const ClubDashboardView = lazy(() =>
+  import('./components/ClubDashboardView').then((m) => ({ default: m.ClubDashboardView }))
+);
+const ClubDetailView = lazy(() =>
+  import('./components/ClubDetailView').then((m) => ({ default: m.ClubDetailView }))
+);
+const PerformanceDebugView = lazy(() =>
+  import('./components/PerformanceDebugView').then((m) => ({ default: m.PerformanceDebugView }))
+);
+
+/** The skeleton shown while a route chunk loads. */
+const RouteFallback: React.FC = () => (
+  <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-4" aria-busy="true" aria-label="Loading">
+    <div className="h-14 bg-surface border border-line rounded-2xl animate-pulse" />
+    <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+    <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+  </div>
+);
 import { LoginPage } from './components/LoginPage';
 import { SplashScreen } from './components/SplashScreen';
 import { ChipCardDecoration } from './components/ChipCardDecoration';
 import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
-import { ClubDashboardView } from './components/ClubDashboardView';
-import { ClubDetailView } from './components/ClubDetailView';
-import { PerformanceDebugView } from './components/PerformanceDebugView';
 import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { useApplyTheme } from './lib/theme';
@@ -561,25 +580,42 @@ export default function App() {
            viewState version was a genuine trap. */
         <ProfileSetupView />
       ) : (
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route
             path="/"
             element={
-              <ClubDashboardView
-                currentUser={authUser}
-                playerAvatarUrl={playerAvatarUrl}
-                onSelectClub={handleSelectClub}
-                onProceedToLobby={() => { /* legacy table game, unreachable */ }}
-                onSignOut={logout}
-              />
+              <RouteBoundary title="your clubs">
+                <ClubDashboardView
+                  currentUser={authUser}
+                  playerAvatarUrl={playerAvatarUrl}
+                  onSelectClub={handleSelectClub}
+                  onProceedToLobby={() => { /* legacy table game, unreachable */ }}
+                  onSignOut={logout}
+                />
+              </RouteBoundary>
             }
           />
           {/* Both forms render the same screen. /clubs/:clubId is the bare
               club — treated as the session tab — while /clubs/:clubId/:tab
               addresses a specific one. Kept as two routes rather than an
               optional segment so a bare club link stays valid forever. */}
-          <Route path="/clubs/:clubId" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
-          <Route path="/clubs/:clubId/:tab" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
+          <Route
+            path="/clubs/:clubId"
+            element={
+              <RouteBoundary title="this club">
+                <ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/clubs/:clubId/:tab"
+            element={
+              <RouteBoundary title="this club">
+                <ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />
+              </RouteBoundary>
+            }
+          />
           {/* /setup is where the profile gate above sends people; once complete
               it has nothing to show, so it folds back to the dashboard. */}
           {/* Developer instrumentation. Deliberately unlinked from the UI, and
@@ -590,6 +626,7 @@ export default function App() {
               AuthProvider has already consumed and whose URL it has rewritten. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       )}
 
       {/*
@@ -599,6 +636,22 @@ export default function App() {
     </div>
   );
 }
+
+
+/**
+ * An ErrorBoundary keyed to the current URL.
+ *
+ * Without the key the boundary latches: a screen throws, the user presses Back,
+ * the route changes underneath, and they keep looking at the old error.
+ */
+const RouteBoundary: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+  const location = useLocation();
+  return (
+    <ErrorBoundary title={title} resetKey={location.pathname}>
+      {children}
+    </ErrorBoundary>
+  );
+};
 
 /**
  * Resolves :clubId into a club.

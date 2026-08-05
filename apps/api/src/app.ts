@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { env } from "./env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
@@ -26,11 +28,55 @@ if (env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
+// Security headers. This process serves JSON to a separate origin, so the
+// headers that matter are the ones that constrain how a response may be
+// interpreted or embedded, not a content policy for a page it never renders.
+// contentSecurityPolicy is disabled for that reason rather than overlooked:
+// a default CSP on a pure API adds a header nothing enforces.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
 app.use(cors({ origin: env.WEB_ORIGIN, credentials: true }));
-app.use(express.json());
+
+// A bounded body. express.json() defaults to 100kb, but relying on a library
+// default for a limit that protects the process is how it silently changes on
+// upgrade. The largest legitimate request is a settlement, which is a handful
+// of players and their figures -- kilobytes.
+app.use(express.json({ limit: "64kb" }));
 app.use(cookieParser());
 
+// Health is deliberately above the limiter: it is what Railway polls to decide
+// whether this instance is alive, and rate-limiting it would turn a traffic
+// spike into a restart loop.
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+
+/**
+ * A ceiling on API traffic per client.
+ *
+ * /auth was already limited, which covers password guessing. Nothing else was,
+ * including the endpoints that move money -- settle, buy-in, approve -- and
+ * including /auth/refresh, which takes a token and is therefore guessable in
+ * exactly the way the login limiter exists to prevent.
+ *
+ * Set well above real use rather than tightly: entering a club costs about nine
+ * requests and the dashboard polls every fifteen seconds, so a busy admin might
+ * make a few dozen a minute. This stops a script, not a person.
+ *
+ * `trust proxy` is set in production, so this keys on the real client address
+ * rather than Railway's edge -- without that every user would share one bucket.
+ */
+const apiLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests — slow down and try again shortly" },
+});
+app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRouter);
 app.use("/api/clubs", clubsRouter);

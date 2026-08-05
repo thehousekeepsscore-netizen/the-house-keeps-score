@@ -134,7 +134,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
           <h2 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
             <UserCircle className="w-4 h-4 text-accent" /> Profile
           </h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text cursor-pointer">
+          <button onClick={onClose} aria-label="Close account settings" className="text-text-muted hover:text-text cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
