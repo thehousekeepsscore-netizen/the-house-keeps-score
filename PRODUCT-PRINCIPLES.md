@@ -6,14 +6,52 @@
 
 ## The primary principle
 
-> **The House Keeps Score is a mobile-first Progressive Web App.**
->
-> Every feature, layout and interaction is designed for the phone first. Desktop
-> support matters, but it is secondary. **When the two conflict, optimise for
-> mobile.**
+> **The House Keeps Score is a phone-first companion app for live poker games.**
+> Every interaction must be fast, one-handed and glanceable. Desktop is for
+> convenience; the primary experience is at the poker table.
 
-Not "a web app that also works on a phone". A native-quality mobile application
-that happens to be built with web technology.
+"Mobile-first" was too weak. It describes a viewport. This describes a *situation*
+— standing around a table, one hand on the phone, mid-conversation, glancing for
+two to five seconds at a time — and a situation gives far better guidance than a
+breakpoint does.
+
+## The North Star
+
+> **Can someone run an entire poker night with one thumb, while talking to
+> friends?**
+
+Every design decision is answerable against that question.
+
+## The rules
+
+Referred to before any UI change. If a change violates one of these, it needs an
+argument, not a preference.
+
+1. **Phone first.** Desktop is an adaptation, never the source design.
+2. **One-thumb operation.** Every common action reachable and completable in the
+   thumb arc, in portrait, without changing grip.
+3. **Glanceable in under three seconds.** A user should know the state of the
+   night without reading.
+4. **Never hide critical information behind the keyboard.**
+5. **No browser-native dialogs.** `alert`, `confirm` and `prompt` are the least
+   native-feeling surface on a phone.
+6. **Immediate feedback for every action**, before any network work begins.
+7. **Components come from the design system.** No one-off buttons, no one-off
+   dialogs.
+8. **Nothing important below 12px, nothing in an input below 16px.**
+
+## The three-second test
+
+Under time pressure, a user must be able to answer these at a glance:
+
+- Is there an active session?
+- Is anyone waiting on me?
+- Does something need my approval?
+- Who owes money?
+- What is the pot?
+- What is my next action?
+
+If any of those takes scanning, the screen is doing too much work.
 
 ---
 
