@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, setAccessToken } from './api-client';
 import { resetSocket } from './socket';
@@ -263,8 +263,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lastSocketUserId.current = id;
   }, [user?.uid]);
 
+  // Memoised so the context value keeps a stable identity. Every consumer of
+  // useAuth() re-rendered on any AuthProvider render, because the value was a
+  // fresh object literal each time -- identity churn rather than a real change.
+  // Same reasoning as ResourceCacheProvider's value memo.
+  const value = useMemo(
+    () => ({ user, status, phase, authError, clearAuthError, login, register, logout, loginWithGoogle, updateProfile }),
+    [user, status, phase, authError, clearAuthError, login, register, logout, loginWithGoogle, updateProfile]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, status, phase, authError, clearAuthError, login, register, logout, loginWithGoogle, updateProfile }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
