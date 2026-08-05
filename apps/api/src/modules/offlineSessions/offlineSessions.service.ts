@@ -93,7 +93,7 @@ async function dropSitIn(sessionId: string, state: OfflineEngineState, userId: s
   const pendingSitInUids = (state.pendingSitInUids || []).filter((u) => u !== userId);
   const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
   delete sitInRequestedAt[userId];
-  await prisma.pokerSession.update({
+  return prisma.pokerSession.update({
     where: { id: sessionId },
     data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt } as any },
   });
@@ -126,9 +126,11 @@ export async function expireStaleRequests(now = Date.now()) {
 
   // Buy-ins live in their own table, so they expire in one statement. Grab the
   // ids first — the update itself can't tell us which rows it touched.
+  // Whole rows, not just ids: the expiry event now carries the rejected row so
+  // clients can patch it in place instead of refetching the session to learn
+  // what a sweep they were not part of did.
   const staleBuyIns = await prisma.buyInRequest.findMany({
     where: { status: 'pending', createdAt: { lt: cutoff } },
-    select: { id: true, sessionId: true, clubId: true, userId: true },
   });
   if (staleBuyIns.length > 0) {
     await prisma.buyInRequest.updateMany({
@@ -139,6 +141,7 @@ export async function expireStaleRequests(now = Date.now()) {
     for (const r of staleBuyIns) {
       emitToClub(r.clubId, 'club:buyin-decided', {
         sessionId: r.sessionId, requestId: r.id, userId: r.userId, approve: false, expired: true,
+        request: { ...r, status: 'rejected' },
       });
     }
   }
@@ -169,19 +172,23 @@ export async function expireStaleRequests(now = Date.now()) {
     const deadCashOutUids = new Set(deadCashOuts.map((c) => c.userId));
     const cashOuts = (state.cashOuts || []).filter((c) => !deadCashOutUids.has(c.userId));
 
-    await prisma.pokerSession.update({
+    const swept = await prisma.pokerSession.update({
       where: { id: session.id },
       data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt, cashOuts } as any },
     });
+    // One post-sweep session, shared by every event this iteration emits: the
+    // sweep may clear several requests at once, and they all describe the same
+    // resulting seat state.
+    const sweptSession = serialize(swept as unknown as SessionRow);
 
     for (const uid of deadSitIns) {
       emitToClub(session.clubId, 'club:sitin-decided', {
-        sessionId: session.id, userId: uid, approved: false, expired: true,
+        sessionId: session.id, userId: uid, approved: false, expired: true, session: sweptSession,
       });
     }
     for (const c of deadCashOuts) {
       emitToClub(session.clubId, 'club:cashout-decided', {
-        sessionId: session.id, userId: c.userId, approved: false, expired: true,
+        sessionId: session.id, userId: c.userId, approved: false, expired: true, session: sweptSession,
       });
     }
     expiredSitIns += deadSitIns.length;
@@ -243,7 +250,9 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
   });
 
   const serialized = serialize(row as unknown as SessionRow);
-  emitToClub(clubId, 'club:session-started', { sessionId: row.id, sessionType: input.sessionType });
+  emitToClub(clubId, 'club:session-started', {
+    sessionId: row.id, sessionType: input.sessionType, session: serialized,
+  });
   return serialized;
 }
 
@@ -282,7 +291,9 @@ export async function requestSitIn(sessionId: string, clubId: string, userId: st
     data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt } as any },
   });
 
-  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId });
+  emitToClub(clubId, 'club:sitin-requested', {
+    sessionId, userId, session: serialize(row as unknown as SessionRow),
+  });
   return serialize(row as unknown as SessionRow);
 }
 
@@ -312,8 +323,11 @@ export async function decideSitIn(
   // interval, so without this an admin could still approve a request in the
   // gap after it expired but before it was swept.
   if (isRequestExpired(state.sitInRequestedAt?.[userId])) {
-    await dropSitIn(sessionId, state, userId);
-    emitToClub(clubId, 'club:sitin-decided', { sessionId, userId, approved: false, expired: true });
+    const dropped = await dropSitIn(sessionId, state, userId);
+    emitToClub(clubId, 'club:sitin-decided', {
+      sessionId, userId, approved: false, expired: true,
+      session: serialize(dropped as unknown as SessionRow),
+    });
     throw new HttpError(409, 'That sit-in request expired before it was approved');
   }
 
@@ -331,7 +345,9 @@ export async function decideSitIn(
     data: { engineState: { ...nextState, activePlayerUids, pendingSitInUids, sitInRequestedAt } as any },
   });
 
-  emitToClub(clubId, 'club:sitin-decided', { sessionId, userId, approved: approve });
+  emitToClub(clubId, 'club:sitin-decided', {
+    sessionId, userId, approved: approve, session: serialize(row as unknown as SessionRow),
+  });
   return serialize(row as unknown as SessionRow);
 }
 
@@ -407,7 +423,9 @@ export async function requestCashOut(sessionId: string, clubId: string, userId: 
   const row = await prisma.pokerSession.update({
     where: { id: sessionId }, data: { engineState: { ...state, cashOuts } as any } });
 
-  emitToClub(clubId, 'club:cashout-requested', { sessionId, userId, amount });
+  emitToClub(clubId, 'club:cashout-requested', {
+    sessionId, userId, amount, session: serialize(row as unknown as SessionRow),
+  });
   return serialize(row as unknown as SessionRow);
 }
 
@@ -427,11 +445,14 @@ export async function decideCashOut(
 
   // Same reasoning as decideSitIn: close the window between expiry and sweep.
   if (isRequestExpired(entry.requestedAt)) {
-    await prisma.pokerSession.update({
+    const cleared = await prisma.pokerSession.update({
       where: { id: sessionId },
       data: { engineState: clearCashOutFor(state, userId) as any },
     });
-    emitToClub(clubId, 'club:cashout-decided', { sessionId, userId, approved: false, expired: true });
+    emitToClub(clubId, 'club:cashout-decided', {
+      sessionId, userId, approved: false, expired: true,
+      session: serialize(cleared as unknown as SessionRow),
+    });
     throw new HttpError(409, 'That cash-out request expired before it was confirmed — ask the player to re-count');
   }
 
@@ -450,7 +471,9 @@ export async function decideCashOut(
   const row = await prisma.pokerSession.update({
     where: { id: sessionId }, data: { engineState: { ...state, cashOuts, activePlayerUids } as any } });
 
-  emitToClub(clubId, 'club:cashout-decided', { sessionId, userId, approved: approve });
+  emitToClub(clubId, 'club:cashout-decided', {
+    sessionId, userId, approved: approve, session: serialize(row as unknown as SessionRow),
+  });
   return serialize(row as unknown as SessionRow);
 }
 
@@ -478,7 +501,7 @@ export async function requestBuyIn(sessionId: string, clubId: string, userId: st
   const request = await prisma.buyInRequest.create({
     data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy: userId },
   });
-  emitToClub(clubId, 'club:buyin-requested', { sessionId, requestId: request.id });
+  emitToClub(clubId, 'club:buyin-requested', { sessionId, requestId: request.id, request });
   return request;
 }
 
@@ -504,12 +527,13 @@ export async function decideBuyInRequest(
 
   // Same reasoning as decideSitIn: close the window between expiry and sweep.
   if (isRequestExpired(req.createdAt)) {
-    await prisma.buyInRequest.update({
+    const expiredRow = await prisma.buyInRequest.update({
       where: { id: requestId },
       data: { status: 'rejected', approvedBy: null },
     });
     emitToClub(session.clubId, 'club:buyin-decided', {
       sessionId, requestId, userId: req.userId, approve: false, expired: true,
+      request: expiredRow,
     });
     throw new HttpError(409, 'That buy-in request expired before it was approved');
   }
@@ -522,7 +546,10 @@ export async function decideBuyInRequest(
     }
   }
 
-  await prisma.buyInRequest.update({
+  // The update already returns the decided row. It used to be thrown away and
+  // then fetched back by every client via refreshActiveSession -- which is why
+  // an approved request stayed on screen for a full round trip after the click.
+  const decided = await prisma.buyInRequest.update({
     where: { id: requestId },
     data: { status: approve ? 'approved' : 'rejected', approvedBy: requesterId },
   });
@@ -536,7 +563,9 @@ export async function decideBuyInRequest(
     });
   }
 
-  emitToClub(session.clubId, 'club:buyin-decided', { sessionId, requestId, approve });
+  emitToClub(session.clubId, 'club:buyin-decided', {
+    sessionId, requestId, userId: req.userId, approve, request: decided,
+  });
 
   // Only approvals are messaged, and never awaited — a slow or failing SMS
   // provider must not hold up (or fail) the approval that already committed.
