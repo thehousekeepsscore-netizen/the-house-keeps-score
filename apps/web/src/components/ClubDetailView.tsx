@@ -153,8 +153,33 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   playerAvatarUrl,
   onBackToDashboard,
 }) => {
-  // Live Club state
-  const [club, setClub] = useState<Club>(initialClub);
+  const cache = useResourceCache();
+  const clubKey = `club:${initialClub.id}`;
+
+  /**
+   * The club, read from the same cache entry ClubRoute populated.
+   *
+   * It used to be local useState seeded from the prop, with its own
+   * fetch-and-setState refresher. That meant a second, uncached GET /clubs/:id
+   * on top of the one the route had just made — and worse, two copies of the
+   * club that drifted apart: every mutation below updated the local one, so the
+   * cached entry stayed stale and navigating away and back showed the old name,
+   * the old admin list, the old settings.
+   *
+   * initialClub is the fallback only until the subscription delivers, and
+   * ClubRoute has already guaranteed the entry exists, so this is a cache hit
+   * that issues no request.
+   */
+  const clubRes = useResource<Club>(clubKey, () => clubsApi.getClub(initialClub.id));
+  const club = clubRes.data ?? initialClub;
+  const refreshClub = clubRes.refresh;
+  /** Write-through for mutations that return the updated club. */
+  const setClub = useCallback(
+    (updated: Club) => cache.update<Club>(clubKey, () => updated),
+    [cache, clubKey]
+  );
+
+
 
   // Whether this client is actually receiving live updates. Surfaced in the
   // header because the failure mode is silent: a dropped socket leaves the
@@ -200,8 +225,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     [navigate, initialClub.id]
   );
 
-  const cache = useResourceCache();
-  const clubKey = `club:${initialClub.id}`;
 
   /**
    * The live table: the session and its buy-in requests, as ONE resource.
@@ -662,14 +685,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // ---------- Data loading (REST) + live sync (Socket.IO) ----------
 
-  const refreshClub = useCallback(async () => {
-    try {
-      const updated = await clubsApi.getClub(initialClub.id);
-      setClub(updated);
-    } catch (err) {
-      console.warn('Failed to refresh club:', err);
-    }
-  }, [initialClub.id]);
 
 /**
    * Server state for this club lives in the shared cache, keyed by club id.
@@ -744,17 +759,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const deletedSessions = auditRes.data?.deleted ?? EMPTY_DELETED;
   const refreshAuditTrail = auditRes.refresh;
 
-  // Initial load
-  useEffect(() => {
-    refreshRoster();
-    refreshActiveSession();
-    refreshHistory();
-    refreshLeaderboard();
-    refreshPotLog();
-    refreshPendingChanges();
-    refreshAuditTrail();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialClub.id]);
+  // No initial-load effect.
+  //
+  // There used to be one here calling refresh() on all seven resources. refresh()
+  // is a *forced* fetch — it bypasses both the staleness check and the in-flight
+  // dedupe — so every mount of this screen cost seven requests no matter what was
+  // already cached. That defeated the cache it was sitting on top of: the whole
+  // point of the layer is that re-entering a club within staleTime costs nothing,
+  // and this effect made it cost full price every time.
+  //
+  // useResource already loads on mount when there is something to load: a miss
+  // fetches, stale data revalidates behind the content, and fresh data does
+  // neither. Resources gated to admins have a null key and are skipped entirely.
 
   // Live sync: join this club's room and refetch the affected slice on each
   // event, rather than trusting the socket payload as full state — same
