@@ -173,6 +173,21 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const clubRes = useResource<Club>(clubKey, () => clubsApi.getClub(initialClub.id));
   const club = clubRes.data ?? initialClub;
   const refreshClub = clubRes.refresh;
+  /**
+   * Write-through for the five endpoints that answer with the whole session.
+   *
+   * Not optimistic: it runs after the server has confirmed, so there is nothing
+   * to roll back. It exists because every one of these paths used to discard
+   * the response and then immediately GET the same session back.
+   */
+  const applySession = useCallback(
+    (session: PokerSession) =>
+      cache.update<SessionResource>(`club:${initialClub.id}:active-session`, (prev) =>
+        prev ? { ...prev, session } : { session, buyIns: [] }
+      ),
+    [cache, initialClub.id]
+  );
+
   /** Write-through for mutations that return the updated club. */
   const setClub = useCallback(
     (updated: Club) => cache.update<Club>(clubKey, () => updated),
@@ -973,11 +988,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         weekday: 'short', day: 'numeric', month: 'short',
       });
       const sessionName = `${label} · Day ${sessionNum}`;
-      await offlineSessionsApi.startSession(club.id, {
+      const started = await offlineSessionsApi.startSession(club.id, {
         sessionType: 'OFFLINE',
         sessionName,
       });
-      await refreshActiveSession();
+      // A new session starts with no buy-ins, so the previous night's are
+      // cleared rather than carried across.
+      cache.update<SessionResource>(`${clubKey}:active-session`, () => ({ session: started, buyIns: [] }));
       pushToast('Session started', `${sessionName} is live. Players can sit in and buy chips.`, 'success');
     } catch (err) {
       console.error('Failed to start session:', err);
@@ -1258,8 +1275,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return;
     }
     try {
-      await offlineSessionsApi.joinSession(club.id, activeSession.id);
-      await refreshActiveSession();
+      applySession(await offlineSessionsApi.joinSession(club.id, activeSession.id));
     } catch (err) {
       console.error('Failed to join table:', err);
       pushToast('Could not join', err instanceof Error ? err.message : 'Please try again.', 'warning');
@@ -1273,8 +1289,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return;
     }
     try {
-      await offlineSessionsApi.requestSitIn(club.id, activeSession.id);
-      await refreshActiveSession();
+      applySession(await offlineSessionsApi.requestSitIn(club.id, activeSession.id));
       pushToast('Request sent', 'An admin will wave you in shortly.', 'info');
     } catch (err) {
       console.error('Sit-in request failed:', err);
@@ -1289,8 +1304,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
     const name = allUsers[userId]?.displayName || 'Player';
     try {
-      await offlineSessionsApi.decideSitIn(club.id, activeSession.id, userId, approve);
-      await refreshActiveSession();
+      applySession(await offlineSessionsApi.decideSitIn(club.id, activeSession.id, userId, approve));
       pushToast(
         approve ? 'Player seated' : 'Request declined',
         approve ? `${name} is now at the table.` : `${name} was not seated.`,
@@ -1359,8 +1373,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return;
     }
     try {
-      await offlineSessionsApi.requestCashOut(club.id, activeSession.id, Number(standUpAmount));
-      await refreshActiveSession();
+      applySession(await offlineSessionsApi.requestCashOut(club.id, activeSession.id, Number(standUpAmount)));
       setShowStandUpModal(false);
       pushToast('Cash-out sent', 'An admin will confirm your chip count.', 'info');
     } catch (err) {
@@ -1375,8 +1388,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
     const name = userId === currentUser.uid ? 'You' : (allUsers[userId]?.displayName || 'Player');
     try {
-      await offlineSessionsApi.decideCashOut(club.id, activeSession.id, userId, approve);
-      await refreshActiveSession();
+      applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, userId, approve));
       pushToast(approve ? 'Cash-out confirmed' : 'Cash-out rejected',
         approve ? `${name} has left the table. The amount is locked for settlement.`
                 : `${name} can re-count and try again.`,
