@@ -69,11 +69,31 @@ diff the client must apply in the right order.
 
 ### Club membership — **new events, none exist today**
 
-| Event | Proposed payload | Update | GETs removed | Optimistic? | Rollback |
-|---|---|---|---|---|---|
-| `club:join-requested` *(new)* | `{request}` | append to `clubs:join-requests` | join-requests poll | Yes | Remove row, toast |
-| `club:join-decided` *(new)* | `{requestId, status, member?}` | remove from join-requests; append to club roster when accepted | join-requests, clubs, roster | **Yes** — the reported bug: the row should vanish on click | Re-insert the row |
-| `club:member-changed` *(new)* | `{clubId, member, change: 'added'\|'removed'\|'promoted'\|'demoted'}` | patch roster + `club` | clubs, roster | Yes | Restore previous roster entry |
+> **Corrected 2026-08-05, before implementing.** The table below originally
+> proposed pushing `{request}` and `{member}` into the club room. That breaks §1
+> of this document. `listRelevantJoinRequests` restricts join requests to club
+> admins, the owner and the requester, and the row it returns **includes the
+> requester's email address** — a person who is not yet a member of the club.
+> A socket event goes to the whole club room, so pushing the row would hand a
+> stranger's email to every ordinary member. Contentless events, below.
+
+| Event | Payload | Update | GETs removed | Optimistic? |
+|---|---|---|---|---|
+| `club:join-requested` *(new)* | `{clubId}` — **no row** | admins invalidate `clubs:join-requests` | replaces the 15s poll | n/a |
+| `club:join-decided` *(new)* | `{clubId}` — **no row** | admins invalidate `clubs:join-requests`; invalidate `clubs` | replaces the 15s poll | **Yes, locally** — already shipped in `3ba8cb7`: the deciding admin removes the row without waiting for anything |
+| `club:member-changed` *(new)* | `{clubId}` — **no member** | invalidate `clubs`, roster | roster poll | Yes, locally |
+
+The cost of going contentless is one GET *for admins only*, replacing a poll
+that currently runs every 15 seconds for everyone whether or not anything
+changed. The optimistic local write is what makes the acting admin's screen
+instant; the event exists to make *other* admins' screens converge in under a
+second instead of up to fifteen.
+
+Even a bare `{clubId}` tells every member of the room that something about
+membership changed. That is a far smaller signal than an identity, and members
+can already see the roster, but it is the reason this needs a decision rather
+than a default: the alternative is an admins-only room, which does not exist
+today and is the larger piece of work.
 
 ---
 
