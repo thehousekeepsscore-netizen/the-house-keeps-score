@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import * as clubsApi from '../lib/clubs-api';
-import { useResource } from '../lib/resource-cache';
+import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useAction } from '../lib/use-action';
 import { Club, ClubJoinRequest } from '../types';
 import { AccountSettingsModal } from './AccountSettingsModal';
@@ -92,6 +92,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
   // Both lists live in the shared cache, so returning from a club renders the
   // previous data on the first frame instead of refetching from empty.
+  const cache = useResourceCache();
   const clubsResource = useResource(CLUBS_KEY, clubsApi.listClubsRaw, { pollMs: POLL_INTERVAL_MS });
   const requestsResource = useResource(JOIN_REQUESTS_KEY, clubsApi.listJoinRequests, { pollMs: POLL_INTERVAL_MS });
 
@@ -225,10 +226,21 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // requestId is the first argument, so each row is guarded independently —
   // approving one request does not disable the buttons on the others.
   const decideRequest = useAction(async (requestId: string, clubId: string, newStatus: 'accepted' | 'rejected') => {
+    // The row leaves the list on click rather than after two GETs. Nothing
+    // about the outcome needs the server to describe it: a decided request is
+    // simply no longer pending, and this admin is the one who decided it.
+    const previous = cache.getEntry(JOIN_REQUESTS_KEY).data as ClubJoinRequest[] | undefined;
+    cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, (prev) =>
+      (prev ?? []).filter((r) => r.id !== requestId)
+    );
+
     try {
       await clubsApi.decideJoinRequest(clubId, requestId, newStatus === 'accepted');
-      await refresh();
+      // Only an acceptance changes club membership, so only an acceptance
+      // needs the club list back. A rejection now costs exactly one request.
+      if (newStatus === 'accepted') await clubsResource.refresh();
     } catch (err) {
+      if (previous !== undefined) cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, () => previous);
       console.error('Failed to update request:', err);
       alert('Failed to process request.');
     }
