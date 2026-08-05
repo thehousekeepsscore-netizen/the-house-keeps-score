@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
+import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
@@ -1759,6 +1760,67 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const decideCashOutAction = useAction(handleDecideCashOut);
   const approveBuyInAction = useAction(handleApproveBuyIn);
   const rejectBuyInAction = useAction(handleRejectBuyIn);
+
+  /**
+   * Everything waiting on this user, newest last.
+   *
+   * Built here rather than inside ActionQueue so the queue component stays a
+   * presentation concern and the permission rules stay next to the other
+   * permission rules. Ordered oldest-first: the longest wait is the biggest
+   * social cost at a real table.
+   */
+  const actionQueue = useMemo<QueueItem[]>(() => {
+    if (!isAdmin || !activeSession) return [];
+    const otherAdmins = (club.adminUids || []).filter(
+      (u) => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy
+    );
+
+    const buyIns: QueueItem[] = visiblePendingBuyIns.map((req) => {
+      const cannotSelfApprove =
+        req.requestedBy === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0;
+      return {
+        id: `buyin-${req.id}`,
+        kind: 'buy-in',
+        playerName: allUsers[req.userId]?.displayName || 'Player',
+        amount: req.amount,
+        requestedAt: req.createdAt,
+        blockedReason: cannotSelfApprove ? 'Another Club Admin must approve your own request.' : undefined,
+        pending: approveBuyInAction.isPending(req.id) || rejectBuyInAction.isPending(req.id),
+        onApprove: () => approveBuyInAction.run(req),
+        onReject: () => rejectBuyInAction.run(req),
+      };
+    });
+
+    const sitIns: QueueItem[] = pendingSitInUids.map((uid: string) => ({
+      id: `sitin-${uid}`,
+      kind: 'sit-in',
+      playerName: allUsers[uid]?.displayName || 'Player',
+      requestedAt: (activeSession as { sitInRequestedAt?: Record<string, string> }).sitInRequestedAt?.[uid],
+      pending: decideSitInAction.isPending(uid),
+      onApprove: () => decideSitInAction.run(uid, true),
+      onReject: () => decideSitInAction.run(uid, false),
+    }));
+
+    const cashOuts: QueueItem[] = pendingCashOuts.map((c) => ({
+      id: `cashout-${c.userId}`,
+      kind: 'cash-out',
+      playerName: allUsers[c.userId]?.displayName || 'Player',
+      amount: c.amount,
+      requestedAt: c.requestedAt,
+      pending: decideCashOutAction.isPending(c.userId),
+      onApprove: () => decideCashOutAction.run(c.userId, true),
+      onReject: () => decideCashOutAction.run(c.userId, false),
+    }));
+
+    return [...buyIns, ...sitIns, ...cashOuts].sort((a, b) =>
+      (a.requestedAt ?? '').localeCompare(b.requestedAt ?? '')
+    );
+  }, [
+    isAdmin, activeSession, club.adminUids, club.ownerUid, club.createdBy, currentUser.uid,
+    isOwner, isSuperUser, visiblePendingBuyIns, pendingSitInUids, pendingCashOuts, allUsers,
+    approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
+  ]);
+
   const approveChangeAction = useAction(handleApproveChangeRequest);
   const rejectChangeAction = useAction(handleRejectChangeRequest);
   const restoreSessionAction = useAction(handleRestoreSession);
@@ -2025,6 +2087,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   </div>
                 ) : (
                   <>
+                    {/*
+                      Admin-first: anything waiting on a decision comes before
+                      anything that is merely true. Renders nothing when the
+                      queue is empty, so a quiet table is not pushed down by a
+                      permanent "0 pending" header.
+                    */}
+                    <ActionQueue items={actionQueue} formatAmount={formatVal} />
+
                     {/* Active Session Card Header */}
                     <div className="bg-surface border border-line p-6 rounded-3xl space-y-6 shadow-xl">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
