@@ -1,7 +1,11 @@
+/**
+ * Socket payloads carry the same rows these endpoints return, so they are
+ * mapped by the same functions rather than a parallel set that could drift.
+ */
 import { apiFetch } from './api-client';
 import { PokerSession, BuyInRequest, PlayerSessionSummary } from '../types';
 
-interface ApiOfflineSession {
+export interface ApiOfflineSession {
   id: string;
   clubId: string;
   sessionName: string;
@@ -23,7 +27,7 @@ interface ApiOfflineSession {
   skipBlindLimit?: number;
 }
 
-function toPokerSession(s: ApiOfflineSession): PokerSession {
+export function toPokerSession(s: ApiOfflineSession): PokerSession {
   return {
     id: s.id,
     clubId: s.clubId,
@@ -47,7 +51,7 @@ function toPokerSession(s: ApiOfflineSession): PokerSession {
   };
 }
 
-interface ApiBuyInRequest {
+export interface ApiBuyInRequest {
   id: string;
   sessionId: string;
   clubId: string;
@@ -62,7 +66,7 @@ interface ApiBuyInRequest {
 // userDisplayName isn't stored server-side (it's derived from the club
 // roster) — callers should look it up via their own allUsers map when
 // rendering rather than trust this placeholder.
-function toBuyInRequest(r: ApiBuyInRequest): BuyInRequest {
+export function toBuyInRequest(r: ApiBuyInRequest): BuyInRequest {
   return {
     id: r.id,
     sessionId: r.sessionId,

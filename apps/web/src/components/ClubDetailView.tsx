@@ -7,6 +7,14 @@ import { getSocket } from '../lib/socket';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
+import type { ApiOfflineSession, ApiBuyInRequest } from '../lib/offlineSessions-api';
+
+/**
+ * The live table, as one cache entry. Session and buy-ins are fetched and
+ * patched together because a buy-in approval changes both, and two entries
+ * would let them disagree on screen.
+ */
+type SessionResource = { session: PokerSession | null; buyIns: BuyInRequest[] };
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
 import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
@@ -212,7 +220,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * sessionLoaded is gone: status === 'empty' already means "never fetched",
    * which is the only condition that should render the loading skeleton.
    */
-  const sessionRes = useResource<{ session: PokerSession | null; buyIns: BuyInRequest[] }>(
+  const sessionRes = useResource<SessionResource>(
     `${clubKey}:active-session`,
     async () => {
       const session = await offlineSessionsApi.getActiveSession(initialClub.id);
@@ -794,11 +802,52 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast(`${what} expired`, `No admin acted on it within 5 minutes. ${retry}`, 'warning');
     };
 
-    const onSessionStarted = () => refreshActiveSession();
-    const onBuyinRequested = () => refreshActiveSession();
-    const onBuyinDecided = (p: { userId?: string; expired?: boolean }) => {
+    // Events now arrive carrying the new state, so the common path is to patch
+    // what is already on screen. Each helper falls back to a refetch when the
+    // payload is missing — an API still running the old build, or an event
+    // shape we don't recognise — so a partial deploy degrades to the previous
+    // behaviour rather than to a stale table.
+    const patchSession = (p: { session?: ApiOfflineSession | null }) => {
+      if (!p?.session) return refreshActiveSession();
+      const session = offlineSessionsApi.toPokerSession(p.session);
+      cache.update<SessionResource>(`${clubKey}:active-session`, (prev) =>
+        prev ? { ...prev, session } : { session, buyIns: [] }
+      );
+    };
+
+    // Keyed by id and idempotent: a repeat of the same event replaces the row
+    // with an identical one rather than appending a duplicate, so events
+    // arriving out of order or twice cannot corrupt the list.
+    const patchBuyIn = (p: { request?: ApiBuyInRequest }) => {
+      if (!p?.request) return refreshActiveSession();
+      const row = offlineSessionsApi.toBuyInRequest(p.request);
+      cache.update<SessionResource>(`${clubKey}:active-session`, (prev) => {
+        if (!prev) return { session: null, buyIns: [row] };
+        const i = prev.buyIns.findIndex((b) => b.id === row.id);
+        const buyIns = i === -1
+          ? [...prev.buyIns, row]
+          : prev.buyIns.map((b) => (b.id === row.id ? { ...b, ...row } : b));
+        return { ...prev, buyIns };
+      });
+    };
+
+    const onSessionStarted = (p: { session?: ApiOfflineSession | null }) => {
+      // A new session means the previous night's buy-ins are no longer this
+      // table's, so they are cleared rather than carried over.
+      if (!p?.session) return refreshActiveSession();
+      cache.update<SessionResource>(`${clubKey}:active-session`, () => ({
+        session: offlineSessionsApi.toPokerSession(p.session!),
+        buyIns: [],
+      }));
+    };
+    const onBuyinRequested = (p: { request?: ApiBuyInRequest }) => patchBuyIn(p);
+    const onBuyinDecided = (p: { userId?: string; expired?: boolean; request?: ApiBuyInRequest }) => {
       notifyIfExpired(p, 'Buy-in request', 'Ask for chips again.');
-      refreshActiveSession();
+      // An approval also seats the player, which lives in the session's
+      // engineState and is not in this payload. The row patch is what makes
+      // the pending entry disappear immediately; the session catches up on the
+      // next revalidation rather than on a blocking round trip.
+      patchBuyIn(p);
     };
     const onSessionSettled = () => {
       refreshActiveSession();
@@ -812,15 +861,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       refreshLeaderboard();
       refreshAuditTrail();
     };
-    const onSitInRequested = () => refreshActiveSession();
-    const onSitInDecided = (p: { userId?: string; expired?: boolean }) => {
+    const onSitInRequested = (p: { session?: ApiOfflineSession | null }) => patchSession(p);
+    const onSitInDecided = (p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null }) => {
       notifyIfExpired(p, 'Sit-in request', 'Ask again when someone is at the console.');
-      refreshActiveSession();
+      patchSession(p);
     };
-    const onCashOutRequested = () => refreshActiveSession();
-    const onCashOutDecided = (p: { userId?: string; expired?: boolean }) => {
+    const onCashOutRequested = (p: { session?: ApiOfflineSession | null }) => patchSession(p);
+    const onCashOutDecided = (p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null }) => {
       notifyIfExpired(p, 'Cash-out', 'Re-count your chips and send it again.');
-      refreshActiveSession();
+      patchSession(p);
     };
     const onPendingRequest = () => refreshPendingChanges();
     const onPendingRequestDecided = () => {
@@ -858,7 +907,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid]);
+  }, [initialClub.id, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([
@@ -1359,7 +1408,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // has confirmed, so there is nothing to roll back if it fails. The socket
       // event still reaches every other client, and the next revalidation
       // reconciles anything this missed.
-      cache.update<{ session: PokerSession | null; buyIns: BuyInRequest[] }>(
+      cache.update<SessionResource>(
         `${clubKey}:active-session`,
         (prev) =>
           prev
