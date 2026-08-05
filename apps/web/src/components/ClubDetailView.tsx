@@ -1555,6 +1555,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('No live session', 'There is nothing to settle right now.', 'warning');
       return;
     }
+    // Mirrors offlineSessions.service.ts:588. The past-night modal already
+    // gates this client-side; this one did not, so a single-player session
+    // reached the server and came back as a generic failure.
+    if (settlementUids.length < 2) {
+      pushToast('Not enough players', 'A session needs at least two players to settle.', 'warning');
+      return;
+    }
     if (!allCashOutsEntered) {
       pushToast('Missing cash-outs', 'Enter a cash-out for every player before settling.', 'warning');
       return;
@@ -1586,8 +1593,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       setSettlementSuccess('🎉 Session successfully settled! Financial transactions recorded & Club Pot updated.');
       setShowCashoutModal(false);
     } catch (err) {
+      // The server's message is the useful part — "a session needs at least two
+      // players", "session is already settled", "acknowledge the mismatch". The
+      // old generic string threw all of that away and sent the admin looking at
+      // figures that were fine.
       console.error('Failed to settle session:', err);
-      setSettlementError('Failed to settle session. Please check your inputs.');
+      setSettlementError(err instanceof Error ? err.message : 'Failed to settle session. Please check your inputs.');
     }
   };
 
