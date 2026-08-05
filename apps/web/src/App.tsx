@@ -1,18 +1,36 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Suit, Card, Seat, Board, ToastMessage } from './types';
-import { LobbyView } from './components/LobbyView';
-import { PlayerView } from './components/PlayerView';
-import { MergedHostDisplayView } from './components/MergedHostDisplayView';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Split out of the entry chunk. None of these is reachable until the user is
+// signed in, so shipping them with the login page delays the one screen every
+// visitor sees. Suspense falls back to the same skeleton shape the routes
+// already use for a cold cache, so a slow chunk looks like a slow fetch rather
+// than a blank frame.
+const ClubDashboardView = lazy(() =>
+  import('./components/ClubDashboardView').then((m) => ({ default: m.ClubDashboardView }))
+);
+const ClubDetailView = lazy(() =>
+  import('./components/ClubDetailView').then((m) => ({ default: m.ClubDetailView }))
+);
+const PerformanceDebugView = lazy(() =>
+  import('./components/PerformanceDebugView').then((m) => ({ default: m.PerformanceDebugView }))
+);
+
+/** The skeleton shown while a route chunk loads. */
+const RouteFallback: React.FC = () => (
+  <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-4" aria-busy="true" aria-label="Loading">
+    <div className="h-14 bg-surface border border-line rounded-2xl animate-pulse" />
+    <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+    <div className="h-40 bg-surface border border-line rounded-2xl animate-pulse" />
+  </div>
+);
 import { LoginPage } from './components/LoginPage';
 import { SplashScreen } from './components/SplashScreen';
 import { ChipCardDecoration } from './components/ChipCardDecoration';
 import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
-import { ClubDashboardView } from './components/ClubDashboardView';
-import { ClubDetailView } from './components/ClubDetailView';
-import { PerformanceDebugView } from './components/PerformanceDebugView';
 import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { useApplyTheme } from './lib/theme';
@@ -562,6 +580,7 @@ export default function App() {
            viewState version was a genuine trap. */
         <ProfileSetupView />
       ) : (
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route
             path="/"
@@ -607,6 +626,7 @@ export default function App() {
               AuthProvider has already consumed and whose URL it has rewritten. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       )}
 
       {/*
