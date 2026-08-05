@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, setAccessToken } from './api-client';
+import { resetSocket } from './socket';
 import { AppUser } from './auth-types';
 
 interface ApiUser {
@@ -247,6 +248,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const result = await apiFetch<ApiUser>('/auth/me', { method: 'PATCH', body: input });
     setUser(toAppUser(result));
   }, []);
+
+  // Drop the shared socket whenever the authenticated identity changes.
+  //
+  // Mirrors the cache's identity guard deliberately: both exist because signing
+  // out here does not reload the page, so anything holding server state across
+  // the transition carries it to the next person. The socket is the worse of
+  // the two, because its rooms are server-side and keyed to a connection the
+  // new user never opened.
+  const lastSocketUserId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = user?.uid ?? null;
+    if (lastSocketUserId.current !== null && lastSocketUserId.current !== id) resetSocket();
+    lastSocketUserId.current = id;
+  }, [user?.uid]);
 
   return (
     <AuthContext.Provider value={{ user, status, phase, authError, clearAuthError, login, register, logout, loginWithGoogle, updateProfile }}>
