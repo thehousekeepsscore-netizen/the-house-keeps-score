@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import * as offlineSessionsService from './offlineSessions.service.js';
+import * as clubsService from '../clubs/clubs.service.js';
 
 const startSchema = z.object({
   sessionType: z.enum(['OFFLINE', 'LAZY_DEALER']),
@@ -21,17 +22,34 @@ export async function startSession(req: Request, res: Response) {
   return res.status(201).json(session);
 }
 
+/**
+ * Everything under /clubs/:clubId/offline-sessions is club-private.
+ *
+ * The decision endpoints already assert admin, so they were safe. The reads and
+ * the self-service writes -- the live table, the buy-in list, sitting in,
+ * cashing out -- checked authentication only, which meant any account on the
+ * platform could watch a club's night and request a seat at its table.
+ */
+async function assertMemberOfClub(req: Request) {
+  const club = await clubsService.getClubOrThrow(req.params.clubId);
+  clubsService.assertClubMember(club, req.user!.sub, req.user!.isSuperAdmin);
+  return club;
+}
+
 export async function getActive(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const session = await offlineSessionsService.getActiveOfflineSession(req.params.clubId);
   return res.json(session);
 }
 
 export async function joinSession(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const session = await offlineSessionsService.joinSession(req.params.sessionId, req.user!.sub);
   return res.json(session);
 }
 
 export async function requestSitIn(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const session = await offlineSessionsService.requestSitIn(req.params.sessionId, req.params.clubId, req.user!.sub);
   return res.status(201).json(session);
 }
@@ -54,6 +72,7 @@ export async function decideSitIn(req: Request, res: Response) {
 const cashOutSchema = z.object({ amount: z.number().int().nonnegative(), userId: z.string().optional() });
 
 export async function requestCashOut(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const { amount, userId } = cashOutSchema.parse(req.body);
   const session = await offlineSessionsService.requestCashOut(
     req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
@@ -73,12 +92,14 @@ export async function decideCashOut(req: Request, res: Response) {
 const buyInSchema = z.object({ amount: z.number().int().positive(), userId: z.string().optional() });
 
 export async function requestBuyIn(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const { amount, userId } = buyInSchema.parse(req.body);
   const request = await offlineSessionsService.requestBuyIn(req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
   return res.status(201).json(request);
 }
 
 export async function listBuyInRequests(req: Request, res: Response) {
+  await assertMemberOfClub(req);
   const requests = await offlineSessionsService.listBuyInRequests(req.params.sessionId);
   return res.json(requests);
 }

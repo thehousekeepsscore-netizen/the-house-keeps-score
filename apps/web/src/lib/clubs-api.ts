@@ -14,8 +14,12 @@ export interface ApiClub {
   name: string;
   code: string;
   description: string | null;
-  ownerId: string;
-  owner: ApiUserRef;
+  // Everything below `owner` is present only in the member projection. The
+  // public projection carries the counts and flags at the bottom instead.
+  ownerId?: string;
+  owner?: ApiUserRef;
+  memberCount: number;
+  adminCount: number;
   maxCapacity: number;
   buyInMode: 'MATCH_HIGHEST' | 'UNCAPPED';
   minBuyIn: number;
@@ -83,8 +87,13 @@ export function toClub(c: ApiClub): Club {
     winnerDefinition: c.winnerDefinition,
     winnerTopN: c.winnerTopN,
     roundingRule: c.roundingRule,
-    adminUids: c.admins.map(a => a.id),
-    memberUids: c.members.map(m => m.id),
+    adminUids: c.admins?.map(a => a.id) ?? [],
+    memberUids: c.members?.map(m => m.id) ?? [],
+    memberCount: c.memberCount,
+    adminCount: c.adminCount,
+    isMember: c.isMember,
+    isAdmin: c.isAdmin,
+    isOwner: c.isOwner,
     createdBy: c.ownerId,
     createdAt: c.createdAt,
   };

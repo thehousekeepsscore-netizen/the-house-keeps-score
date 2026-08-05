@@ -7,10 +7,10 @@ import { signAccessToken } from '../../utils/jwt.js';
 /**
  * What an authenticated non-member can read.
  *
- * Written to characterise the CURRENT behaviour before any of it is changed, so
- * that the fix is measured against confirmed facts rather than against a reading
- * of the code. Every expectation below states what the API does today; the ones
- * marked EXPOSURE are the ones that must flip when the projections land.
+ * These were first written to characterise the exposure: every EXPOSURE case
+ * below passed, confirming the leak against the running API rather than
+ * inferring it from the code. They are now inverted, so each one fails if the
+ * leak ever returns.
  *
  * Driven over real HTTP against the real Express app with a real signed token,
  * because the leak is partly in route wiring and partly in controller
@@ -33,6 +33,7 @@ let ownerId: string;
 let memberId: string;
 let outsiderId: string;
 let outsiderToken: string;
+let memberToken: string;
 let memberEmail: string;
 let ownerEmail: string;
 let createdUsers: string[] = [];
@@ -82,6 +83,12 @@ beforeAll(async () => {
     displayName: outsider.displayName,
     isSuperAdmin: false,
   });
+  memberToken = signAccessToken({
+    sub: member.id,
+    email: member.email,
+    displayName: member.displayName,
+    isSuperAdmin: false,
+  });
 
   const club = await prisma.club.create({
     data: {
@@ -125,86 +132,111 @@ afterAll(async () => {
 });
 
 describe('GET /clubs — the club list', () => {
-  it('EXPOSURE: returns every member email of every club to any authenticated user', async () => {
+  it('never contains an email address the caller may not see', async () => {
     const { status, raw } = await get('/clubs', outsiderToken);
 
     expect(status).toBe(200);
-    // clubInclude selects `email` for admins, members and owner, and listClubs()
-    // applies it to every club with no filter at all.
     for (const email of seededEmails()) {
-      expect(raw, `${email} must not be readable by a non-member`).toContain(email);
+      expect(raw, `${email} leaked to a non-member`).not.toContain(email);
     }
   });
 
-  it('EXPOSURE: lists clubs the caller has no relationship to', async () => {
+  it('still lists clubs the caller is not in, so browsing keeps working', async () => {
     const { body } = await get('/clubs', outsiderToken);
     const ids = (body as { id: string }[]).map((c) => c.id);
     expect(ids).toContain(clubId);
   });
+
+  it('gives the browse card what it renders: name, code, capacity, counts', async () => {
+    const { body } = await get('/clubs', outsiderToken);
+    const row = (body as Record<string, unknown>[]).find((c) => c.id === clubId)!;
+
+    expect(row).toMatchObject({
+      name: `Exposure Test ${stamp}`,
+      maxCapacity: expect.any(Number),
+      memberCount: 2,
+      adminCount: 0,
+      isMember: false,
+    });
+    expect(row.code).toBeTruthy();
+  });
+
+  it('withholds the roster and the money settings from a club the caller is not in', async () => {
+    const { body } = await get('/clubs', outsiderToken);
+    const row = (body as Record<string, unknown>[]).find((c) => c.id === clubId)!;
+
+    // An allowlist, so this asserts absence rather than a specific redaction.
+    for (const key of ['members', 'admins', 'owner', 'clubPotBalance', 'rakeValue', 'sessionRakeAmount']) {
+      expect(row, `${key} must not reach a non-member`).not.toHaveProperty(key);
+    }
+  });
 });
 
 describe('GET /clubs/:clubId — a single club', () => {
-  it('EXPOSURE: serves the full club record to a non-member', async () => {
-    const { status, body } = await get(`/clubs/${clubId}`, outsiderToken);
+  it('refuses a non-member outright', async () => {
+    const { status, raw } = await get(`/clubs/${clubId}`, outsiderToken);
 
-    expect(status).toBe(200);
-    expect(body).toMatchObject({ id: clubId });
-  });
-
-  it('EXPOSURE: includes member email addresses', async () => {
-    const { raw } = await get(`/clubs/${clubId}`, outsiderToken);
+    expect(status).toBe(403);
     for (const email of seededEmails()) {
-      expect(raw).toContain(email);
+      expect(raw).not.toContain(email);
     }
   });
 
-  it('EXPOSURE: includes private club configuration a non-member has no use for', async () => {
-    const { body } = await get(`/clubs/${clubId}`, outsiderToken);
-    // Pot balance is club money. Rake settings are how the house takes its cut.
-    expect(body).toHaveProperty('clubPotBalance');
-    expect(body).toHaveProperty('rakeValue');
-    expect(body).toHaveProperty('sessionRakeAmount');
+  it('still serves a member the full record, including the roster', async () => {
+    const { status, raw, body } = await get(`/clubs/${clubId}`, memberToken);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ id: clubId, isMember: true });
+    // getClubRoster builds the roster from this response and falls back to
+    // email for a display name, so members must keep receiving it.
+    expect(raw).toContain(memberEmail);
   });
 });
 
 describe('the live table', () => {
-  it('EXPOSURE: a non-member can read the active session', async () => {
-    const { status, body } = await get(`/clubs/${clubId}/offline-sessions/active`, outsiderToken);
-
-    expect(status).toBe(200);
-    expect(body).toMatchObject({ id: sessionId });
+  it('refuses a non-member the active session', async () => {
+    const { status } = await get(`/clubs/${clubId}/offline-sessions/active`, outsiderToken);
+    expect(status).toBe(403);
   });
 
-  it('EXPOSURE: a non-member can read who is seated', async () => {
-    const { body } = await get(`/clubs/${clubId}/offline-sessions/active`, outsiderToken);
-    expect((body as { activePlayerUids: string[] }).activePlayerUids).toContain(memberId);
-  });
-
-  it('EXPOSURE: a non-member can read every buy-in amount', async () => {
-    const { status, body } = await get(
+  it('refuses a non-member the buy-in list', async () => {
+    const { status } = await get(
       `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests`,
       outsiderToken
     );
+    expect(status).toBe(403);
+  });
 
-    expect(status).toBe(200);
-    expect(body).toHaveLength(1);
-    expect((body as { amount: number }[])[0].amount).toBe(5_000);
+  it('still serves a member the active session and the buy-ins', async () => {
+    const active = await get(`/clubs/${clubId}/offline-sessions/active`, memberToken);
+    expect(active.status).toBe(200);
+    expect(active.body).toMatchObject({ id: sessionId });
+
+    const buyIns = await get(
+      `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests`,
+      memberToken
+    );
+    expect(buyIns.status).toBe(200);
+    expect((buyIns.body as { amount: number }[])[0].amount).toBe(5_000);
   });
 });
 
 describe('club records', () => {
-  it('EXPOSURE: a non-member can read session history', async () => {
+  it('refuses a non-member the session history', async () => {
     const { status } = await get(`/clubs/${clubId}/history`, outsiderToken);
-    // listHistory branches on isClubAdmin but never asks whether the caller is
-    // in the club at all, so a stranger gets the player view.
-    expect(status).toBe(200);
+    expect(status).toBe(403);
   });
 
-  it('EXPOSURE: a non-member can read the leaderboard when it is player-visible', async () => {
+  it('refuses a non-member the leaderboard even when it is player-visible', async () => {
+    // leaderboardVisibleToPlayers is about players vs admins. It was never
+    // meant to answer "may someone outside the club see this".
     const { status } = await get(`/clubs/${clubId}/leaderboard`, outsiderToken);
-    // The visibility flag is about players vs admins. It was never intended to
-    // answer "should someone outside the club see this", so it does not.
-    expect(status).toBe(200);
+    expect(status).toBe(403);
+  });
+
+  it('still serves a member the history and the leaderboard', async () => {
+    expect((await get(`/clubs/${clubId}/history`, memberToken)).status).toBe(200);
+    expect((await get(`/clubs/${clubId}/leaderboard`, memberToken)).status).toBe(200);
   });
 });
 

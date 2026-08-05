@@ -282,6 +282,10 @@ export async function createPastSession(
 
 export async function listHistory(clubId: string, requesterId: string, isSuperAdmin: boolean) {
   const club = await clubsService.getClubOrThrow(clubId);
+  // Every other record endpoint asserts admin, which incidentally excluded
+  // non-members. These two branch on admin instead of asserting it, so a
+  // stranger fell through to the player view and read the club's results.
+  clubsService.assertClubMember(club, requesterId, isSuperAdmin);
   const isAdmin = clubsService.isClubAdmin(club, requesterId, isSuperAdmin);
 
   const [historicalRecords, cashOutSettlements] = await Promise.all([
@@ -392,6 +396,10 @@ export async function linkHistoryPlayer(clubId: string, requesterId: string, isS
 
 export async function getLeaderboard(clubId: string, requesterId: string, isSuperAdmin: boolean) {
   const club = await clubsService.getClubOrThrow(clubId);
+  // Every other record endpoint asserts admin, which incidentally excluded
+  // non-members. These two branch on admin instead of asserting it, so a
+  // stranger fell through to the player view and read the club's results.
+  clubsService.assertClubMember(club, requesterId, isSuperAdmin);
   const isAdmin = clubsService.isClubAdmin(club, requesterId, isSuperAdmin);
   if (!isAdmin && !club.leaderboardVisibleToPlayers) {
     throw new HttpError(403, 'The Leaderboard is currently hidden for players in this club');

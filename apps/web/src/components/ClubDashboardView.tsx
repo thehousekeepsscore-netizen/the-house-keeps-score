@@ -111,10 +111,10 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
   // Filter My Clubs vs Browse
   const myClubs = clubs.filter(c =>
-    c.memberUids?.includes(currentUser.uid) || c.adminUids?.includes(currentUser.uid)
+    c.isMember || c.isAdmin || c.isOwner
   );
 
-  const adminClubIds = clubs.filter(c => c.ownerUid === currentUser.uid || c.adminUids?.includes(currentUser.uid) || isSuperUser).map(c => c.id);
+  const adminClubIds = clubs.filter(c => c.isOwner || c.isAdmin || isSuperUser).map(c => c.id);
 
   // Pending requests for clubs I am admin of
   const pendingAdminRequests = requests.filter(
@@ -199,7 +199,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // Join Club Request
   const requestJoin = useAction(async (_clubId: string, club: Club) => {
     const capacity = club.maxCapacity || 50;
-    if (club.memberUids?.length >= capacity) {
+    if (club.memberCount >= capacity) {
       alert(`This club has reached its maximum capacity of ${capacity} players.`);
       return;
     }
@@ -367,9 +367,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {myClubs.map((club) => {
-                  const isOwner = club.ownerUid === currentUser.uid;
-                  const isAdmin = !isOwner && (club.adminUids?.includes(currentUser.uid) || isSuperUser);
-                  const memberCount = club.memberUids?.length || 0;
+                  const isOwner = club.isOwner;
+                  const isAdmin = !isOwner && (club.isAdmin || isSuperUser);
+                  const memberCount = club.memberCount;
 
                   return (
                     <div
@@ -408,7 +408,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                             <Users className="w-3.5 h-3.5 text-accent" /> {memberCount} / {club.maxCapacity || 50} Players
                           </span>
                           <span className="flex items-center gap-1 font-mono">
-                            <Shield className="w-3.5 h-3.5 text-text-muted" /> {club.adminUids?.length || 1}/3 Admins
+                            <Shield className="w-3.5 h-3.5 text-text-muted" /> {club.adminCount || 1}/3 Admins
                           </span>
                         </div>
                       </div>
@@ -459,8 +459,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               {clubs
                 .filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map((club) => {
-                  const isMember = club.memberUids?.includes(currentUser.uid);
-                  const memberCount = club.memberUids?.length || 0;
+                  const isMember = club.isMember;
+                  const memberCount = club.memberCount;
                   const isFull = memberCount >= (club.maxCapacity || 50);
 
                   const myPendingReq = requests.find(
@@ -495,7 +495,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
                         <div className="flex items-center gap-4 text-xs text-text-muted pt-1 font-mono">
                           <span>Users: <strong className="text-text">{memberCount}/{club.maxCapacity || 50}</strong></span>
-                          <span>Admins: <strong className="text-text">{club.adminUids?.length || 1}/3</strong></span>
+                          <span>Admins: <strong className="text-text">{club.adminCount || 1}/3</strong></span>
                         </div>
                       </div>
 

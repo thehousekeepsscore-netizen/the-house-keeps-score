@@ -32,6 +32,42 @@ export async function getClubOrThrow(clubId: string) {
   return club;
 }
 
+/**
+ * Is this user in the club at all?
+ *
+ * The weakest of the three roles, and the one that was missing. Admin and owner
+ * checks existed from the start, so anything gated on them was safe; everything
+ * else was gated on authentication alone, which every account on the platform
+ * passes.
+ *
+ * Owner and admin are included explicitly rather than assumed to be in the
+ * members list, because nothing enforces that they are.
+ */
+export function isClubMember(
+  club: { ownerId: string; admins: { userId: string }[]; members: { userId: string }[] },
+  userId: string,
+  isSuperAdmin: boolean
+) {
+  return (
+    isSuperAdmin ||
+    club.ownerId === userId ||
+    club.admins.some((a) => a.userId === userId) ||
+    club.members.some((m) => m.userId === userId)
+  );
+}
+
+export function assertClubMember(
+  club: { ownerId: string; admins: { userId: string }[]; members: { userId: string }[] },
+  userId: string,
+  isSuperAdmin: boolean
+) {
+  if (!isClubMember(club, userId, isSuperAdmin)) {
+    // Deliberately the same shape as the admin refusal: a non-member learns
+    // that they may not read this, not whether the club exists.
+    throw new HttpError(403, "You are not a member of this club");
+  }
+}
+
 export function isClubAdmin(club: { ownerId: string; admins: { userId: string }[] }, userId: string, isSuperAdmin: boolean) {
   return isSuperAdmin || club.ownerId === userId || club.admins.some((a) => a.userId === userId);
 }

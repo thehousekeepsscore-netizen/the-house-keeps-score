@@ -72,8 +72,16 @@ export interface Club {
   winnerDefinition?: WinnerDefinition;
   winnerTopN?: number;
   roundingRule?: RoundingRule;
+  // Rosters arrive only for clubs the viewer belongs to. A club they are merely
+  // browsing carries counts and flags instead — the server decides which, so a
+  // non-member cannot be handed a roster by asking differently.
   adminUids: string[]; // Up to 2 additional assigned Club Admins (Max 3 total admins including Owner)
   memberUids: string[];
+  memberCount: number;
+  adminCount: number;
+  isMember: boolean;
+  isAdmin: boolean;
+  isOwner: boolean;
   createdBy: string;
   createdAt: string;
 }
