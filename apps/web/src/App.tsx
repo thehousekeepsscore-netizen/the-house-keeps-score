@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { LobbyView } from './components/LobbyView';
 import { PlayerView } from './components/PlayerView';
 import { MergedHostDisplayView } from './components/MergedHostDisplayView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './components/LoginPage';
 import { SplashScreen } from './components/SplashScreen';
 import { ChipCardDecoration } from './components/ChipCardDecoration';
@@ -565,21 +566,37 @@ export default function App() {
           <Route
             path="/"
             element={
-              <ClubDashboardView
-                currentUser={authUser}
-                playerAvatarUrl={playerAvatarUrl}
-                onSelectClub={handleSelectClub}
-                onProceedToLobby={() => { /* legacy table game, unreachable */ }}
-                onSignOut={logout}
-              />
+              <RouteBoundary title="your clubs">
+                <ClubDashboardView
+                  currentUser={authUser}
+                  playerAvatarUrl={playerAvatarUrl}
+                  onSelectClub={handleSelectClub}
+                  onProceedToLobby={() => { /* legacy table game, unreachable */ }}
+                  onSignOut={logout}
+                />
+              </RouteBoundary>
             }
           />
           {/* Both forms render the same screen. /clubs/:clubId is the bare
               club — treated as the session tab — while /clubs/:clubId/:tab
               addresses a specific one. Kept as two routes rather than an
               optional segment so a bare club link stays valid forever. */}
-          <Route path="/clubs/:clubId" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
-          <Route path="/clubs/:clubId/:tab" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
+          <Route
+            path="/clubs/:clubId"
+            element={
+              <RouteBoundary title="this club">
+                <ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path="/clubs/:clubId/:tab"
+            element={
+              <RouteBoundary title="this club">
+                <ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />
+              </RouteBoundary>
+            }
+          />
           {/* /setup is where the profile gate above sends people; once complete
               it has nothing to show, so it folds back to the dashboard. */}
           {/* Developer instrumentation. Deliberately unlinked from the UI, and
@@ -599,6 +616,22 @@ export default function App() {
     </div>
   );
 }
+
+
+/**
+ * An ErrorBoundary keyed to the current URL.
+ *
+ * Without the key the boundary latches: a screen throws, the user presses Back,
+ * the route changes underneath, and they keep looking at the old error.
+ */
+const RouteBoundary: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+  const location = useLocation();
+  return (
+    <ErrorBoundary title={title} resetKey={location.pathname}>
+      {children}
+    </ErrorBoundary>
+  );
+};
 
 /**
  * Resolves :clubId into a club.
