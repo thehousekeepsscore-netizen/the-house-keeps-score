@@ -1466,7 +1466,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const decideBuyIn = async (request: BuyInRequest, approve: boolean) => {
     const key = `${clubKey}:active-session`;
-    const previous = cache.getEntry(key).data as SessionResource | undefined;
+    const previous = cache.snapshot<SessionResource>(key);
     const verb = approve ? 'approve' : 'reject';
 
     cache.update<SessionResource>(key, (prev) =>
@@ -1492,7 +1492,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // Every failure the server can return here — expired request, already
       // decided, no longer admin — reaches the user, and the optimistic row
       // goes back to exactly what it was.
-      if (previous !== undefined) cache.update<SessionResource>(key, () => previous);
+      cache.restore(key, previous);
       console.error(`${verb} error:`, err);
       pushToast(
         approve ? 'Could not approve' : 'Could not reject',

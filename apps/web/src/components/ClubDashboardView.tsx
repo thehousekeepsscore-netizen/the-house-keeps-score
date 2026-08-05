@@ -229,7 +229,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
     // The row leaves the list on click rather than after two GETs. Nothing
     // about the outcome needs the server to describe it: a decided request is
     // simply no longer pending, and this admin is the one who decided it.
-    const previous = cache.getEntry(JOIN_REQUESTS_KEY).data as ClubJoinRequest[] | undefined;
+    const previous = cache.snapshot<ClubJoinRequest[]>(JOIN_REQUESTS_KEY);
     cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, (prev) =>
       (prev ?? []).filter((r) => r.id !== requestId)
     );
@@ -240,7 +240,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       // needs the club list back. A rejection now costs exactly one request.
       if (newStatus === 'accepted') await clubsResource.refresh();
     } catch (err) {
-      if (previous !== undefined) cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, () => previous);
+      cache.restore(JOIN_REQUESTS_KEY, previous);
       console.error('Failed to update request:', err);
       alert('Failed to process request.');
     }
