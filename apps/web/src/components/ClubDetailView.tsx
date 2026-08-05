@@ -1424,6 +1424,56 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   };
 
+  /**
+   * Approve or reject a buy-in, applied to the screen before the network.
+   *
+   * The decision is entirely predictable — the row goes to approved or
+   * rejected and nothing else about it changes — so there is no reason to make
+   * the admin watch it sit there for a round trip first. Approve and reject
+   * were one refetch each on top of the POST; both are now zero.
+   *
+   * Rollback restores the exact entry captured before the write, not a
+   * hand-rolled inverse: the server may have refused for a reason that changed
+   * more than this row, and the next revalidation reconciles the rest.
+   */
+  const decideBuyIn = async (request: BuyInRequest, approve: boolean) => {
+    const key = `${clubKey}:active-session`;
+    const previous = cache.getEntry(key).data as SessionResource | undefined;
+    const verb = approve ? 'approve' : 'reject';
+
+    cache.update<SessionResource>(key, (prev) =>
+      prev
+        ? {
+            ...prev,
+            buyIns: prev.buyIns.map((b) =>
+              b.id === request.id ? { ...b, status: approve ? 'approved' : 'rejected' } : b
+            ),
+          }
+        : prev!
+    );
+
+    try {
+      const session = await offlineSessionsApi.decideBuyInRequest(club.id, activeSession!.id, request.id, approve);
+      // The POST already returns the updated session, including the seating
+      // change an approval causes. Taking it from the response is what removes
+      // the last GET from this path.
+      if (session) {
+        cache.update<SessionResource>(key, (prev) => (prev ? { ...prev, session } : { session, buyIns: [] }));
+      }
+    } catch (err) {
+      // Every failure the server can return here — expired request, already
+      // decided, no longer admin — reaches the user, and the optimistic row
+      // goes back to exactly what it was.
+      if (previous !== undefined) cache.update<SessionResource>(key, () => previous);
+      console.error(`${verb} error:`, err);
+      pushToast(
+        approve ? 'Could not approve' : 'Could not reject',
+        err instanceof Error ? err.message : `Failed to ${verb} buy-in.`,
+        'warning'
+      );
+    }
+  };
+
   // Approve Buy-In Request
   const handleApproveBuyIn = async (request: BuyInRequest) => {
     // Previously a bare `return`, which made a genuine problem — no live
@@ -1433,13 +1483,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('Cannot approve', !activeSession ? 'There is no live session right now.' : 'Only a Club Admin can approve buy-ins.', 'warning');
       return;
     }
-    try {
-      await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, request.id, true);
-      await refreshActiveSession();
-    } catch (err) {
-      console.error('Approve error:', err);
-      pushToast('Could not approve', err instanceof Error ? err.message : 'Failed to approve buy-in.', 'warning');
-    }
+    await decideBuyIn(request, true);
   };
 
   // Reject Buy-In Request
@@ -1448,16 +1492,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('Cannot reject', !activeSession ? 'There is no live session right now.' : 'Only a Club Admin can reject buy-ins.', 'warning');
       return;
     }
-    try {
-      await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, request.id, false);
-      await refreshActiveSession();
-    } catch (err) {
-      // This used to be console-only, so a rejected reject looked like a dead
-      // button. Every failure the server can return here — expired request,
-      // already decided, no longer admin — now reaches the user.
-      console.error('Reject error:', err);
-      pushToast('Could not reject', err instanceof Error ? err.message : 'Failed to reject buy-in.', 'warning');
-    }
+    await decideBuyIn(request, false);
   };
 
   // Calculate Settlement Preview for Cash-Outs
