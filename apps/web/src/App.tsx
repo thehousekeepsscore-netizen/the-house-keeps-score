@@ -11,6 +11,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
 import { ClubDashboardView } from './components/ClubDashboardView';
 import { ClubDetailView } from './components/ClubDetailView';
+import { PerformanceDebugView } from './components/PerformanceDebugView';
 import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { useApplyTheme } from './lib/theme';
@@ -581,6 +582,9 @@ export default function App() {
           <Route path="/clubs/:clubId/:tab" element={<ClubRoute currentUser={authUser} playerAvatarUrl={playerAvatarUrl} />} />
           {/* /setup is where the profile gate above sends people; once complete
               it has nothing to show, so it folds back to the dashboard. */}
+          {/* Developer instrumentation. Deliberately unlinked from the UI, and
+              inside the authenticated tree so it is not a public endpoint. */}
+          <Route path="/debug/performance" element={<PerformanceDebugView />} />
           <Route path="/setup" element={<Navigate to="/" replace />} />
           {/* Unknown URLs — including the OAuth callback, whose code
               AuthProvider has already consumed and whose URL it has rewritten. */}

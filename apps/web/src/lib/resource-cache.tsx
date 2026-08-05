@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAuth } from './auth-context';
+import { bump, recordTiming } from './cache-metrics';
 
 /**
  * The application's shared server-state layer.
@@ -81,10 +82,16 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     (key: string, fetcher: () => Promise<unknown>, force: boolean) => {
       const current = getEntry(key);
       // Deduplication: a request already in flight is shared rather than duplicated.
-      if (current.inFlight && !force) return current.inFlight;
+      if (current.inFlight && !force) {
+        bump('dedupedRequests');
+        return current.inFlight;
+      }
 
+      bump('networkRequests');
+      const startedAt = performance.now();
       const promise = fetcher()
         .then((data) => {
+          recordTiming(key, performance.now() - startedAt);
           const prev = store.current.get(key) ?? EMPTY;
           store.current.set(key, { data, fetchedAt: Date.now(), inFlight: null, error: null });
           if (prev.data !== data || prev.inFlight) notify(key);
@@ -94,6 +101,8 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
           // Keep whatever data we already had — a failed refresh must not blank
           // a screen. fetchedAt stays put so the next attempt still sees it as
           // stale and retries.
+          recordTiming(key, performance.now() - startedAt);
+          bump('failedRequests');
           const prev = store.current.get(key) ?? EMPTY;
           store.current.set(key, { ...prev, inFlight: null, error });
           notify(key);
@@ -110,6 +119,7 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     (key: string) => {
       const prev = store.current.get(key);
       if (!prev) return;
+      bump('invalidations');
       store.current.set(key, { ...prev, fetchedAt: 0 });
       notify(key);
     },
@@ -127,6 +137,7 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const update = useCallback(
     <T,>(key: string, updater: (current: T | undefined) => T) => {
+      bump('writeThroughs');
       const prev = store.current.get(key) ?? EMPTY;
       store.current.set(key, { ...prev, data: updater(prev.data as T | undefined) });
       notify(key);
@@ -135,6 +146,7 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const clear = useCallback(() => {
+    bump('clears');
     const keys = [...store.current.keys()];
     store.current.clear();
     keys.forEach(notify);
@@ -224,7 +236,19 @@ export function useResource<T>(
     if (!key) return;
     const current = cache.getEntry(key);
     const isStale = Date.now() - current.fetchedAt > staleTime;
-    if (current.data === undefined || isStale) void load(false);
+    if (current.data === undefined) {
+      // Nothing cached: the caller will show a skeleton. The only true miss.
+      bump('misses');
+      void load(false);
+    } else {
+      // Data was on screen immediately. Stale data still counts as a hit — the
+      // user saw content without waiting; the refetch happens behind it.
+      bump('hits');
+      if (isStale) {
+        bump('revalidations');
+        void load(false);
+      }
+    }
   }, [cache, key, staleTime, load]);
 
   useEffect(() => {
@@ -233,7 +257,10 @@ export function useResource<T>(
     return () => clearInterval(id);
   }, [key, pollMs, load]);
 
-  const refresh = useCallback(() => load(true), [load]);
+  const refresh = useCallback(() => {
+    bump('refreshes');
+    return load(true);
+  }, [load]);
 
   return {
     data: entry.data as T | undefined,
