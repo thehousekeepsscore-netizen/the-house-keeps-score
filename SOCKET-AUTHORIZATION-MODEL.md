@@ -10,7 +10,7 @@ model that fixes that properly instead of working around it.
 
 ---
 
-## 0. A hole that exists today, before any of this
+## 0. A hole that existed here — **fixed in `f3c7101`**
 
 `apps/api/src/realtime/socket.ts`:
 
@@ -29,9 +29,10 @@ settlement.
 This is not hypothetical and it is not created by the work below. It is the
 current state. `session:join` has the same shape and the same gap.
 
-**This is the highest-priority item in this document and it is worth fixing on
-its own, before and independently of the room split.** A membership check on
-join is a small change; every design below assumes it exists.
+**Fixed in `f3c7101`, on its own and ahead of the room split.** Joining now
+requires owner, admin or member; membership is queried rather than read off the
+token, so a removed player is refused immediately instead of when their token
+expires. Nine integration tests cover it. Every design below assumes this.
 
 ---
 
@@ -161,5 +162,24 @@ Steps 1–3 are server-only. The first client change is at step 4.
   out, and was already deferred.
 - **Room membership is a snapshot.** Step 3 mitigates the common case; a
   determined client that reconnects during a role change may still land in a
-  room it briefly qualified for. Authorisation on the *read* endpoints remains
-  the real boundary — sockets are an optimisation, never the only gate.
+  room it briefly qualified for.
+
+- **The REST endpoints are not a backstop.** ⚠️ An earlier draft of this
+  document said "authorisation on the read endpoints remains the real boundary —
+  sockets are an optimisation, never the only gate." **That was wrong**, and
+  closing the socket hole is what proved it. There is no membership check
+  anywhere in the REST layer either:
+
+  - `GET /clubs/:clubId` and `GET /clubs/:clubId/offline-sessions/active` are
+    gated by `authenticate` and nothing else. Any authenticated user can read
+    any club's settings and its live table.
+  - Worse, `clubInclude` in `clubs.service.ts` selects `email` for every admin,
+    member and owner, and `listClubs()` applies it to **every club with no
+    filter**. `GET /api/clubs` returns every member's email address on the
+    platform to any authenticated caller.
+
+  This is not created by the socket work and is not fixed by it. It is a
+  separate piece of work, and it is larger than it looks: the browse feature
+  depends on non-members reading club records, so the fix is to trim what the
+  payload exposes and gate the private parts — not simply to add a membership
+  check to the route.
