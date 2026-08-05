@@ -2,6 +2,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { ActionQueue, type QueueItem } from './session/ActionQueue';
+import { GameVitals } from './session/GameVitals';
+import { Button } from './ui/Button';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
@@ -623,6 +625,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const activeSessionBuyIns = buyInRequests.filter(
     r => r.sessionId === activeSession?.id && r.status === 'approved'
   );
+
+  // What is actually on the table right now: everything bought in, less
+  // anything an admin has already confirmed out. Buy-ins alone would keep
+  // counting chips that have left with the player who cashed them.
+  const chipsInPlay =
+    activeSessionBuyIns.reduce((sum, r) => sum + r.amount, 0) -
+    (activeSession?.cashOuts ?? [])
+      .filter((c) => c.status === 'confirmed')
+      .reduce((sum, c) => sum + c.amount, 0);
 
   // Calculate Largest Active Bank currently held by any player at the table
   const playerBanks: Record<string, number> = {};
@@ -1769,6 +1780,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * permission rules. Ordered oldest-first: the longest wait is the biggest
    * social cost at a real table.
    */
+  /**
+   * What the one primary action should say right now.
+   *
+   * Not a menu title. The screen has a next thing to do, and the button should
+   * name it rather than hiding it behind a generic plus.
+   */
+  const primaryActionLabel = (() => {
+    if (!activeSession) return 'Quick actions';
+    if (allCashOutsEntered && isAdmin) return 'Settle session';
+    if (isSeated) return 'Request chips';
+    return 'Quick actions';
+  })();
+
   const actionQueue = useMemo<QueueItem[]>(() => {
     if (!isAdmin || !activeSession) return [];
     const otherAdmins = (club.adminUids || []).filter(
@@ -1911,9 +1935,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       
       {/* Top Header */}
       <header className="bg-bg/95 border-b border-line sticky top-0 z-50 backdrop-blur-md px-4 py-3">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
               onClick={onBackToDashboard}
               className="p-2 bg-surface hover:bg-surface-alt border border-line rounded-xl text-text-muted hover:text-text transition-all cursor-pointer"
@@ -1922,18 +1946,23 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <ArrowLeft className="w-4 h-4" />
             </button>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base md:text-lg font-black tracking-wider text-text uppercase">
-                  {club.name}
-                </h1>
-                <span className="px-2 py-0.5 bg-surface border border-line text-accent font-mono font-black text-[11px] rounded-lg">
-                  Code: #{club.code || (club.name.toLowerCase().includes('texas holdem') ? '0007' : '0007')}
+            {/*
+              Two lines, not one wrapping row. The club name is the only thing
+              at full weight; the code and role are reference detail and sit
+              beneath it at a size that does not compete. Previously all three
+              shared one flex-wrap row, so "Friday Night" broke across two lines
+              and pushed every screen down by ~40px.
+            */}
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-text truncate leading-tight">
+                {club.name}
+              </h1>
+              <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                <span className="font-mono text-xs text-text-muted shrink-0">
+                  #{club.code || '0007'}
                 </span>
                 {isAdmin && (
-                  <span className="px-2 py-0.5 bg-accent/10 border border-accent text-accent font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" /> Admin
-                  </span>
+                  <span className="text-xs text-accent shrink-0">· Admin</span>
                 )}
                 {/* Only shown when something is wrong. A permanent green badge
                     becomes furniture people stop reading; an indicator that
@@ -2011,9 +2040,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       </header>
 
       {/* Main Container */}
-      {/* pb-40 clears the FAB, which is fixed 80-136px off the bottom — with
-          less padding the last control can never be scrolled out from under it. */}
-      <main className="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6 pb-40 md:pb-8">
+      {/* Clears both fixed layers stacked at the bottom on mobile: the nav
+          (~68px) and the contextual action bar above it (~52px + gap). Without
+          this the last row of the table sits under the action bar — which is
+          exactly where the newest player card lands. */}
+      <main className="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6 pb-44 md:pb-8">
 
         {/* Desktop navigation. The bottom bar below is hidden at md and up, so
             without this there is no control that can change tabs on a desktop. */}
@@ -2093,16 +2124,27 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       queue is empty, so a quiet table is not pushed down by a
                       permanent "0 pending" header.
                     */}
+                    <GameVitals
+                      playersIn={activeSession.activePlayerUids.length}
+                      chipsInPlay={chipsInPlay}
+                      startedAt={activeSession.createdAt}
+                    />
+
                     <ActionQueue items={actionQueue} formatAmount={formatVal} />
 
                     {/* Active Session Card Header */}
                     <div className="bg-surface border border-line p-6 rounded-3xl space-y-6 shadow-xl">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
-                        <div>
-                          <span className="px-2.5 py-0.5 bg-accent/15 border border-accent/50 text-accent font-bold text-[10px] uppercase rounded-full animate-pulse">
-                            ● SESSION ACTIVE
-                          </span>
-                          <h2 className="text-xl font-black text-text uppercase mt-1">
+                        {/*
+                          Was a pulsing "● SESSION ACTIVE" pill above the session
+                          name in black. The vitals row directly above
+                          already says the session is running — it shows an
+                          elapsed time, which is stronger evidence than a label —
+                          and the page header already names the club. Three
+                          elements were saying the same thing at three weights.
+                        */}
+                        <div className="min-w-0">
+                          <h2 className="text-base font-semibold text-text truncate">
                             {activeSession.sessionName}
                           </h2>
                         </div>
@@ -2111,26 +2153,26 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           {isSeated && !myCashOut && (
                             <button
                               onClick={() => { setStandUpAmount(0); setShowStandUpModal(true); }}
-                              className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-1.5"
+                              className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
                             >
                               <LogOut className="w-4 h-4" /> Stand Up
                             </button>
                           )}
                           {myCashOut?.status === 'pending' && (
-                            <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs uppercase">
+                            <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs">
                               Cash-out pending…
                             </span>
                           )}
                           {!isSeated && (
                             hasRequestedSitIn ? (
-                              <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs uppercase">
+                              <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs">
                                 Sit-in requested…
                               </span>
                             ) : isAdmin ? (
                               <button
                                 onClick={() => joinTableAction.run()}
                                 disabled={joinTableAction.pending}
-                                className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs uppercase cursor-pointer"
+                                className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs cursor-pointer"
                               >
                                 Sit In
                               </button>
@@ -2138,7 +2180,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               <button
                                 onClick={() => requestSitInAction.run()}
                                 disabled={requestSitInAction.pending}
-                                className="bg-accent text-accent-contrast font-black px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow flex items-center gap-1.5"
+                                className="bg-accent text-accent-contrast font-semibold px-4 py-2.5 rounded-xl text-xs cursor-pointer shadow flex items-center gap-1.5"
                               >
                                 <Hand className="w-4 h-4" /> Request to Sit In
                               </button>
@@ -2149,15 +2191,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Players seated around the table */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-2">
-                          <Users className="w-4 h-4 text-accent" /> Active Players at Table ({activeSession.activePlayerUids.length})
+                        <h3 className="text-xs font-bold text-text-muted flex items-center gap-2">
+                          <Users className="w-4 h-4 text-accent" /> At the table
                         </h3>
 
                         {/* The ceiling moves as the table plays, so it has to be
                             on the table itself — everyone needs to know what
                             they can take without opening the buy-in form. */}
                         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-bg border border-line rounded-2xl">
-                          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-text-muted flex items-center gap-1.5">
                             <Coins className="w-3.5 h-3.5 text-accent" /> Max buy-in
                             <InfoHint>
                               {(club.buyInMode ?? 'MATCH_HIGHEST') === 'UNCAPPED'
@@ -2165,7 +2207,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 : 'You can take up to the biggest bank at the table. Taking the maximum makes your bank the new reference.'}
                             </InfoHint>
                           </span>
-                          <span className="text-sm font-mono font-black text-accent whitespace-nowrap">
+                          <span className="text-sm font-mono font-semibold text-accent whitespace-nowrap">
                             {buyInCeiling === null ? 'No limit' : formatVal(buyInCeiling)}
                           </span>
                         </div>
@@ -2205,7 +2247,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {isAdmin && pendingCashOuts.length > 0 && (
                         <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+                          <h3 className="text-xs font-bold text-text">
                             Cash-outs to Confirm ({pendingCashOuts.length})
                           </h3>
                           {pendingCashOuts.map((c) => (
@@ -2215,7 +2257,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   {c.userId === currentUser.uid ? 'You' : (allUsers[c.userId]?.displayName || 'Player')}
                                 </span>
                                 <span className="text-text-muted"> is standing up with </span>
-                                <span className="font-mono font-black text-accent">{formatVal(c.amount)}</span>
+                                <span className="font-mono font-semibold text-accent">{formatVal(c.amount)}</span>
                               </div>
                               <p className="text-[10px] text-text-muted">
                                 Count their chips before confirming — this figure is locked into the settlement.
@@ -2224,14 +2266,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => decideCashOutAction.run(c.userId, true)}
                                   disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-accent text-accent-contrast cursor-pointer flex items-center justify-center gap-1"
+                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-accent text-accent-contrast cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <Check className="w-3 h-3" /> Confirm
                                 </button>
                                 <button
                                   onClick={() => decideCashOutAction.run(c.userId, false)}
                                   disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center justify-center gap-1"
+                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <X className="w-3 h-3" /> Reject
                                 </button>
@@ -2244,7 +2286,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       {/* Sit-in requests waiting on an admin */}
                       {isAdmin && pendingSitInUids.length > 0 && (
                         <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+                          <h3 className="text-xs font-bold text-text">
                             Sit-in Requests ({pendingSitInUids.length})
                           </h3>
                           {pendingSitInUids.map(uid => (
@@ -2257,14 +2299,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => decideSitInAction.run(uid, true)}
                                   disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-accent text-accent-contrast cursor-pointer flex items-center gap-1"
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-accent text-accent-contrast cursor-pointer flex items-center gap-1"
                                 >
                                   <Check className="w-3 h-3" /> Seat
                                 </button>
                                 <button
                                   onClick={() => decideSitInAction.run(uid, false)}
                                   disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center gap-1"
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center gap-1"
                                 >
                                   <X className="w-3 h-3" /> Decline
                                 </button>
@@ -2279,7 +2321,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
                       <div className="flex items-center justify-between border-b border-line pb-3">
                         <div>
-                          <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                          <h2 className="text-base font-bold text-text flex items-center gap-2">
                             <DollarSign className="w-5 h-5 text-accent" /> {isAdmin ? 'Approvals' : 'My Buy-ins'}
                             <InfoHint>
                               {isAdmin
@@ -2292,7 +2334,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Pending Requests List */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+                        <h3 className="text-xs font-bold text-text">
                           {isAdmin ? 'Pending Approvals' : 'Awaiting Approval'} ({visiblePendingBuyIns.length})
                         </h3>
 
@@ -2334,7 +2376,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                       <button
                                         onClick={() => approveBuyInAction.run(req)}
                                         disabled={cannotSelfApprove || approveBuyInAction.pending}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                                           cannotSelfApprove 
                                             ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
                                             : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
@@ -2347,7 +2389,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                       <button
                                         onClick={() => rejectBuyInAction.run(req)}
                                         disabled={rejectBuyInAction.pending}
-                                        className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-1"
+                                        className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1"
                                       >
                                         <X className="w-3.5 h-3.5" /> Reject
                                       </button>
@@ -2362,7 +2404,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Approved / Rejected History */}
                       <div className="pt-4 border-t border-line space-y-3">
-                        <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+                        <h3 className="text-xs font-bold text-text">
                           {isAdmin ? 'Processed Buy-ins History' : 'My Past Buy-ins'}
                         </h3>
 
@@ -2397,7 +2439,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     {isAdmin && (
                       <button
                         onClick={openCashoutModal}
-                        className="w-full bg-accent text-accent-contrast font-black px-4 py-4 rounded-3xl text-sm uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xl"
+                        className="w-full bg-accent text-accent-contrast font-semibold px-4 py-4 rounded-3xl text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xl"
                       >
                         <Sliders className="w-5 h-5" /> Cashout
                       </button>
@@ -4370,14 +4412,34 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           </div>
         )}
 
-        {/* Floating Action Button (FAB) */}
-        <button
-          onClick={() => setMobileFabOpen(!mobileFabOpen)}
-          className="fixed bottom-20 right-4 z-40 w-14 h-14 bg-accent text-accent-contrast font-black rounded-full shadow-2xl flex items-center justify-center border-2 border-warning transition-transform active:scale-90 cursor-pointer"
-          title="Quick Action Menu"
-        >
-          {mobileFabOpen ? <X className="w-6 h-6 stroke-[3]" /> : <Plus className="w-7 h-7 stroke-[3]" />}
-        </button>
+        {/*
+          One primary action, in a bar above the nav.
+
+          This replaces a circular FAB that floated over the content and
+          physically overlapped the cash-out bar beneath it — three controls
+          (FAB, bar, nav) all claiming primacy in the same corner, which means
+          none had it. A bar is also a bigger, squarer target than a 56px circle
+          pinned to the right edge, and it does not cover the row it sits on.
+
+          The label changes with the situation, because the "next thing" genuinely
+          differs: chips when you are seated, settle when the night is over.
+        */}
+        {activeTab === 'activeSession' && activeSession && (
+          <div className="md:hidden fixed bottom-[4.25rem] left-0 right-0 z-40 px-4 pointer-events-none">
+            <div className="max-w-md mx-auto pointer-events-auto">
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                onClick={() => setMobileFabOpen(true)}
+                className="shadow-2xl"
+              >
+                <Plus className="w-5 h-5" aria-hidden="true" />
+                {primaryActionLabel}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Sticky Bottom Navigation Bar */}
           <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
