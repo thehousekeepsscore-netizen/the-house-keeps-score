@@ -166,9 +166,13 @@ describe('GET /clubs — the club list', () => {
     const row = (body as Record<string, unknown>[]).find((c) => c.id === clubId)!;
 
     // An allowlist, so this asserts absence rather than a specific redaction.
-    for (const key of ['members', 'admins', 'owner', 'clubPotBalance', 'rakeValue', 'sessionRakeAmount']) {
+    for (const key of ['owner', 'ownerId', 'clubPotBalance', 'rakeValue', 'sessionRakeAmount', 'leaderboardVisibleToPlayers']) {
       expect(row, `${key} must not reach a non-member`).not.toHaveProperty(key);
     }
+    // admins/members are present but empty, only so an older deployed client
+    // does not throw while mapping them. They must never carry anyone.
+    expect(row.admins).toEqual([]);
+    expect(row.members).toEqual([]);
   });
 });
 

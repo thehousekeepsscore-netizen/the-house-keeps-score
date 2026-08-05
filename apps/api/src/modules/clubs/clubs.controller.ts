@@ -83,6 +83,14 @@ function serializeClubPublic(club: clubsService.ClubWithRoster, currentUserId: s
     isOwner: false,
     isAdmin: false,
     isMember: false,
+    // Transitional, for the window where a deployed API is newer than a
+    // deployed client. The previous bundle maps c.admins/c.members
+    // unconditionally, so omitting them entirely throws inside toClub and
+    // blanks the dashboard until Vercel catches up. Empty is not a leak, and
+    // it only ever applies to clubs the caller is not in.
+    // Remove once no client older than 0231045 is in circulation.
+    admins: [],
+    members: [],
   };
 }
 
