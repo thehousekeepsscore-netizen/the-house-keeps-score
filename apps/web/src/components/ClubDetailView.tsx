@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { useResource, useResourceCache } from '../lib/resource-cache';
+import { useConfirm } from './ui/ConfirmDialog';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
@@ -155,6 +156,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 }) => {
   const cache = useResourceCache();
   const clubKey = `club:${initialClub.id}`;
+  // Destructive actions ask in a bottom sheet rather than a browser dialog.
+  const confirmAction = useConfirm();
 
   /**
    * The club, read from the same cache entry ClubRoute populated.
@@ -390,16 +393,21 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
     const userObj = allUsers[targetUid];
     const name = userObj?.displayName || userObj?.email || `User (${targetUid.slice(0, 6)})`;
-    if (confirm(`Are you sure you want to remove user "${name}" from ${club.name}?`)) {
-      try {
-        const updated = await clubsApi.removeMember(club.id, targetUid);
-        setClub(updated);
-        alert(`User "${name}" successfully removed from ${club.name}.`);
-      } catch (err) {
-        console.error('Failed to remove member:', err);
-        alert('Failed to remove member from club.');
-      }
-    }
+    confirmAction({
+      title: `Remove ${name}?`,
+      description: `They lose access to ${club.name} and its history. Past results stay on the leaderboard.`,
+      confirmLabel: 'Remove',
+      onConfirm: async () => {
+        try {
+          const updated = await clubsApi.removeMember(club.id, targetUid);
+          setClub(updated);
+          pushToast('Member removed', `${name} no longer has access to ${club.name}.`, 'success');
+        } catch (err) {
+          console.error('Failed to remove member:', err);
+          pushToast('Could not remove member', err instanceof Error ? err.message : 'Please try again.', 'warning');
+        }
+      },
+    });
   };
 
   // Open Link Player Modal Handler
@@ -4397,6 +4405,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       )}
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {confirmAction.dialog}
 
     </div>
   );

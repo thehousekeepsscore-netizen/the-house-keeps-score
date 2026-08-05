@@ -135,3 +135,45 @@
   --decor-filter: hue-rotate(175deg) saturate(0.85) brightness(1.4) contrast(0.85);
   --decor-opacity: 0.09;
 }
+
+/*
+ * Motion for the Sheet.
+ *
+ * The curve on sheet-up is the one native sheets use: fast to start, settling
+ * rather than stopping. A linear slide reads as a web page moving a div; this
+ * reads as a surface arriving.
+ *
+ * Both are disabled under prefers-reduced-motion. A sheet that flies up the
+ * screen is exactly the kind of large-area movement that setting exists for.
+ */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Bottom-anchored surfaces must clear the iPhone home indicator.
+ *
+ * max() rather than a bare env(): on a device without an inset (Android, older
+ * iPhones, desktop) env() resolves to 0 and the sheet's actions would sit flush
+ * against the screen edge. The 1rem floor keeps the padding sensible everywhere.
+ *
+ * Requires viewport-fit=cover in index.html — without it env() is always 0 and
+ * this rule silently does nothing.
+ */
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}

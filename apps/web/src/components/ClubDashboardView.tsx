@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import * as clubsApi from '../lib/clubs-api';
 import { useResource, useResourceCache } from '../lib/resource-cache';
+import { useConfirm } from './ui/ConfirmDialog';
 import { useAction } from '../lib/use-action';
 import { Club, ClubJoinRequest } from '../types';
 import { AccountSettingsModal } from './AccountSettingsModal';
@@ -93,6 +94,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // Both lists live in the shared cache, so returning from a club renders the
   // previous data on the first frame instead of refetching from empty.
   const cache = useResourceCache();
+  // Destructive actions ask in a bottom sheet, not a browser dialog.
+  const confirmAction = useConfirm();
   const clubsResource = useResource(CLUBS_KEY, clubsApi.listClubsRaw, { pollMs: POLL_INTERVAL_MS });
   const requestsResource = useResource(JOIN_REQUESTS_KEY, clubsApi.listJoinRequests, { pollMs: POLL_INTERVAL_MS });
 
@@ -987,10 +990,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
                             <button
                               onClick={async () => {
-                                if (confirm(`Are you sure you want to delete club "${c.name}"?`)) {
-                                  await deleteClubAction.run(c.id);
-                                  alert(`Deleted ${c.name}`);
-                                }
+                                confirmAction({
+                                  title: `Delete ${c.name}?`,
+                                  description: 'This removes the club, its members and its entire history. It cannot be undone.',
+                                  confirmLabel: 'Delete club',
+                                  onConfirm: () => deleteClubAction.run(c.id),
+                                });
                               }}
                               disabled={deleteClubAction.isPending(c.id)}
                               className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1040,15 +1045,19 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                         <button
                                           type="button"
                                           onClick={async () => {
-                                            if (confirm(`Are you sure you want to remove user "${m.displayName}" from club "${c.name}"?`)) {
-                                              try {
-                                                await removeMemberAction.run(m.id, c.id);
-                                                alert(`Removed ${m.displayName} from ${c.name}`);
-                                              } catch (err) {
-                                                console.error('Failed to remove user:', err);
-                                                alert('Failed to remove user from club.');
-                                              }
-                                            }
+                                            confirmAction({
+                                              title: `Remove ${m.displayName}?`,
+                                              description: `They lose access to ${c.name}. Past results stay on the leaderboard.`,
+                                              confirmLabel: 'Remove',
+                                              onConfirm: async () => {
+                                                try {
+                                                  await removeMemberAction.run(m.id, c.id);
+                                                } catch (err) {
+                                                  console.error('Failed to remove user:', err);
+                                                  alert('Failed to remove user from club.');
+                                                }
+                                              },
+                                            });
                                           }}
                                           disabled={removeMemberAction.isPending(m.id)}
                                           className="px-2.5 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1150,6 +1159,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       </nav>
 
       {showAccountSettings && <AccountSettingsModal onClose={() => setShowAccountSettings(false)} />}
+      {confirmAction.dialog}
     </div>
   );
 };

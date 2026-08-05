@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to real
+         values. Without it those insets are always 0 and every safe-area rule in
+         the app silently does nothing. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>The House Keeps Score</title>
     <meta name="description" content="Private poker club management — track banks, settle up, keep it fair." />
     <meta name="theme-color" content="#0a150e" />
