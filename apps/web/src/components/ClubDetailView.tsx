@@ -970,7 +970,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // (owner/sole-admin apply immediately, otherwise it lands in Pending Approvals)
   const handleSubmitSessionEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingSession || !isAdmin) return;
+    if (!editingSession || !isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can edit a recorded session.', 'warning');
+      return;
+    }
 
     if (editPlayerStats.length === 0) {
       alert('A session must have at least one player.');
@@ -980,7 +983,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('Calculate first', 'Run the numbers so you can check them before updating.', 'warning');
       return;
     }
-    if (editPreview.requiresManualResolution) return;
+    if (editPreview.requiresManualResolution) {
+      // Unlike the live-settle and past-night modals, the edit modal has no
+      // acknowledgement checkbox, so there is currently no way to push a
+      // mismatching edit through. Saying so is better than a dead button, but
+      // the real fix is to give this flow the same acknowledgement the other
+      // two have — a product decision, not a mechanical one.
+      pushToast(
+        'Figures do not balance',
+        'Cash-outs must match buy-ins for an edited session. Adjust the numbers and calculate again.',
+        'warning'
+      );
+      return;
+    }
     // Enforced here rather than by which button is showing — see the note in
     // handleCreatePastSession about Enter and React reusing the button node.
     if (!editConfirming) { setEditConfirming(true); return; }
@@ -1528,8 +1543,34 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // authoritatively inside one transaction (this client-side `preview` is
   // just what the admin sees while entering buy-in/cash-out amounts).
   const handleSettleSession = async () => {
-    if (!isAdmin || !activeSession || !preview || !cashoutCalculated || !allCashOutsEntered) return;
-    if (preview.requiresManualResolution) return;
+    // Named rather than silent. These are the last two bare returns on this
+    // screen; the pass in 26f847b matched three exact patterns and this longer
+    // condition was not one of them, so a stale precondition here looked exactly
+    // like a dead Confirm button.
+    if (!isAdmin) {
+      pushToast('Not allowed', 'Only a Club Admin can settle a session.', 'warning');
+      return;
+    }
+    if (!activeSession) {
+      pushToast('No live session', 'There is nothing to settle right now.', 'warning');
+      return;
+    }
+    if (!allCashOutsEntered) {
+      pushToast('Missing cash-outs', 'Enter a cash-out for every player before settling.', 'warning');
+      return;
+    }
+    if (!cashoutCalculated || !preview) {
+      pushToast('Calculate first', 'Run the numbers so you can check them before settling.', 'warning');
+      return;
+    }
+    if (preview.requiresManualResolution) {
+      pushToast(
+        'Mismatch not acknowledged',
+        'The cash-outs do not match the buy-ins. Tick the acknowledgement to continue.',
+        'warning'
+      );
+      return;
+    }
     setSettlementError('');
     setSettlementSuccess('');
 
@@ -3272,7 +3313,17 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   formatSigned={formatSignedVal}
                   mismatchAcknowledgement={{
                     checked: mismatchAcknowledged,
-                    onChange: (checked) => { setMismatchAcknowledged(checked); setCashoutCalculated(false); setConfirmingSettle(false); },
+                    // Deliberately does NOT reset cashoutCalculated, which is what the
+                      // past-night flow above already gets right. The acknowledgement is an
+                      // input to computeSettlement, and `preview` is recomputed on every
+                      // render — so ticking the box updates the figures and clears
+                      // requiresManualResolution live. Resetting it unmounted the block this
+                      // checkbox lives inside, so the preview vanished the instant it was
+                      // ticked and Settle stayed disabled with no visible way forward.
+                      //
+                      // confirmingSettle IS reset: the figures just changed, so an already
+                      // armed confirmation must be re-armed against the new numbers.
+                      onChange: (checked) => { setMismatchAcknowledged(checked); setConfirmingSettle(false); },
                   }}
                 />
               )}
