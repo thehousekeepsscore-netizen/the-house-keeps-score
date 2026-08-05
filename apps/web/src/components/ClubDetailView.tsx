@@ -2217,22 +2217,38 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         ) : (
                           <PokerTableRing
                             players={[
-                              ...activeSession.activePlayerUids.map(uid => ({
-                                uid,
-                                name: uid === currentUser.uid
-                                  ? 'Me'
-                                  : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 5)})`),
-                                bank: activeSessionBuyIns
-                                  .filter(r => r.userId === uid)
-                                  .reduce((sum, r) => sum + r.amount, 0),
-                              })),
+                              ...activeSession.activePlayerUids.map(uid => {
+                                // The seat's state, so it can be read without
+                                // reading: a coin badge means chips are pending,
+                                // a door badge means a cash-out is.
+                                const awaitingChips = visiblePendingBuyIns.some(r => r.userId === uid);
+                                const awaitingCashOut = pendingCashOuts.some(c => c.userId === uid);
+                                return {
+                                  uid,
+                                  name: uid === currentUser.uid
+                                    ? 'Me'
+                                    : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 5)})`),
+                                  avatarUrl: allUsers[uid]?.avatarUrl,
+                                  bank: activeSessionBuyIns
+                                    .filter(r => r.userId === uid)
+                                    .reduce((sum, r) => sum + r.amount, 0),
+                                  state: awaitingCashOut
+                                    ? ('waiting-cashout' as const)
+                                    : awaitingChips
+                                      ? ('waiting-buyin' as const)
+                                      : ('playing' as const),
+                                };
+                              }),
                               ...pendingSitInUids.map(uid => ({
                                 uid,
                                 name: uid === currentUser.uid
                                   ? 'Me'
                                   : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 5)})`),
+                                avatarUrl: allUsers[uid]?.avatarUrl,
                                 bank: 0,
-                                pending: true,
+                                // Not yet dealt in: dimmed rather than badged,
+                                // because nothing is pending on their money.
+                                state: 'sitting-out' as const,
                               })),
                             ]}
                             formatBank={formatVal}
@@ -4426,17 +4442,57 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         */}
         {activeTab === 'activeSession' && activeSession && (
           <div className="md:hidden fixed bottom-[4.25rem] left-0 right-0 z-40 px-4 pointer-events-none">
-            <div className="max-w-md mx-auto pointer-events-auto">
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                onClick={() => setMobileFabOpen(true)}
-                className="shadow-2xl"
-              >
-                <Plus className="w-5 h-5" aria-hidden="true" />
-                {primaryActionLabel}
-              </Button>
+            <div className="max-w-md mx-auto pointer-events-auto flex gap-2">
+              {/*
+                The two things a seated player does, side by side and equally
+                weighted, because neither is secondary — one puts money on the
+                table and the other takes it off.
+
+                They are told apart by identity rather than by hierarchy: Buy in
+                keeps the + affordance and the accent fill; Cash out is outlined
+                with a door icon. Same size, same height, different character —
+                so neither is mistaken for the other under a thumb in a dim room.
+              */}
+              {isSeated && !myCashOut && (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => {
+                    setBuyInTargetUser(currentUser.uid);
+                    setBuyInAmount(club.minBuyIn || 1000);
+                    setShowBuyInModal(true);
+                  }}
+                  className="shadow-2xl"
+                >
+                  <Plus className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
+                  Buy in
+                </Button>
+              )}
+              {isSeated && !myCashOut && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => { setStandUpAmount(0); setShowStandUpModal(true); }}
+                  className="shadow-2xl"
+                >
+                  <LogOut className="w-5 h-5" aria-hidden="true" />
+                  Cash out
+                </Button>
+              )}
+              {(!isSeated || myCashOut) && (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => setMobileFabOpen(true)}
+                  className="shadow-2xl"
+                >
+                  <Plus className="w-5 h-5" aria-hidden="true" />
+                  {primaryActionLabel}
+                </Button>
+              )}
             </div>
           </div>
         )}

@@ -10,8 +10,11 @@ import React, { useEffect, useState } from 'react';
  *
  * One line rather than a card, deliberately. It sits above the action queue, and
  * anything taller would push the decisions down and defeat the point of putting
- * them first. It earns its place by answering three questions in the height of
- * one.
+ * them first.
+ *
+ * It does NOT show the pot. The felt does, in the middle of the table, which is
+ * where a poker player looks for it — and saying it twice on one screen taught
+ * the eye that neither instance mattered.
  *
  * Figures are tabular so they do not jitter as they change — a number that
  * shifts sideways while you are reading it reads as instability, which is
@@ -61,8 +64,6 @@ export const GameVitals: React.FC<GameVitalsProps> = ({ playersIn, chipsInPlay, 
   return (
     <div className="flex items-center gap-4 px-5 py-3 bg-surface border border-line rounded-2xl">
       <Stat label="Playing" value={String(playersIn)} />
-      <div className="w-px h-8 bg-line shrink-0" aria-hidden="true" />
-      <Stat label="On the table" value={chipsInPlay.toLocaleString()} />
       {running && (
         <>
           <div className="w-px h-8 bg-line shrink-0" aria-hidden="true" />
