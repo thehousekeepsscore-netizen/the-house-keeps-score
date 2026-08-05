@@ -98,6 +98,27 @@ export function initSocket(httpServer: HttpServer): Server {
   return io;
 }
 
+/**
+ * Disconnect every live socket, leaving the HTTP server for the caller to close.
+ *
+ * Called during shutdown. An open WebSocket is a live connection as far as node
+ * is concerned, so http.close() waits on it forever -- without this the
+ * graceful shutdown would always hit its timeout and become an ungraceful one.
+ *
+ * Deliberately not io.close(). That closes the HTTP server Socket.IO is
+ * attached to as a side effect, so the shutdown sequence's own httpServer.close()
+ * then threw ERR_SERVER_NOT_RUNNING and the process exited 1 -- reporting a
+ * failed shutdown to the platform for a shutdown that had actually succeeded.
+ * Disconnecting the sockets achieves the same thing and leaves ownership of the
+ * HTTP server in one place.
+ */
+export function disconnectAllSockets(): void {
+  if (!io) return;
+  io.disconnectSockets(true);
+  io.removeAllListeners();
+  io = null;
+}
+
 export function emitToSession(sessionId: string, event: string, payload: unknown) {
   io?.to(`session:${sessionId}`).emit(event, payload);
 }
