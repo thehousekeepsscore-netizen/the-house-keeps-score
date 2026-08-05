@@ -1,0 +1,104 @@
+name: CI
+
+# Every push to main and every pull request. The audit that produced these
+# tests found four production bugs; without something running them on every
+# change they protect nothing but the branch they landed on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # A second push to the same branch cancels the first. Nobody needs the result
+  # for a commit that has already been superseded.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Typecheck, unit tests and the production build. No database, so this is the
+  # fast gate — it fails in about a minute when something is genuinely broken.
+  check:
+    name: Typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile and
+      # fails if the lockfile and package.json disagree. That check has already
+      # earned its place — removing the firebase dependency left them out of
+      # sync, and this is what would have caught it.
+      - run: npm ci
+
+      # Prisma's generated client is imported by the API's types, so the
+      # typecheck cannot run before it exists.
+      - run: npm run prisma:generate
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      # Printed rather than gated. A threshold that fails the build on a few
+      # kilobytes trains people to raise the threshold; a number in the log
+      # makes a jump visible in review without blocking anyone.
+      - name: Bundle size
+        run: |
+          echo "### Bundle" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh apps/web/dist/assets/*.js | awk '{printf "%-46s %s\n", $9, $5}' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # The integration suite needs a real Postgres. Kept as a separate job so a
+  # database problem is never mistaken for a code problem, and so the fast gate
+  # above still reports while this one is starting its container.
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: poker_test
+        ports:
+          - 5432:5432
+        # Without a health check the steps below race the container's startup
+        # and fail intermittently, which is worse than failing consistently.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/poker_test
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: ci_only_access_secret_not_used_anywhere_else
+      WEB_ORIGIN: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run prisma:generate
+
+      # `migrate deploy`, not `migrate dev`: dev would try to author a migration
+      # if the schema and the migration history disagree, which in CI means
+      # hanging on a prompt rather than failing.
+      - name: Apply migrations
+        run: npm run prisma:deploy --workspace=apps/api
+
+      - run: npm run test:integration
