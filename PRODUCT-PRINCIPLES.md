@@ -39,6 +39,15 @@ argument, not a preference.
 7. **Components come from the design system.** No one-off buttons, no one-off
    dialogs.
 8. **Nothing important below 12px, nothing in an input below 16px.**
+9. **Lead with what needs a decision.** State that requires nothing from the
+   user is reference material, not the point of the screen. If something is
+   waiting on the user, it goes first — and if nothing is, the screen should
+   look different.
+10. **Read top, act bottom.** The eye enters at the top; the thumb reaches the
+    bottom. Information goes where the eye lands, controls go where the thumb
+    rests. Never make the hand follow the eye up the screen.
+11. **Pending state never masquerades as settled state.** "Waiting", "in play"
+    and "cashed out" are three different vocabularies and must stay apart.
 
 ## The three-second test
 
