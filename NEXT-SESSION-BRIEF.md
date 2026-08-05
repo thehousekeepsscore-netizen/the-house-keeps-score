@@ -21,6 +21,16 @@ unmistakably a poker app. Primarily a phone, eventually a PWA.
 > night from start to finish. If an interaction doesn't make the evening
 > smoother for the host or the players, reconsider whether it belongs.
 
+### Design philosophy
+
+The interface should never try to show everything. It should always answer:
+
+> **What do I need to do next?**
+
+Progressively reveal information rather than overwhelming. Users should rarely
+have to think about accounting or workflows — the software does that work for
+them.
+
 ### The journey, treated as one thing
 
 ```
