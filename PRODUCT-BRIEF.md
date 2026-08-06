@@ -1,8 +1,11 @@
 # Master product redesign brief — mobile first
 
-# `PRODUCT-BRIEF v1.1` — frozen 2026-08-06
+# `PRODUCT-BRIEF v1.2` — frozen 2026-08-06
 
 **Branch:** `product-polish` · **Status:** canonical, frozen
+**v1.2** — §2.5 *live controls never move under a thumb*, promoted from an
+implementation detail found while mapping the live session's interaction model.
+Nothing revised; one principle added.
 **v1.1** — the five open decisions resolved (§18), plus §2.4 *prefer reducing
 taps*, a per-club default buy-in (§9.3), and the audit model widened to four
 fields (§13). No principle was revised; v1.0's were extended.
@@ -136,6 +139,25 @@ the settlement `Check the books → Close the night` gate (§12.4), the typed an
 confirmed cash-out amount (§10), and the explicit commit on a keyed-in buy-in
 (§9.2) all cost a tap deliberately and must not be optimised away. Reduce taps
 that cost time; keep taps that buy certainty.
+
+### 2.5 Live controls never move under a thumb
+
+> **A control that commits money must never change position because something
+> arrived while the user was reaching for it.**
+
+New items append; they never push existing ones. Lists that update live grow
+away from the thumb, not toward it. A layout shift disarms taps for a moment
+rather than letting them land on whatever moved into place.
+
+This looks like a rendering detail and is not. The app updates over a socket
+while an admin is mid-reach, and the controls it updates around are `Approve`
+and `Not now` on real money. Every other principle here is about what the user
+sees; this one is about what happens between deciding and touching.
+
+It is also the rule that settles arguments the others cannot. "Newest first"
+would be better by §2.1 — you would see the new request instantly — and is
+forbidden by this, because it relocates a live Approve button under a
+descending finger. Where the two conflict, this wins.
 
 ## 3. The complete journey
 
