@@ -77,9 +77,16 @@ describe('adapts from 2 to 9 without overlapping', () => {
     // Mirrors felt() and perimeter() in the component: a stadium, so the gap
     // between neighbours is the perimeter divided by the count — identical
     // wherever they sit, which is the point of walking by arc length.
-    const feltFor = (n: number) =>
-      n <= 2 ? { w: 38, r: 64 } : n <= 4 ? { w: 46, r: 62 }
-        : n <= 6 ? { w: 54, r: 62 } : n <= 9 ? { w: 64, r: 62 } : { w: 72, r: 58 };
+    // Mirrors felt() in the component. jsdom reports 0-width containers, so the
+    // ResizeObserver never fires and the table keeps its 360px default — which
+    // is the phone case, and the one worth asserting.
+    const feltFor = (n: number) => {
+      const sizeGuess = n <= 4 ? 56 : n <= 9 ? 44 : 34;
+      const total = Math.max(120, 360 / 2 - 6 - sizeGuess / 2);
+      const share = n <= 4 ? 0.6 : n <= 9 ? 0.48 : 0.42;
+      const r = Math.round(Math.min(88, Math.max(46, total * share)));
+      return { w: Math.round(total - r), r };
+    };
     const gapFor = (n: number) => {
       const { w, r } = feltFor(n);
       return (4 * w + 2 * Math.PI * r) / n;

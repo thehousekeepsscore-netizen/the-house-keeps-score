@@ -225,7 +225,7 @@ const Stage: React.FC<{
       // running / windingDown — the same felt in both. It never disappears
       // because people are leaving; it quietens.
       return (
-        <section className="px-3 pt-2 pb-4">
+        <section className="px-1 pt-2 pb-4">
           <PokerTable
             night={night}
             currentUserId={currentUserId}

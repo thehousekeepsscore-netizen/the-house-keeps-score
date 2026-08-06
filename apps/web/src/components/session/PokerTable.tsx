@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Night, Seat } from '../../lib/night-state';
 import { PlayerAvatar } from './PlayerAvatar';
 import { seatCaption, seatSentence } from '../../lib/seat-vocabulary';
@@ -50,12 +50,39 @@ export interface PokerTableProps {
  * `w` is half the straight run, `r` the cap radius. Both are bounded so that
  * w + r + half an avatar stays inside the 320px container.
  */
-function felt(count: number) {
-  if (count <= 2) return { w: 38, r: 64 };
-  if (count <= 4) return { w: 46, r: 62 };
-  if (count <= 6) return { w: 54, r: 62 };
-  if (count <= 9) return { w: 64, r: 62 };
-  return { w: 72, r: 58 };
+function felt(count: number, available: number) {
+  // The table takes the width it is given. A fixed 320 threw away fifteen
+  // percent of a 375px phone, and at eighteen players that width is exactly
+  // what was missing — it is the difference between faces at 26px and 38px.
+  //
+  // Seats straddle the rim, so half an avatar hangs outside the table: the
+  // table itself gets what is left. sizeGuess breaks the circularity (size
+  // depends on spacing, which depends on the size the table can be) and the
+  // real size is computed from the result.
+  const sizeGuess = count <= 4 ? 56 : count <= 9 ? 44 : 34;
+  const total = Math.max(120, available / 2 - 6 - sizeGuess / 2);
+
+  // More players, more straight run: the caps are where a crowd bunches, and
+  // the straights are where the phone actually has room.
+  const share = count <= 4 ? 0.6 : count <= 9 ? 0.48 : 0.42;
+  const r = Math.round(Math.min(88, Math.max(46, total * share)));
+  return { w: Math.round(total - r), r };
+}
+
+/** The table is as wide as its container; everything else follows from that. */
+function useAvailableWidth(ref: React.RefObject<HTMLDivElement | null>) {
+  const [width, setWidth] = useState(360);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      if (w > 0) setWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
 }
 
 /** Perimeter of the stadium: two straight runs plus one full circle of caps. */
@@ -150,15 +177,18 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   const mineAt = seats.findIndex((s) => s.userId === currentUserId);
   const ordered = mineAt > 0 ? [...seats.slice(mineAt), ...seats.slice(0, mineAt)] : seats;
 
-  const { w, r } = felt(count);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const available = useAvailableWidth(hostRef);
+  const { w, r } = felt(count, available);
   const { spacing, detail, size, boxHeight } = seatMetrics(count, w, r);
   const boxWidth = Math.max(size, Math.min(96, spacing - 6));
   const quiet = night.phase === 'windingDown';
 
   return (
     <div
-      className="relative mx-auto"
-      style={{ width: 320, height: 2 * r + boxHeight + 16 }}
+      ref={hostRef}
+      className="relative w-full"
+      style={{ height: 2 * r + boxHeight + 16 }}
       role="group"
       aria-label={`${seats.length} at the table`}
     >
@@ -182,7 +212,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
           width: 2 * (w + r) - 22,
           height: 2 * r - 22,
           background:
-            'radial-gradient(ellipse at 50% 42%, #1b5138 0%, #123a27 55%, #0d2a1c 100%)',
+            'radial-gradient(ellipse at 50% 40%, #17452f 0%, #0f3222 52%, #071a11 100%)',
           border: '1px solid rgba(212,175,55,0.45)',
           boxShadow: 'inset 0 8px 24px rgba(0,0,0,0.45)',
           filter: quiet ? 'saturate(0.55) brightness(0.92)' : undefined,
@@ -196,11 +226,11 @@ export const PokerTable: React.FC<PokerTableProps> = ({
 
       {ordered.map((seat, i) => {
         const { x, y } = position(i, count, w, r);
-        // Seats on the top run put their label ABOVE the avatar, so it reads
-        // against the page rather than across the lit centre of the felt.
-        // Everywhere else the outward direction is already downward or
-        // sideways, and below is correct.
-        const labelAbove = y < -r * 0.7;
+        // Labels sit below the avatar everywhere, including the top run. That
+        // needed the felt's edges darkened first — the flip that put them above
+        // was working around a centre that was too light, and it cost the top
+        // of the table a row of vertical space it did not have to give.
+        const labelAbove = false;
         const realName = users[seat.userId]?.displayName || 'Player';
         const isMe = seat.userId === currentUserId;
         const name = isMe ? 'You' : realName;
@@ -265,11 +295,19 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                 >
                   {name}
                 </span>
-                {detail === 'full' && (
-                  <span className="block text-[10px] text-accent/85 truncate tabular-nums">
-                    {seatCaption(seat, formatAmount)}
-                  </span>
-                )}
+                {detail === 'full' &&
+                  (seat.pendingBuyIn !== null || seat.state === 'waitingToSit' ? (
+                    // A question gets its own weight. As a caption it read like
+                    // a smaller version of a chip count, which is the confusion
+                    // this whole vocabulary exists to prevent.
+                    <span className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-bold uppercase tracking-wide whitespace-nowrap">
+                      {seatCaption(seat, formatAmount)}
+                    </span>
+                  ) : (
+                    <span className="block text-[10px] text-accent/85 truncate tabular-nums">
+                      {seatCaption(seat, formatAmount)}
+                    </span>
+                  ))}
               </span>
             )}
           </button>
