@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { X, Check, Palette, Settings, ChevronRight, ChevronDown, Trophy, UserCircle, Pencil, LogOut } from 'lucide-react';
+import { X, Settings, ChevronRight, Trophy, UserCircle, Pencil, LogOut } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
-import { THEMES } from '../lib/theme';
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { LeaderboardRow } from '../lib/clubRecords-api';
 import { Club } from '../types';
@@ -27,8 +26,6 @@ interface AccountSettingsModalProps {
 
 export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onClose, club, isClubAdmin, onOpenClubSettings }) => {
   const { user, updateProfile, logout } = useAuth();
-  const [saving, setSaving] = useState<string | null>(null);
-  const [showThemes, setShowThemes] = useState(false);
 
   // Details editing. Phone matters most — it was captured once at signup with
   // no way to change it, and player notifications route to it.
@@ -112,20 +109,6 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
     return () => { cancelled = true; };
   }, [club, user?.uid]);
 
-  const activeTheme = THEMES.find((t) => t.id === user?.themePreference);
-
-  const handleSelectTheme = async (themeId: string) => {
-    if (saving || themeId === user?.themePreference) return;
-    setSaving(themeId);
-    try {
-      await updateProfile({ themePreference: themeId });
-    } catch (err) {
-      console.error('Failed to save theme:', err);
-      alert('Failed to save theme preference.');
-    } finally {
-      setSaving(null);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-bg/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-5">
@@ -264,55 +247,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
           )}
 
           {/* Appearance — collapsed; it's a preference, not the main event. */}
-          <button
-            type="button"
-            onClick={() => setShowThemes((v) => !v)}
-            className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl hover:border-line-strong transition-colors cursor-pointer"
-          >
-            <span className="flex items-center gap-2 text-xs font-bold text-text">
-              <Palette className="w-4 h-4 text-accent" /> Appearance
-            </span>
-            <span className="flex items-center gap-1.5 text-xs text-text-muted">
-              {activeTheme?.label ?? 'Default'}
-              {showThemes ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </span>
-          </button>
-
-          <div className={`space-y-2.5 ${showThemes ? '' : 'hidden'}`}>
-            {THEMES.map((theme) => {
-              const isActive = user?.themePreference === theme.id;
-              return (
-                <button
-                  key={theme.id}
-                  onClick={() => handleSelectTheme(theme.id)}
-                  disabled={saving !== null}
-                  className={`w-full flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer text-left ${
-                    isActive ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'
-                  } disabled:opacity-60`}
-                >
-                  <div
-                    className="w-11 h-11 rounded-xl border border-line-strong shrink-0 flex overflow-hidden"
-                    style={{ background: theme.swatch.bg }}
-                  >
-                    <div className="w-1/2 h-full" style={{ background: theme.swatch.surface }} />
-                    <div className="w-1/4 h-full" style={{ background: theme.swatch.accent }} />
-                    <div className="w-1/4 h-full" style={{ background: theme.swatch.accent2 }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-text">{theme.label}</div>
-                    <div className="text-xs text-text-muted truncate">{theme.description}</div>
-                  </div>
-                  {saving === theme.id ? (
-                    <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin shrink-0" />
-                  ) : isActive ? (
-                    <Check className="w-4 h-4 text-accent shrink-0" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Admin tools live below personal settings — they're club-scoped,
+                    {/* Admin tools live below personal settings — they're club-scoped,
               not part of this player's own account. */}
           {club && isClubAdmin && onOpenClubSettings && (
             <div className="pt-1 space-y-2">

@@ -36,7 +36,6 @@ import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
 import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
-import { useApplyTheme } from './lib/theme';
 import { Club } from './types';
 import * as clubsApi from './lib/clubs-api';
 import { useResource, useResourceCache } from './lib/resource-cache';
@@ -106,7 +105,6 @@ export default function App() {
   const navigate = useNavigate();
   const cache = useResourceCache();
   const { user: authUser, status: authStatus, logout, authError, clearAuthError } = useAuth();
-  useApplyTheme(authUser?.themePreference);
   const [tableCode, setTableCode] = useState('7742');
   const [tableCodeInput, setTableCodeInput] = useState('7742');
   const [playerNameInput, setPlayerNameInput] = useState('');
