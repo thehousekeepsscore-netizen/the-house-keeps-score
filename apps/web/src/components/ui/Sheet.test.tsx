@@ -141,16 +141,27 @@ describe('Button', () => {
   });
 
   it('acknowledges a press, since a phone has no hover', () => {
-    render(<Button>Approve</Button>);
-    expect(screen.getByRole('button').className).toContain('active:scale-95');
+    // The press used to be `active:scale-95`. A button is a padded control, so
+    // pressing it compresses the material — the highlight collapses, the shadow
+    // tucks under, the face drops a pixel. Scaling is a card trick rather than
+    // a physical one. That behaviour lives in `.control` (index.css), which
+    // jsdom cannot evaluate, so this asserts the material is attached.
+    for (const variant of ['primary', 'secondary', 'danger'] as const) {
+      const { container, unmount } = render(<Button variant={variant}>Approve</Button>);
+      expect(container.querySelector('button')!.className).toContain('control');
+      unmount();
+    }
   });
 
-  it('has a hover state that actually changes something', () => {
-    // 19 buttons previously carried `bg-accent hover:bg-accent`.
+  it('never carries a hover that changes nothing', () => {
+    // The original defect: 19 buttons with `bg-accent hover:bg-accent`, a hover
+    // state that resolved to itself. Feedback now comes from the press rather
+    // than from hover — there is no hover on a phone — so the guard is that no
+    // self-cancelling hover has crept back in.
     const { container } = render(<Button variant="primary">Approve</Button>);
     const cls = container.querySelector('button')!.className;
-    expect(cls).not.toMatch(/bg-accent hover:bg-accent\b/);
-    expect(cls).toContain('hover:brightness-110');
+    expect(cls).not.toMatch(/bg-(\S+) hover:bg-\1\b/);
+    expect(cls).toContain('control-primary');
   });
 
   it('reports pending state to assistive tech and blocks re-entry', () => {

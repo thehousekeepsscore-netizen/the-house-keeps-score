@@ -369,7 +369,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             {!hasLoaded ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-label="Loading your clubs">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="p-5 bg-surface border border-line rounded-2xl space-y-3 animate-pulse">
+                  <div key={i} className="p-5 furniture rounded-2xl space-y-3 animate-pulse">
                     <div className="h-5 w-2/3 bg-surface-alt rounded" />
                     <div className="h-3 w-full bg-surface-alt rounded" />
                     <div className="h-3 w-4/5 bg-surface-alt rounded" />
@@ -407,7 +407,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   return (
                     <div
                       key={club.id}
-                      className="bg-surface border border-line hover:border-accent/60 rounded-2xl p-5 space-y-4 shadow-xl transition-all relative overflow-hidden flex flex-col justify-between"
+                      className="furniture hover:border-accent/60 rounded-2xl p-5 space-y-4 transition-all relative overflow-hidden flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
@@ -503,7 +503,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   return (
                     <div
                       key={club.id}
-                      className="bg-surface border border-line hover:border-accent/50 rounded-2xl p-5 space-y-4 shadow-xl transition-all flex flex-col justify-between"
+                      className="furniture hover:border-accent/50 rounded-2xl p-5 space-y-4 transition-all flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
@@ -543,14 +543,14 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         ) : myPendingReq ? (
                           <button
                             disabled
-                            className="w-full bg-surface border border-line text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed flex items-center justify-center gap-2"
+                            className="w-full furniture text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed flex items-center justify-center gap-2"
                           >
                             <Clock className="w-3.5 h-3.5 text-warning" /> JOIN REQUEST PENDING
                           </button>
                         ) : isFull ? (
                           <button
                             disabled
-                            className="w-full bg-surface border border-line text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed"
+                            className="w-full furniture text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed"
                           >
                             CLUB FULL ({club.maxCapacity || 50}/{club.maxCapacity || 50})
                           </button>
@@ -573,7 +573,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
         {/* TAB 3: CREATE A CLUB */}
         {activeTab === 'create' && (
-          <div className="max-w-xl mx-auto bg-surface border border-line p-6 md:p-8 rounded-3xl shadow-2xl space-y-5">
+          <div className="max-w-xl mx-auto furniture p-6 md:p-8 rounded-3xl space-y-5">
             <div className="border-b border-line pb-4">
               <div className="flex items-start gap-3">
                 {/* Without this the only way out of the form is to actually
@@ -672,7 +672,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     max={100}
                     value={devaluationFactor}
                     onChange={(e) => setDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-24 bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-text font-mono font-bold outline-none focus:border-accent"
+                    className="w-24 furniture rounded-xl px-3 py-2.5 text-sm text-text font-mono font-bold outline-none focus:border-accent"
                   />
                   <span className="text-sm text-text font-mono font-bold">Chips = ₹1</span>
                 </div>
@@ -737,7 +737,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     step={50}
                     value={sessionRake}
                     onChange={(e) => setSessionRake(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-surface border border-line rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
                     placeholder="0"
                   />
                   <p className="text-[10px] text-text-muted">
@@ -758,7 +758,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       max={100}
                       value={winnersCutPercent}
                       onChange={(e) => setWinnersCutPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
-                      className="w-24 bg-surface border border-line rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
+                      className="w-24 furniture rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
                     />
                     <span className="text-sm font-mono font-bold text-text">% of each winner&apos;s profit</span>
                   </div>
@@ -823,7 +823,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           <div className="space-y-6 max-w-3xl mx-auto">
 
             {/* Admin Notifications Box */}
-            <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
+            <div className="furniture p-6 rounded-3xl space-y-4">
               <div className="flex items-center justify-between border-b border-line pb-3">
                 <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
                   <Bell className="w-5 h-5 text-accent" /> Pending Club Requests (Admin Notifications)
@@ -888,7 +888,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             </div>
 
             {/* My Sent Requests Status */}
-            <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
+            <div className="furniture p-6 rounded-3xl space-y-4">
               <h2 className="text-sm font-bold text-text uppercase tracking-wider border-b border-line pb-3">
                 Your Sent Join Requests Status
               </h2>
@@ -1051,7 +1051,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                   const isAdmin = c.admins.some(a => a.id === m.id) || isOwner;
 
                                   return (
-                                    <div key={m.id} className="p-2.5 bg-surface border border-line rounded-xl flex items-center justify-between gap-2 text-xs">
+                                    <div key={m.id} className="p-2.5 furniture rounded-xl flex items-center justify-between gap-2 text-xs">
                                       <div className="space-y-0.5 truncate">
                                         <div className="font-bold text-text flex items-center gap-1.5 truncate">
                                           <span className="truncate">{m.displayName || m.email}</span>
@@ -1115,7 +1115,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       </main>
 
       {/* MOBILE STICKY BOTTOM NAVIGATION BAR */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 shelf py-2 px-1 flex items-center">
         <button
           onClick={() => setActiveTab('myClubs')}
           className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${

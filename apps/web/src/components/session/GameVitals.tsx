@@ -62,7 +62,7 @@ export const GameVitals: React.FC<GameVitalsProps> = ({ playersIn, chipsInPlay, 
   const running = elapsed(startedAt);
 
   return (
-    <div className="flex items-center gap-4 px-5 py-3 bg-surface border border-line rounded-2xl">
+    <div className="flex items-center gap-4 px-5 py-3 furniture rounded-2xl">
       <Stat label="Playing" value={String(playersIn)} />
       {running && (
         <>

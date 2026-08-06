@@ -277,3 +277,135 @@
   color: rgba(0, 0, 0, 0.07);
   text-shadow: 0 1.5px 0 rgba(255, 255, 255, 0.035);
 }
+
+/*
+ * ===========================================================================
+ * FURNITURE — everything the hand touches
+ * ===========================================================================
+ *
+ * Cards, sheets, dialogs, the navigation shelf. These are objects in the room,
+ * not rectangles on a page, and the difference is entirely in how they meet
+ * the light: a broad soft reflection across the top face, the material falling
+ * away below it, and a wide low shadow underneath so the thing rests on
+ * something rather than hovering over it.
+ *
+ * Leather, not grey. Warm, because the room is lit by lamps.
+ */
+.furniture {
+  position: relative;
+  background:
+    linear-gradient(180deg, #17231c 0%, var(--color-surface) 34%, #0e1712 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.055),
+    var(--shadow-furniture);
+  border-radius: var(--radius-md);
+}
+
+/* Grain. Discovered, never noticed — if you can see it from arm's length it
+   is too strong, and it stops being leather and becomes noise. */
+.furniture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.085;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='l'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23l)'/%3E%3C/svg%3E");
+}
+
+/* The same hide, raised — a drawer pulled out of the same carcass. */
+.furniture-raised {
+  background:
+    linear-gradient(180deg, #1d2b23 0%, var(--color-surface-alt) 36%, #121c16 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.075),
+    var(--shadow-hero);
+}
+
+/*
+ * ===========================================================================
+ * METAL — brushed brass, and only where something is live
+ * ===========================================================================
+ *
+ * A hairline of worn brass. Directional, so it is brighter where it faces the
+ * lamp — a single flat gold would read as a drawn outline, which is the thing
+ * this replaces. Never a glow: brass reflects, it does not emit.
+ */
+.brass-edge {
+  border: 1px solid transparent;
+  background-image:
+    linear-gradient(var(--color-surface), var(--color-surface)),
+    linear-gradient(102deg, var(--brass-dark) 0%, var(--brass-mid) 22%,
+      var(--brass-lit) 38%, var(--brass-mid) 56%, var(--brass-dark) 78%,
+      var(--brass-mid) 100%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.brass-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    90deg, transparent 0%, var(--brass-dark) 12%, var(--brass-mid) 50%,
+    var(--brass-dark) 88%, transparent 100%
+  );
+  opacity: 0.55;
+}
+
+/*
+ * ===========================================================================
+ * LEATHER CONTROLS
+ * ===========================================================================
+ *
+ * A button is a padded control, so pressing it COMPRESSES the material — the
+ * top highlight collapses and the shadow tucks under. It does not scale, which
+ * is a card trick rather than a physical one, and it does not bounce, because
+ * nothing in a room made of leather and brass is springy.
+ */
+.control {
+  transition:
+    box-shadow var(--motion-state) var(--ease-exit),
+    filter var(--motion-state) var(--ease-exit),
+    translate var(--motion-state) var(--ease-exit);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.10),
+    0 2px 3px rgba(0, 0, 0, 0.34),
+    0 10px 22px -10px rgba(0, 0, 0, 0.55);
+}
+
+.control:active:not(:disabled) {
+  translate: 0 1px;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.42),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Primary is brass over leather: the metal states that this is the live one. */
+.control-primary {
+  background: linear-gradient(180deg, #c8a55c 0%, var(--color-accent) 46%, #96793c 100%);
+}
+
+.control-secondary {
+  background: linear-gradient(180deg, #1a2720 0%, var(--color-surface) 42%, #0f1813 100%);
+}
+
+.control-danger {
+  background: linear-gradient(180deg, #b05a66 0%, var(--color-danger) 46%, #7e3a44 100%);
+}
+
+/*
+ * ===========================================================================
+ * THE SHELF — bottom navigation
+ * ===========================================================================
+ *
+ * Not an app toolbar. The near edge of the table: the piece the room is built
+ * on, which is why it is the heaviest furniture on screen and why the light
+ * catches its top edge hardest.
+ */
+.shelf {
+  background: linear-gradient(180deg, #16211b 0%, #0d1410 55%, #070c09 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.09),
+    0 -12px 30px -12px rgba(0, 0, 0, 0.8);
+}

@@ -195,7 +195,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         is decoration; the real close paths are Escape, the button, and this tap.
       */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-[fade-in_160ms_ease-out]"
+        className="absolute inset-0 bg-black/72 backdrop-blur-[3px] animate-[fade-in_160ms_ease-out]"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -208,9 +208,9 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         tabIndex={-1}
         className="
           relative w-full sm:max-w-md
-          bg-surface border-t sm:border border-line
+          furniture furniture-raised
           rounded-t-3xl sm:rounded-3xl
-          shadow-2xl outline-none
+          outline-none
           max-h-[90vh] flex flex-col
           animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
           sm:animate-[fade-in_160ms_ease-out]

@@ -2005,7 +2005,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     to be discoverable somewhere or players can't value their
                     stack. Only shown when it isn't the trivial 1:1. */}
                 {(club.enableDevaluation ?? false) && (club.devaluationFactor ?? 1) > 1 && (
-                  <span className="px-2 py-0.5 bg-surface border border-line text-text-muted font-mono text-[10px] rounded-lg">
+                  <span className="px-2 py-0.5 furniture text-text-muted font-mono text-[10px] rounded-lg">
                     {club.devaluationFactor} Chips = ₹1
                   </span>
                 )}
@@ -2122,7 +2122,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <div className="space-y-6">
                 {!sessionLoaded ? (
                   <div
-                    className="p-8 bg-surface border border-line rounded-3xl space-y-4 shadow-xl animate-pulse"
+                    className="p-8 furniture rounded-3xl space-y-4 animate-pulse"
                     aria-busy="true"
                     aria-label="Loading table"
                   >
@@ -2132,7 +2132,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <div className="h-10 w-40 bg-surface-alt rounded-2xl mx-auto mt-2" />
                   </div>
                 ) : !activeSession ? (
-                  <div className="p-8 bg-surface border border-line rounded-3xl text-center space-y-4 shadow-xl">
+                  <div className="p-8 furniture rounded-3xl text-center space-y-4">
                     <Clock className="w-12 h-12 text-text-muted mx-auto opacity-60" />
                     <h3 className="text-lg font-bold text-text uppercase tracking-wide">
                       No Active Poker Session
@@ -2173,7 +2173,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <ActionQueue items={actionQueue} formatAmount={formatVal} />
 
                     {/* Active Session Card Header */}
-                    <div className="bg-surface border border-line p-6 rounded-3xl space-y-6 shadow-xl">
+                    <div className="furniture p-6 rounded-3xl space-y-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
                         {/*
                           Was a pulsing "● SESSION ACTIVE" pill above the session
@@ -2374,7 +2374,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     </div>
 
                     {/* Integrated Buy-ins Dashboard (ONLY SHOWN WHEN SESSION IS ACTIVE) */}
-                    <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
+                    <div className="furniture p-6 rounded-3xl space-y-4">
                       <div className="flex items-center justify-between border-b border-line pb-3">
                         <div>
                           <h2 className="text-base font-bold text-text flex items-center gap-2">
@@ -2549,7 +2549,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         const isExpanded = expandedSessionId === session.id;
 
                         return (
-                          <div key={session.id} className="bg-surface border border-line/70 rounded-2xl overflow-hidden transition-all shadow-md">
+                          <div key={session.id} className="furniture/70 rounded-2xl overflow-hidden transition-all shadow-md">
                             {/* Card Header */}
                             <div
                               onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
@@ -2661,7 +2661,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* PENDING APPROVALS SCREEN (ADMIN ONLY) */}
             {activeTab === 'pendingApprovals' && isAdmin && (
               <div className="space-y-6">
-                <div className="bg-surface border border-line p-6 rounded-3xl space-y-6 shadow-xl">
+                <div className="furniture p-6 rounded-3xl space-y-6">
                   <div className="border-b border-line pb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="text-lg font-black text-accent uppercase flex items-center gap-2">
@@ -2837,7 +2837,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* AUDIT TRAIL & SYSTEM LOGS (OWNER & SUPER USER ONLY) */}
             {activeTab === 'auditTrail' && (isOwner || isSuperUser) && (
               <div className="space-y-6">
-                <div className="bg-surface border border-line p-6 rounded-3xl space-y-6 shadow-xl">
+                <div className="furniture p-6 rounded-3xl space-y-6">
                   <div className="border-b border-line pb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="text-lg font-black text-text uppercase flex items-center gap-2">
@@ -2921,7 +2921,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* LEADERBOARD & HISTORICAL PAPER RECORDS */}
             {activeTab === 'leaderboard' && canSeeLeaderboard && (
               <div className="space-y-6">
-                <div className="bg-surface border border-line p-6 md:p-8 rounded-3xl space-y-6 shadow-xl">
+                <div className="furniture p-6 md:p-8 rounded-3xl space-y-6">
                   
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
                     <div>
@@ -3009,7 +3009,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* TAB: CLUB POT LEDGER (ADMIN ONLY) */}
             {activeTab === 'pot' && isAdmin && club.potEnabled && (
               <div className="space-y-6">
-                <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
+                <div className="furniture p-6 rounded-3xl space-y-4">
                   <div className="border-b border-line pb-3">
                     <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
                       <Coins className="w-5 h-5 text-accent" /> Club Pot Ledger & Transactions (Admin Only)
@@ -3059,7 +3059,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             onClick={() => setShowBuyInModal(false)}
           >
             <div
-              className="bg-surface border border-line w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl"
+              className="furniture w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
@@ -3167,7 +3167,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         >
           <form
             onSubmit={(e) => createPastSessionAction.run(e)}
-            className="bg-surface border border-line w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto"
+            className="furniture w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 border-b border-line/60 flex items-center justify-between sticky top-0 bg-surface rounded-t-3xl">
@@ -3428,7 +3428,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           onClick={() => setShowStandUpModal(false)}
         >
           <div
-            className="bg-surface border border-line w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl"
+            className="furniture w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="border-b border-line px-5 py-4 flex items-center justify-between">
@@ -3490,7 +3490,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* MODAL: CASHOUT & END-OF-SESSION SETTLEMENT (ADMIN ONLY) */}
       {showCashoutModal && isAdmin && activeSession && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-surface border border-line w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl">
+          <div className="furniture w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
             <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
               <div>
                 <h3 className="text-sm font-black text-accent uppercase tracking-wider flex items-center gap-2">
@@ -3547,7 +3547,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             min={0}
                             value={buyInInputs[uid] ?? ''}
                             onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
-                            className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                            className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
                           />
                         </div>
                         <div className="space-y-1">
@@ -3576,7 +3576,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               value={cashOutInputs[uid] ?? ''}
                               onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
                               placeholder="Enter cash-out"
-                              className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                              className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
                             />
                           )}
                         </div>
@@ -3671,7 +3671,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* MODAL: CLUB RULES & INFO */}
       {showClubInfoModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-surface border border-line w-full sm:max-w-sm max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl">
+          <div className="furniture w-full sm:max-w-sm max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
             <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
               <h3 className="text-sm font-black text-accent uppercase tracking-wider flex items-center gap-2">
                 <Info className="w-4 h-4" /> Club Rules & Info
@@ -3742,7 +3742,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* MODAL 2: CLUB SETTINGS & DEVALUATION RATIO (ADMIN ONLY) */}
       {showSettingsModal && isAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-line w-full max-w-lg p-6 rounded-3xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+          <div className="furniture w-full max-w-lg p-6 rounded-3xl space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
                 <Settings className="w-5 h-5 text-accent" /> Club Rules & Devaluation Settings
@@ -3843,7 +3843,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       <select
                         value={editRakeMethod}
                         onChange={(e) => setEditRakeMethod(e.target.value as RakeMethod)}
-                        className="w-full bg-surface border border-line rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
                       >
                         <option value="PERCENT_PROFIT">% of Winner's Profit</option>
                         <option value="PERCENT_CASHOUT">% of Cashout</option>
@@ -3861,7 +3861,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         min={0}
                         value={editRakeValue}
                         onChange={(e) => setEditRakeValue(Number(e.target.value))}
-                        className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-xs font-mono font-bold text-warning focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-warning focus:border-accent outline-none"
                       />
                     </div>
                     <div className="space-y-1 col-span-2">
@@ -3869,7 +3869,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       <select
                         value={editRakeOrder}
                         onChange={(e) => setEditRakeOrder(e.target.value as RakeOrder)}
-                        className="w-full bg-surface border border-line rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
                       >
                         <option value="MISMATCH_FIRST">Resolve mismatch first, then rake</option>
                         <option value="RAKE_FIRST">Rake first, then resolve mismatch</option>
@@ -3895,7 +3895,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   <select
                     value={editMismatchStrategy}
                     onChange={(e) => setEditMismatchStrategy(e.target.value as MismatchStrategy)}
-                    className="w-full bg-surface border border-line rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
                   >
                     <option value="PROPORTIONAL_WINNERS">Deduct from winners proportionally to profit</option>
                     <option value="EQUAL_WINNERS">Deduct equally from winners</option>
@@ -3916,7 +3916,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <select
                       value={editWinnerDefinition}
                       onChange={(e) => setEditWinnerDefinition(e.target.value as WinnerDefinition)}
-                      className="w-full bg-surface border border-line rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                      className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
                     >
                       <option value="PROFIT_POSITIVE">Profit greater than zero</option>
                       <option value="TOP_N">Top N finishers</option>
@@ -3932,7 +3932,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         min={1}
                         value={editWinnerTopN}
                         onChange={(e) => setEditWinnerTopN(Math.max(1, Number(e.target.value)))}
-                        className="w-full bg-surface border border-line rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
                       />
                     </div>
                   )}
@@ -3943,7 +3943,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   <select
                     value={editRoundingRule}
                     onChange={(e) => setEditRoundingRule(e.target.value as RoundingRule)}
-                    className="w-full bg-surface border border-line rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
                   >
                     <option value="NONE">No rounding (nearest point)</option>
                     <option value="NEAREST_1">Round to nearest ₹1</option>
@@ -3984,13 +3984,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         max={100}
                         value={editDevaluationFactor}
                         onChange={(e) => setEditDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 bg-surface border border-line rounded-lg px-2.5 py-1.5 text-xs text-accent font-mono font-bold outline-none focus:border-accent"
+                        className="w-20 furniture rounded-lg px-2.5 py-1.5 text-xs text-accent font-mono font-bold outline-none focus:border-accent"
                       />
                       <span className="text-xs text-text font-mono font-bold">
                         Chips = ₹1 Cash
                       </span>
                     </div>
-                    <div className="text-[11px] text-accent font-mono font-bold bg-surface border border-line px-3 py-1 rounded-lg w-full">
+                    <div className="text-[11px] text-accent font-mono font-bold furniture px-3 py-1 rounded-lg w-full">
                       Preview: 1,000 Chips = ₹{Math.round(1000 / (editDevaluationFactor || 1))} INR Real Cash Bank
                     </div>
                   </div>
@@ -4037,7 +4037,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       const isThisAdmin = club.adminUids?.includes(mUid) || isThisOwner;
 
                       return (
-                        <div key={mUid} className="p-2.5 bg-surface border border-line rounded-xl flex items-center justify-between flex-wrap gap-y-2 text-xs">
+                        <div key={mUid} className="p-2.5 furniture rounded-xl flex items-center justify-between flex-wrap gap-y-2 text-xs">
                           <div className="flex items-center gap-2 flex-wrap">
                             <div className="w-6 h-6 rounded-full bg-bg text-accent text-[10px] font-bold flex items-center justify-center border border-line">
                               {mUid === currentUser.uid ? 'Me' : (allUsers[mUid]?.displayName ? allUsers[mUid].displayName[0].toUpperCase() : 'M')}
@@ -4117,7 +4117,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* MODAL 3: EDIT HISTORICAL SESSION */}
       {showEditSessionModal && editingSession && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-surface border border-line w-full max-w-xl p-6 rounded-3xl shadow-2xl space-y-5 my-8">
+          <div className="furniture w-full max-w-xl p-6 rounded-3xl space-y-5 my-8">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
                 <FileEdit className="w-5 h-5 text-accent" /> Edit Session ({editingSession.dayTitle})
@@ -4171,7 +4171,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   {editPlayerStats.map((p, idx) => {
                     const profit = (Number(p.cashOut) || 0) - (Number(p.buyIn) || 0);
                     return (
-                      <div key={idx} className="p-3 bg-surface border border-line rounded-xl space-y-2">
+                      <div key={idx} className="p-3 furniture rounded-xl space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <input
                             type="text"
@@ -4422,7 +4422,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             onClick={() => setMobileFabOpen(false)}
           >
             <div 
-              className="bg-surface border border-line rounded-3xl p-5 space-y-3 shadow-2xl mb-16"
+              className="furniture rounded-3xl p-5 space-y-3 mb-16"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-line pb-3">
@@ -4542,7 +4542,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         )}
 
         {/* Sticky Bottom Navigation Bar */}
-          <nav className="fixed bottom-0 left-0 right-0 z-40 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
+          <nav className="fixed bottom-0 left-0 right-0 z-40 shelf py-2 px-1 flex items-center">
             {navItems.map(item => {
               const isSelected = !item.isAction && activeTab === item.key;
               return (
@@ -4574,7 +4574,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       {/* QUICK LINK PLAYER TO REGISTERED MEMBER MODAL */}
       {showLinkModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-surface border border-line w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-5">
+          <div className="furniture w-full max-w-md p-6 rounded-3xl space-y-5">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
                 <LinkIcon className="w-5 h-5 text-accent" /> Link Player to Member
@@ -4618,7 +4618,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowLinkModal(false)}
-                  className="flex-1 py-2.5 bg-bg hover:bg-surface border border-line text-text-muted font-bold rounded-xl text-xs uppercase"
+                  className="flex-1 py-2.5 bg-bg hover:furniture text-text-muted font-bold rounded-xl text-xs uppercase"
                 >
                   Cancel
                 </button>
