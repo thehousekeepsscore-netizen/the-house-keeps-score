@@ -62,6 +62,7 @@ function renderScreen(over: Partial<LiveSessionProps> = {}, buyIns: BuyInRequest
     isAdmin: true,
     users: { host: { displayName: 'Rahul' }, priya: { displayName: 'Priya' }, arjun: { displayName: 'Arjun' } },
     connection: 'live',
+    formatAmount: (n: number) => n.toLocaleString(),
     onStartSession: vi.fn(),
     onSelectPlayer: vi.fn(),
     ...over,

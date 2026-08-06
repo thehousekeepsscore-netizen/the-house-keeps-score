@@ -74,8 +74,16 @@ describe('adapts from 2 to 9 without overlapping', () => {
     //
     // Past nine matters because nothing in the data caps a table at nine: the
     // seat shrinks and says less rather than the ring developing a cliff.
-    const radiusFor = (n: number) =>
-      n <= 4 ? 82 : n <= 6 ? 86 : n <= 9 ? 112 : 120;
+    // Mirrors felt() and perimeter() in the component: a stadium, so the gap
+    // between neighbours is the perimeter divided by the count — identical
+    // wherever they sit, which is the point of walking by arc length.
+    const feltFor = (n: number) =>
+      n <= 2 ? { w: 38, r: 64 } : n <= 4 ? { w: 46, r: 62 }
+        : n <= 6 ? { w: 54, r: 62 } : n <= 9 ? { w: 64, r: 62 } : { w: 72, r: 58 };
+    const gapFor = (n: number) => {
+      const { w, r } = feltFor(n);
+      return (4 * w + 2 * Math.PI * r) / n;
+    };
 
     for (const n of [5, 7, 9, 11, 14, 20]) {
       document.body.innerHTML = '';
@@ -83,10 +91,10 @@ describe('adapts from 2 to 9 without overlapping', () => {
       table({ activePlayerUids: uids }, uids.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) })));
 
       const box = screen.getAllByRole('button')[0] as HTMLElement;
-      // minHeight carries the 44px touch floor, so measure the drawn box.
-      const drawn = parseFloat(box.style.minHeight);
-      const arc = (2 * Math.PI * radiusFor(n)) / n;
-      expect(arc).toBeGreaterThanOrEqual(Math.min(drawn, arc));
+      const width = parseFloat(box.style.width);
+      // Neighbours are one gap apart in every direction on a stadium, so the
+      // box must fit inside it — this is the non-overlap guarantee, measured.
+      expect(width).toBeLessThanOrEqual(gapFor(n));
       expect(screen.getAllByRole('button')).toHaveLength(n);
       document.body.innerHTML = '';
     }

@@ -2110,6 +2110,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 users={allUsers}
                 connection={connection}
                 onStartSession={handleStartSession}
+                formatAmount={formatUnit}
                 onSelectPlayer={() => {
                   /* the player sheet lands in the next milestone */
                 }}

@@ -38,6 +38,13 @@ export interface LiveSessionProps {
   connection: 'live' | 'reconnecting' | 'offline';
   onStartSession: () => void;
   onSelectPlayer: (userId: string) => void;
+  /**
+   * The club's own formatter. Threaded in rather than written here, because
+   * the club decides whether a figure is chips or rupees — a club with
+   * devaluation on values several chips at ₹1, so a hardcoded ₹ on the felt
+   * would be stating something false about money.
+   */
+  formatAmount: (n: number) => string;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -73,6 +80,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   connection,
   onStartSession,
   onSelectPlayer,
+  formatAmount,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
 
@@ -94,6 +102,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           currentUserId={currentUserId}
           isAdmin={isAdmin}
           onSelectPlayer={onSelectPlayer}
+          formatAmount={formatAmount}
         />
       </div>
 
@@ -191,7 +200,8 @@ const Stage: React.FC<{
   currentUserId: string;
   isAdmin: boolean;
   onSelectPlayer: (userId: string) => void;
-}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer }) => {
+  formatAmount: (n: number) => string;
+}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount }) => {
   switch (night.phase) {
     case 'dark':
       return <Dark isAdmin={isAdmin} />;
@@ -204,6 +214,7 @@ const Stage: React.FC<{
           currentUserId={currentUserId}
           isAdmin={isAdmin}
           onSelectPlayer={onSelectPlayer}
+          formatAmount={formatAmount}
         />
       );
     case 'ready':
@@ -234,9 +245,7 @@ const Stage: React.FC<{
   }
 };
 
-/** Plain grouping, no currency symbol — the club's own devaluation settings
- *  make "chips" and "rupees" different things, and the felt shows chips. */
-const formatAmount = (n: number) => n.toLocaleString();
+
 
 const Dark: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => (
   <section className="px-5 py-10 text-center">
@@ -262,7 +271,8 @@ const Opening: React.FC<{
   currentUserId: string;
   isAdmin: boolean;
   onSelectPlayer: (userId: string) => void;
-}> = ({ club, night, users, currentUserId, isAdmin, onSelectPlayer }) => {
+  formatAmount: (n: number) => string;
+}> = ({ club, night, users, currentUserId, isAdmin, onSelectPlayer, formatAmount }) => {
   // Seats, not a boolean. Requests arrive during the arrival phase too — a
   // player opens the app and asks for chips while the host is still banking
   // people — and "at the table" would hide the fact that someone is waiting.

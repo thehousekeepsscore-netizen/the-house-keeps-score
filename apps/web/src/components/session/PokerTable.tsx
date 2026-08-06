@@ -6,25 +6,28 @@ import { seatCaption, seatSentence } from '../../lib/seat-vocabulary';
 /**
  * The felt.
  *
- * It is present for the whole of an active session and never disappears. It
- * does not summarise the night — it *is* the night, and it changes as the night
- * does: full strength while people play, one seat asking for attention when
- * someone is waiting, seats fading to past tense as people are counted out.
+ * Present for the whole of an active session and never disappearing. It does
+ * not summarise the night — it *is* the night, and it changes as the night
+ * does: full strength while people play, one seat asking when someone is
+ * waiting, seats fading to past tense as people are counted out.
  *
- * Two rules it must not break, and they are the same rule:
+ * Three rules it must not break:
  *
  *   A seat never moves because someone else left. Order is fixed for the night
- *   by arrival (see night-state.ts) and cashed-out players keep their chair, so
- *   the ring never reflows — including during the ten minutes when everyone is
- *   leaving at once, which is exactly when a moving control would be worst.
+ *   by arrival (night-state.ts) and cashed-out players keep their chair, so the
+ *   ring never reflows — including during the ten minutes when everyone leaves
+ *   at once, which is when a moving control is worst (PRODUCT-BRIEF §2.5).
  *
- *   Players never overlap. Spacing is computed from the seat count and each
- *   seat's box is clamped to it, so non-overlap is a property of the geometry
- *   rather than something that happens to hold at the counts we tried.
+ *   Players never overlap, at any count. Seat size is derived from the space
+ *   between neighbours, so adding a player shrinks the table rather than
+ *   colliding it.
  *
- * The viewer always sits bottom-centre. That is a frame of reference, not a
- * claim about the room — the felt carries no seat numbers and never says
- * "seat 3", so there is nothing to misread as physical position.
+ *   Nothing on it is decoration that looks like data. Every mark a seat carries
+ *   is bound to a state the app actually knows.
+ *
+ * The viewer always sits bottom-centre. A frame of reference, not a claim about
+ * the room — there are no seat numbers, so there is nothing to misread as
+ * physical position.
  */
 
 export interface PokerTableProps {
@@ -32,77 +35,103 @@ export interface PokerTableProps {
   currentUserId: string;
   users: Record<string, { displayName?: string; avatarUrl?: string } | undefined>;
   onSelectPlayer: (userId: string) => void;
+  /** The club's own formatter — respects the chips/₹ toggle and devaluation. */
   formatAmount: (n: number) => string;
 }
 
 /**
- * Seat radii, and how much of a seat there is room to draw.
+ * A racetrack, not an ellipse.
  *
- * Seats sit ON the rim, the way people sit at a table, so the felt is very
- * slightly smaller than the ring. Sizing the felt independently of the seats
- * was the first version and it looked like three people standing near a table
- * rather than around one.
+ * A real poker table is a stadium: two straight edges with a round cap at each
+ * end, and it is shaped that way because it seats people evenly. An ellipse
+ * bunches them at the ends — which is why nine players on one needed a circle
+ * to stop labels colliding, and why a circle then wasted the width of the phone.
  *
- * rx is bounded by the 320px container; ry is free below nine because the
- * ellipse is what makes a small game feel intimate. At nine and above it
- * becomes a circle, because equal angles map to the shortest arc at the
- * major-axis ends — which is exactly where labels collided.
+ * `w` is half the straight run, `r` the cap radius. Both are bounded so that
+ * w + r + half an avatar stays inside the 320px container.
  */
-function radii(count: number) {
-  if (count <= 2) return { rx: 0, ry: 76, feltRx: 74, feltRy: 68 };
-  if (count <= 4) return { rx: 92, ry: 82, feltRx: 90, feltRy: 74 };
-  if (count <= 6) return { rx: 108, ry: 86, feltRx: 106, feltRy: 78 };
-  if (count <= 9) return { rx: 112, ry: 112, feltRx: 106, feltRy: 106 };
-  return { rx: 120, ry: 120, feltRx: 112, feltRy: 112 };
+function felt(count: number) {
+  if (count <= 2) return { w: 38, r: 64 };
+  if (count <= 4) return { w: 46, r: 62 };
+  if (count <= 6) return { w: 54, r: 62 };
+  if (count <= 9) return { w: 64, r: 62 };
+  return { w: 72, r: 58 };
+}
+
+/** Perimeter of the stadium: two straight runs plus one full circle of caps. */
+const perimeter = (w: number, r: number) => 4 * w + 2 * Math.PI * r;
+
+/**
+ * Seat i, walked by ARC LENGTH from bottom-centre — so the gap between any two
+ * neighbours is identical wherever they sit. Walking by angle instead would put
+ * three players comfortably along the top and crush four into each cap.
+ */
+function position(i: number, count: number, w: number, r: number) {
+  const p = perimeter(w, r);
+  let t = (i * p) / count;
+
+  // 1. bottom edge, centre → right
+  if (t < w) return { x: t, y: r };
+  t -= w;
+  // 2. right cap, bottom → top
+  if (t < Math.PI * r) {
+    const a = Math.PI / 2 - t / r;
+    return { x: w + r * Math.cos(a), y: r * Math.sin(a) };
+  }
+  t -= Math.PI * r;
+  // 3. top edge, right → left
+  if (t < 2 * w) return { x: w - t, y: -r };
+  t -= 2 * w;
+  // 4. left cap, top → bottom
+  if (t < Math.PI * r) {
+    const a = -Math.PI / 2 - t / r;
+    return { x: -w + r * Math.cos(a), y: r * Math.sin(a) };
+  }
+  t -= Math.PI * r;
+  // 5. bottom edge, left → centre
+  return { x: -w + t, y: r };
 }
 
 /**
  * How much a seat says, by how much room it has.
  *
- * A physical table seats ten or eleven, but nothing in the data stops a club
- * running more, so the ring must not have a cliff at nine. Rather than a fixed
- * size per tier, the avatar is derived from the arc between neighbours — so
- * adding a player shrinks the table instead of overlapping it, at any count.
- *
- *   full     name and what they are doing
- *   name     name only; the caption moves into the sheet behind the seat
- *   avatar   the face alone — at this density a label is unreadable anyway
+ * A physical table seats ten or eleven, but nothing in the data caps a club
+ * there, so the ring must not have a cliff. Size comes from the gap between
+ * neighbours rather than from a fixed tier.
  */
 type Detail = 'full' | 'name' | 'avatar';
+const LABEL_HEIGHT: Record<Detail, number> = { full: 32, name: 18, avatar: 0 };
 
-const LABEL_HEIGHT: Record<Detail, number> = { full: 31, name: 18, avatar: 0 };
-
-function seatMetrics(count: number, rx: number, ry: number) {
-  const spacing = count > 1 ? (2 * Math.PI * Math.min(rx || ry, ry)) / count : 200;
+function seatMetrics(count: number, w: number, r: number) {
+  const spacing = count > 1 ? perimeter(w, r) / count : 200;
   const detail: Detail = count <= 9 ? 'full' : count <= 14 ? 'name' : 'avatar';
   const labelHeight = LABEL_HEIGHT[detail];
+  const cap = count <= 4 ? 56 : count <= 6 ? 50 : 44;
 
-  // The floor is 24px. Below roughly twenty-five players a 320px ring cannot
-  // hold another face without them touching, and no arrangement of one ring
-  // can — that is a property of the phone, not of the layout. It degrades
-  // rather than breaking, and a table that large is far past a real one.
-  const cap = count <= 4 ? 56 : count <= 6 ? 48 : 40;
+  // Floor of 24px. Past roughly thirty players a 320px table cannot hold
+  // another face without them touching — a property of the phone, not of the
+  // layout. It degrades rather than breaking, and is far past a real table.
   const size = Math.round(Math.max(24, Math.min(cap, spacing - labelHeight - 6)));
-
   return { spacing, detail, size, boxHeight: size + labelHeight };
 }
 
-/** Seat i, clockwise from bottom-centre where the viewer sits. */
-function position(i: number, count: number, rx: number, ry: number) {
-  const angle = Math.PI / 2 + (i * 2 * Math.PI) / count;
-  return { x: Math.cos(angle) * rx, y: Math.sin(angle) * ry };
-}
-
 /**
- * Ring treatment per state — always paired with a word, never colour alone.
- * A dim room at an angle is the situation this app is used in.
+ * The one mark that carries seat state, and it is bound to something real.
+ *
+ * The gold rim is brand and belongs to every seat; the dot is the state. A dot
+ * that meant "online" would be decoration dressed as data — this app has no
+ * per-player presence in an offline session, so a green dot on everyone would
+ * be asserting something it cannot know.
+ *
+ * Never colour alone: each dot is paired with the caption underneath, and with
+ * the seat's accessible name.
  */
-const RING: Record<Seat['state'], string> = {
-  inPlay: 'border-2 border-solid border-line-strong',
-  seatedNoChips: 'border-2 border-dashed border-line',
-  waitingToSit: 'border-2 border-dashed border-warning',
-  countingOut: 'border-2 border-solid border-warning',
-  cashedOut: 'border-2 border-solid border-line/60',
+const DOT: Record<Seat['state'], string> = {
+  inPlay: 'bg-success',
+  seatedNoChips: 'bg-line-strong',
+  waitingToSit: 'bg-warning',
+  countingOut: 'bg-warning',
+  cashedOut: 'bg-line-strong',
 };
 
 export const PokerTable: React.FC<PokerTableProps> = ({
@@ -116,49 +145,65 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   const count = Math.max(seats.length, 1);
 
   // The viewer sits at the bottom; everyone else keeps their arrival order
-  // relative to them. Rotating the array rather than re-sorting it means the
-  // ring is stable even though the starting point is personal.
+  // relative to them. Rotating rather than re-sorting keeps the ring stable
+  // even though the starting point is personal.
   const mineAt = seats.findIndex((s) => s.userId === currentUserId);
   const ordered = mineAt > 0 ? [...seats.slice(mineAt), ...seats.slice(0, mineAt)] : seats;
 
-  const { rx, ry, feltRx, feltRy } = radii(count);
-  const { spacing, detail, size, boxHeight } = seatMetrics(count, rx, ry);
-
-  // Non-overlap by construction, in BOTH axes.
-  //
-  // The first version clamped width only, which is the axis that looks like the
-  // problem. It is not: near the left and right extremes of the ellipse the arc
-  // runs vertically, so at nine players a seat's caption landed under its
-  // neighbour's chip while the boxes were comfortably narrow.
+  const { w, r } = felt(count);
+  const { spacing, detail, size, boxHeight } = seatMetrics(count, w, r);
   const boxWidth = Math.max(size, Math.min(96, spacing - 6));
+  const quiet = night.phase === 'windingDown';
 
   return (
     <div
       className="relative mx-auto"
-      style={{ width: 320, height: 2 * ry + size + 34 }}
+      style={{ width: 320, height: 2 * r + boxHeight + 16 }}
       role="group"
       aria-label={`${seats.length} at the table`}
     >
-      {/* The felt. Money in the middle, where the space is empty anyway — the
-          one figure on this screen that costs no vertical room. */}
+      {/* Rail — the dark band a real table has around its felt. Seats sit ON
+          it, which is what makes them look seated rather than nearby. */}
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-surface-alt border border-line flex flex-col items-center justify-center transition-[filter] duration-200"
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
-          width: 2 * feltRx,
-          height: 2 * feltRy,
-          filter: night.phase === 'windingDown' ? 'saturate(0.6)' : undefined,
+          width: 2 * (w + r),
+          height: 2 * r,
+          background: 'linear-gradient(160deg, #2a2318, #14100a 60%, #0d0b07)',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(212,175,55,0.10)',
+        }}
+      />
+
+      {/* Felt. A radial lift in the middle so it reads as a surface under a
+          light rather than a flat shape, and a gold hairline at the rail. */}
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex flex-col items-center justify-center transition-[filter] duration-200"
+        style={{
+          width: 2 * (w + r) - 22,
+          height: 2 * r - 22,
+          background:
+            'radial-gradient(ellipse at 50% 42%, #1b5138 0%, #123a27 55%, #0d2a1c 100%)',
+          border: '1px solid rgba(212,175,55,0.45)',
+          boxShadow: 'inset 0 8px 24px rgba(0,0,0,0.45)',
+          filter: quiet ? 'saturate(0.55) brightness(0.92)' : undefined,
         }}
       >
-        <span className="text-[10px] uppercase tracking-widest text-text-muted">In play</span>
-        <span className="text-lg font-bold text-text tabular-nums">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-white/45">In play</span>
+        <span className="text-xl font-bold text-white tabular-nums leading-tight">
           {formatAmount(night.chipsInPlay)}
         </span>
       </div>
 
       {ordered.map((seat, i) => {
-        const { x, y } = position(i, count, rx, ry);
+        const { x, y } = position(i, count, w, r);
+        // Seats on the top run put their label ABOVE the avatar, so it reads
+        // against the page rather than across the lit centre of the felt.
+        // Everywhere else the outward direction is already downward or
+        // sideways, and below is correct.
+        const labelAbove = y < -r * 0.7;
         const realName = users[seat.userId]?.displayName || 'Player';
-        const name = seat.userId === currentUserId ? 'You' : realName;
+        const isMe = seat.userId === currentUserId;
+        const name = isMe ? 'You' : realName;
         const dim =
           seat.state === 'cashedOut' ? 'gone' : seat.state === 'countingOut' ? 'leaving' : 'here';
 
@@ -168,44 +213,60 @@ export const PokerTable: React.FC<PokerTableProps> = ({
             type="button"
             onClick={() => onSelectPlayer(seat.userId)}
             aria-label={`${name}, ${seatSentence(seat, formatAmount)}`}
-            // No -translate-* utilities here: in Tailwind v4 they compile to the
-            // `translate` property, which composes on top of `transform` rather
-            // than replacing it — so a seat would be shifted half its own box
-            // twice and the whole ring would sit up and to the left of the felt.
-            // The centring is done inside the inline transform instead.
-            className="absolute left-1/2 top-1/2 flex flex-col items-center gap-1 rounded-2xl active:opacity-70 transition-opacity duration-[120ms]"
+            // No -translate-* utilities: in Tailwind v4 they compile to the
+            // `translate` property, which composes on top of `transform`
+            // instead of replacing it — every seat would be shifted half its
+            // own box twice and the ring would sit off the felt.
+            className={`absolute left-1/2 top-1/2 flex items-center rounded-2xl active:opacity-70 transition-opacity duration-[120ms] ${
+              labelAbove ? 'flex-col-reverse' : 'flex-col'
+            }`}
             style={{
               transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
               width: boxWidth,
-              // The circle shrinks at nine players; the target never goes below
-              // the 44px minimum, so it extends past the avatar instead.
               minHeight: Math.max(44, boxHeight),
             }}
           >
-            <span
-              className={`rounded-full ${RING[seat.state]} ${
-                seat.state === 'waitingToSit' || seat.pendingBuyIn !== null
-                  ? 'animate-[seat-wait_2s_ease-in-out_infinite]'
-                  : ''
-              }`}
-            >
-              <PlayerAvatar
-                userId={seat.userId}
-                name={realName}
-                photoUrl={users[seat.userId]?.avatarUrl}
-                size={size}
-                dim={dim}
+            <span className="relative block">
+              <span
+                className={`block rounded-full ring-2 ring-accent/70 ${
+                  seat.state === 'waitingToSit' || seat.pendingBuyIn !== null
+                    ? 'animate-[seat-wait_2s_ease-in-out_infinite]'
+                    : ''
+                }`}
+              >
+                <PlayerAvatar
+                  userId={seat.userId}
+                  name={realName}
+                  photoUrl={users[seat.userId]?.avatarUrl}
+                  size={size}
+                  dim={dim}
+                />
+              </span>
+
+              {/* State, as one mark. Paired with the caption below it. */}
+              <span
+                className={`absolute rounded-full ring-2 ring-bg ${DOT[seat.state]}`}
+                style={{ width: size * 0.24, height: size * 0.24, right: 0, bottom: 0 }}
+                aria-hidden="true"
               />
             </span>
+
             {detail !== 'avatar' && (
-              <span className="w-full text-center leading-tight">
+              <span className={`w-full text-center leading-tight ${labelAbove ? 'mb-1' : 'mt-1'}`}>
+                {isMe && (
+                  <span className="inline-block px-1.5 rounded-full bg-accent/20 text-accent text-[8px] font-bold tracking-wider">
+                    YOU
+                  </span>
+                )}
                 <span
-                  className={`block text-[11px] truncate ${dim === 'gone' ? 'text-text-muted' : 'text-text'}`}
+                  className={`block text-[11px] truncate ${
+                    dim === 'gone' ? 'text-text-muted' : 'text-text'
+                  }`}
                 >
                   {name}
                 </span>
                 {detail === 'full' && (
-                  <span className="block text-[10px] text-text-muted truncate tabular-nums">
+                  <span className="block text-[10px] text-accent/85 truncate tabular-nums">
                     {seatCaption(seat, formatAmount)}
                   </span>
                 )}
