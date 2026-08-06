@@ -50,27 +50,32 @@ export const TablePreview: React.FC = () => {
   const only = new URLSearchParams(window.location.search).get('only');
 
   const cases: [string, ReturnType<typeof scenario>][] = [
-    ['2 — a pair, not an empty ring', scenario(2)],
+    ['2', scenario(2)],
+    ['3', scenario(3)],
+    ['4', scenario(4)],
     ['5', scenario(5)],
-    ['9 — labels narrow, targets do not', scenario(9)],
-    ['12 — the caption steps aside', scenario(12)],
-    ['18 — faces only; the seat still opens', scenario(18)],
-    ['pending buy-in — the seat asks', scenario(5, {}, [pending('u2', 3000)])],
+    ['6', scenario(6)],
+    ['8', scenario(8)],
+    ['9', scenario(9)],
+    ['12', scenario(12)],
+    ['13', scenario(13)],
+    ['18', scenario(18)],
+    ['pending buy-in', scenario(6, {}, [pending('u2', 3000)])],
     [
       'pending cash-out',
-      scenario(5, { cashOuts: [{ userId: 'u3', amount: 8200, status: 'pending', requestedAt: at(1) }] }),
+      scenario(6, { cashOuts: [{ userId: 'u3', amount: 8200, status: 'pending', requestedAt: at(1) }] }),
     ],
     [
-      'counted out — faded, and still in its chair',
-      scenario(5, {
-        activePlayerUids: ['u0', 'u1', 'u2', 'u4'],
+      'counted out',
+      scenario(6, {
+        activePlayerUids: ['u0', 'u1', 'u2', 'u4', 'u5'],
         cashOuts: [{ userId: 'u3', amount: 8200, status: 'confirmed', requestedAt: at(9) }],
       }),
     ],
-    ['seated, no chips yet — nobody has bought in', scenario(4, {}, [], false)],
+    ['seated, no chips yet', scenario(4, {}, [], false)],
   ];
 
-  const shown = only ? cases.filter(([t]) => t.startsWith(only)) : cases;
+  const shown = only ? cases.filter(([t]) => t === only || t.startsWith(only + ' ')) : cases;
 
   return (
     <div className="min-h-screen bg-bg text-text pb-16">
