@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AppUser as User } from '../lib/auth-types';
+import { DashboardTab, TAB_TO_PATH, PATH_TO_TAB } from '../lib/dashboard-tabs';
 import * as clubsApi from '../lib/clubs-api';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
@@ -50,6 +52,7 @@ const POLL_INTERVAL_MS = 15_000;
 export const CLUBS_KEY = 'clubs';
 export const JOIN_REQUESTS_KEY = 'clubs:join-requests';
 
+
 export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   currentUser,
   playerAvatarUrl,
@@ -59,7 +62,32 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 }) => {
   // rawClubs / requests / hasLoaded now come from the shared cache below, so
   // they survive this view being unmounted while a club is open (App.tsx:545).
-  const [activeTab, setActiveTab] = useState<'myClubs' | 'browse' | 'create' | 'requests' | 'superuser'>('myClubs');
+
+  /**
+   * The selected tab lives in the URL, not in state — the same treatment the
+   * club screen already gives its own tabs (ClubDetailView:216).
+   *
+   * Before this, browser Back on /browse or /create left the application
+   * entirely, because nothing here had ever added a history entry. The tabs
+   * were the last navigable surface in the app that the platform's own Back
+   * gesture could not participate in, which on a phone means the edge swipe —
+   * muscle memory — threw the user out of a club they were halfway through
+   * joining.
+   *
+   * setActiveTab keeps its name and signature deliberately: all twelve call
+   * sites below work unchanged, they just push a history entry now instead of
+   * mutating state.
+   */
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const activeTab = PATH_TO_TAB[location.pathname] ?? 'myClubs';
+
+  const setActiveTab = useCallback(
+    (next: DashboardTab, opts?: { replace?: boolean }) =>
+      navigate(TAB_TO_PATH[next], { replace: opts?.replace ?? false }),
+    [navigate]
+  );
   const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   // Create Club Form
@@ -188,7 +216,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       setNewClubDesc('');
       await refresh();
       setTimeout(() => {
-        setActiveTab('myClubs');
+        // replace, not push: the club exists now, so Back must not return to a
+        // filled-in form for a club that has already been created.
+        setActiveTab('myClubs', { replace: true });
         setFormSuccess('');
       }, 1500);
     } catch (err) {
