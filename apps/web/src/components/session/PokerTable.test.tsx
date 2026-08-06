@@ -81,18 +81,19 @@ describe('adapts from 2 to 9 without overlapping', () => {
     // ResizeObserver never fires and the table keeps its 360px default — which
     // is the phone case, and the one worth asserting.
     const feltFor = (n: number) => {
-      const sizeGuess = n <= 4 ? 56 : n <= 9 ? 44 : 34;
-      const total = Math.max(120, 360 / 2 - 6 - sizeGuess / 2);
-      const share = n <= 4 ? 0.6 : n <= 9 ? 0.48 : 0.42;
-      const r = Math.round(Math.min(88, Math.max(46, total * share)));
-      return { w: Math.round(total - r), r };
+      const boxGuess = n <= 6 ? 88 : n <= 14 ? 64 : 56;
+      const maxW = Math.max(120, 360 / 2 - 3 - boxGuess / 2);
+      const h = n <= 4 ? 92 : n <= 6 ? 106 : n <= 9 ? 126 : n <= 14 ? 146 : 158;
+      const wWanted = n <= 4 ? 120 : n <= 6 ? 140 : n <= 9 ? 158 : 170;
+      const w = Math.round(Math.min(maxW, wWanted));
+      return { w, h, r: Math.round(Math.min(w, h) * 0.74) };
     };
     const gapFor = (n: number) => {
-      const { w, r } = feltFor(n);
-      return (4 * w + 2 * Math.PI * r) / n;
+      const { w, h, r } = feltFor(n);
+      return (4 * (w - r) + 4 * (h - r) + 2 * Math.PI * r) / n;
     };
 
-    for (const n of [5, 7, 9, 11, 14, 20]) {
+    for (const n of [5, 7, 9, 11, 14, 18, 24]) {
       document.body.innerHTML = '';
       const uids = Array.from({ length: n }, (_, i) => `p${i + 1}`);
       table({ activePlayerUids: uids }, uids.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) })));
@@ -108,21 +109,22 @@ describe('adapts from 2 to 9 without overlapping', () => {
   });
 
   it('says less per seat as the table fills, rather than overlapping', () => {
-    // Ten and up drops the caption; fifteen and up leaves the face alone.
+    // Twenty-one and up drops the caption; twenty-nine and up leaves the face
+    // alone. Four straight runs carry names much further than two did.
     document.body.innerHTML = '';
     table({ activePlayerUids: ['p1', 'p2', 'p3'] }, ['p1', 'p2', 'p3'].map((u, i) => buyIn(u, 5000, { createdAt: ago(90 - i) })));
     expect(screen.getByText('Player 2')).toBeInTheDocument();
     expect(screen.getAllByText('5,000').length).toBeGreaterThan(0);
 
     document.body.innerHTML = '';
-    const twelve = Array.from({ length: 12 }, (_, i) => `p${i + 1}`);
-    table({ activePlayerUids: twelve }, twelve.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) })));
+    const twentyFour = Array.from({ length: 24 }, (_, i) => `p${i + 1}`);
+    table({ activePlayerUids: twentyFour }, twentyFour.map((u, i) => buyIn(u, 5000, { createdAt: ago(300 - i) })));
     expect(screen.getByText('Player 2')).toBeInTheDocument();
     expect(screen.queryAllByText('5,000')).toHaveLength(0);
 
     document.body.innerHTML = '';
-    const twenty = Array.from({ length: 20 }, (_, i) => `p${i + 1}`);
-    table({ activePlayerUids: twenty }, twenty.map((u, i) => buyIn(u, 5000, { createdAt: ago(300 - i) })));
+    const thirty = Array.from({ length: 30 }, (_, i) => `p${i + 1}`);
+    table({ activePlayerUids: thirty }, thirty.map((u, i) => buyIn(u, 5000, { createdAt: ago(400 - i) })));
     expect(screen.queryByText('Player 2')).not.toBeInTheDocument();
     // The seat still carries everything for a screen reader, and still opens.
     expect(seatNames()[1]).toMatch(/Player 2, in 5,000/);

@@ -45,6 +45,10 @@ const pending = (uid: string, amount: number): BuyInRequest => ({
 });
 
 export const TablePreview: React.FC = () => {
+  // ?only=18 renders a single case, for iterating on one count without
+  // scrolling past the others.
+  const only = new URLSearchParams(window.location.search).get('only');
+
   const cases: [string, ReturnType<typeof scenario>][] = [
     ['2 — a pair, not an empty ring', scenario(2)],
     ['5', scenario(5)],
@@ -66,9 +70,11 @@ export const TablePreview: React.FC = () => {
     ['seated, no chips yet — nobody has bought in', scenario(4, {}, [], false)],
   ];
 
+  const shown = only ? cases.filter(([t]) => t.startsWith(only)) : cases;
+
   return (
     <div className="min-h-screen bg-bg text-text pb-16">
-      {cases.map(([title, { night, users }]) => (
+      {shown.map(([title, { night, users }]) => (
         <section key={title} className="border-b border-line py-4">
           <h2 className="px-5 pb-2 text-xs uppercase tracking-widest text-text-muted">{title}</h2>
           <PokerTable

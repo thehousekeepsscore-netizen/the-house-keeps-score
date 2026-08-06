@@ -40,33 +40,96 @@ export interface PokerTableProps {
 }
 
 /**
- * A racetrack, not an ellipse.
+ * A rounded rectangle, seated on all four edges.
  *
- * A real poker table is a stadium: two straight edges with a round cap at each
- * end, and it is shaped that way because it seats people evenly. An ellipse
- * bunches them at the ends — which is why nine players on one needed a circle
- * to stop labels colliding, and why a circle then wasted the width of the phone.
+ * A horizontal racetrack was better than an ellipse and still wrong at high
+ * counts: it has only two long runs, so eighteen players crowd the two caps.
+ * A tall rounded rectangle has four — five across the top, four down each side,
+ * five across the bottom — which is how a real table seats a crowd, and it is
+ * what buys the room for eighteen names.
  *
- * `w` is half the straight run, `r` the cap radius. Both are bounded so that
- * w + r + half an avatar stays inside the 320px container.
+ * It costs height. The table now takes roughly half the screen, and the action
+ * queue moves into a sheet over it rather than a band above it. That was a
+ * deliberate trade: the felt is the emotional home of the screen, and a queue
+ * in a sheet at rest is still visible, so PRODUCT-BRIEF §6 still holds.
+ *
+ * `w`/`h` are half-width and half-height, `r` the corner radius.
  */
 function felt(count: number, available: number) {
-  // The table takes the width it is given. A fixed 320 threw away fifteen
-  // percent of a 375px phone, and at eighteen players that width is exactly
-  // what was missing — it is the difference between faces at 26px and 38px.
-  //
-  // Seats straddle the rim, so half an avatar hangs outside the table: the
-  // table itself gets what is left. sizeGuess breaks the circularity (size
-  // depends on spacing, which depends on the size the table can be) and the
-  // real size is computed from the result.
-  const sizeGuess = count <= 4 ? 56 : count <= 9 ? 44 : 34;
-  const total = Math.max(120, available / 2 - 6 - sizeGuess / 2);
+  // Seats straddle the rim, so half a seat BOX hangs outside the table — the
+  // box, not the avatar. Budgeting for the avatar alone let a name run off the
+  // left edge of the phone at eighteen players, because the label is wider
+  // than the face it sits under.
+  const boxGuess = count <= 6 ? 88 : count <= 14 ? 64 : 56;
+  const maxW = Math.max(120, available / 2 - 3 - boxGuess / 2);
 
-  // More players, more straight run: the caps are where a crowd bunches, and
-  // the straights are where the phone actually has room.
-  const share = count <= 4 ? 0.6 : count <= 9 ? 0.48 : 0.42;
-  const r = Math.round(Math.min(88, Math.max(46, total * share)));
-  return { w: Math.round(total - r), r };
+  const h =
+    count <= 4 ? 92 : count <= 6 ? 106 : count <= 9 ? 126 : count <= 14 ? 146 : 158;
+  const wWanted = count <= 4 ? 120 : count <= 6 ? 140 : count <= 9 ? 158 : 170;
+  const w = Math.round(Math.min(maxW, wWanted));
+
+  // Rounded, but not a stadium: a full-radius end would collapse the side runs
+  // back into caps and bring the crowding with them.
+  const r = Math.round(Math.min(w, h) * 0.74);
+  return { w, h, r };
+}
+
+/** Four straight runs plus one full circle of corners. */
+const perimeter = (w: number, h: number, r: number) =>
+  4 * (w - r) + 4 * (h - r) + 2 * Math.PI * r;
+
+/**
+ * Seat i, walked by ARC LENGTH clockwise from bottom-centre — so the gap
+ * between any two neighbours is identical wherever they sit. Walking by angle
+ * would put five comfortably along the top and crush the rest into the corners.
+ */
+function position(i: number, count: number, w: number, h: number, r: number) {
+  const straightX = w - r;
+  const straightY = h - r;
+  const corner = (Math.PI / 2) * r;
+  let t = ((i * perimeter(w, h, r)) / count) % perimeter(w, h, r);
+
+  // 1. bottom run, centre → right
+  if (t < straightX) return { x: t, y: h };
+  t -= straightX;
+  // 2. bottom-right corner
+  if (t < corner) {
+    const a = Math.PI / 2 - t / r;
+    return { x: straightX + r * Math.cos(a), y: straightY + r * Math.sin(a) };
+  }
+  t -= corner;
+  // 3. right run, bottom → top
+  if (t < 2 * straightY) return { x: w, y: straightY - t };
+  t -= 2 * straightY;
+  // 4. top-right corner
+  if (t < corner) {
+    const a = -t / r;
+    return { x: straightX + r * Math.cos(a), y: -straightY + r * Math.sin(a) };
+  }
+  t -= corner;
+  // 5. top run, right → left
+  if (t < 2 * straightX) return { x: straightX - t, y: -h };
+  t -= 2 * straightX;
+  // 6. top-left corner
+  if (t < corner) {
+    const a = -Math.PI / 2 - t / r;
+    return { x: -straightX + r * Math.cos(a), y: -straightY + r * Math.sin(a) };
+  }
+  t -= corner;
+  // 7. left run, top → bottom
+  if (t < 2 * straightY) return { x: -w, y: -straightY + t };
+  t -= 2 * straightY;
+  // 8. bottom-left corner
+  if (t < corner) {
+    const a = Math.PI - t / r;
+    // `+ sin`, not `- sin`: this corner sweeps downward from the left run to
+    // the bottom run, and negating it folded the arc back up into the table —
+    // which threw every seat after it and piled the left side on itself.
+    return { x: -straightX + r * Math.cos(a), y: straightY + r * Math.sin(a) };
+  }
+  t -= corner;
+  // 9. bottom run, left → centre
+  return { x: -straightX + t, y: h };
 }
 
 /** The table is as wide as its container; everything else follows from that. */
@@ -85,40 +148,6 @@ function useAvailableWidth(ref: React.RefObject<HTMLDivElement | null>) {
   return width;
 }
 
-/** Perimeter of the stadium: two straight runs plus one full circle of caps. */
-const perimeter = (w: number, r: number) => 4 * w + 2 * Math.PI * r;
-
-/**
- * Seat i, walked by ARC LENGTH from bottom-centre — so the gap between any two
- * neighbours is identical wherever they sit. Walking by angle instead would put
- * three players comfortably along the top and crush four into each cap.
- */
-function position(i: number, count: number, w: number, r: number) {
-  const p = perimeter(w, r);
-  let t = (i * p) / count;
-
-  // 1. bottom edge, centre → right
-  if (t < w) return { x: t, y: r };
-  t -= w;
-  // 2. right cap, bottom → top
-  if (t < Math.PI * r) {
-    const a = Math.PI / 2 - t / r;
-    return { x: w + r * Math.cos(a), y: r * Math.sin(a) };
-  }
-  t -= Math.PI * r;
-  // 3. top edge, right → left
-  if (t < 2 * w) return { x: w - t, y: -r };
-  t -= 2 * w;
-  // 4. left cap, top → bottom
-  if (t < Math.PI * r) {
-    const a = -Math.PI / 2 - t / r;
-    return { x: -w + r * Math.cos(a), y: r * Math.sin(a) };
-  }
-  t -= Math.PI * r;
-  // 5. bottom edge, left → centre
-  return { x: -w + t, y: r };
-}
-
 /**
  * How much a seat says, by how much room it has.
  *
@@ -127,18 +156,19 @@ function position(i: number, count: number, w: number, r: number) {
  * neighbours rather than from a fixed tier.
  */
 type Detail = 'full' | 'name' | 'avatar';
-const LABEL_HEIGHT: Record<Detail, number> = { full: 32, name: 18, avatar: 0 };
+const LABEL_HEIGHT: Record<Detail, number> = { full: 26, name: 15, avatar: 0 };
 
-function seatMetrics(count: number, w: number, r: number) {
-  const spacing = count > 1 ? perimeter(w, r) / count : 200;
-  const detail: Detail = count <= 9 ? 'full' : count <= 14 ? 'name' : 'avatar';
+function seatMetrics(count: number, w: number, h: number, r: number) {
+  const spacing = count > 1 ? perimeter(w, h, r) / count : 200;
+  // Four runs instead of two means names survive to twenty rather than nine.
+  const detail: Detail = count <= 20 ? 'full' : count <= 28 ? 'name' : 'avatar';
   const labelHeight = LABEL_HEIGHT[detail];
-  const cap = count <= 4 ? 56 : count <= 6 ? 50 : 44;
+  const cap = count <= 6 ? 50 : count <= 14 ? 40 : 34;
 
   // Floor of 24px. Past roughly thirty players a 320px table cannot hold
   // another face without them touching — a property of the phone, not of the
   // layout. It degrades rather than breaking, and is far past a real table.
-  const size = Math.round(Math.max(24, Math.min(cap, spacing - labelHeight - 6)));
+  const size = Math.round(Math.max(22, Math.min(cap, spacing - labelHeight - 4)));
   return { spacing, detail, size, boxHeight: size + labelHeight };
 }
 
@@ -179,53 +209,67 @@ export const PokerTable: React.FC<PokerTableProps> = ({
 
   const hostRef = useRef<HTMLDivElement>(null);
   const available = useAvailableWidth(hostRef);
-  const { w, r } = felt(count, available);
-  const { spacing, detail, size, boxHeight } = seatMetrics(count, w, r);
+  const { w, h, r } = felt(count, available);
+  const { spacing, detail, size, boxHeight } = seatMetrics(count, w, h, r);
   const boxWidth = Math.max(size, Math.min(96, spacing - 6));
   const quiet = night.phase === 'windingDown';
+  // The rail scales with the table so a small game does not get a chunky frame
+  // and a large one does not get a hairline.
+  const railW = Math.round(Math.max(11, Math.min(18, h * 0.11)));
 
   return (
     <div
       ref={hostRef}
       className="relative w-full"
-      style={{ height: 2 * r + boxHeight + 16 }}
+      style={{ height: 2 * h + boxHeight + 12 }}
       role="group"
       aria-label={`${seats.length} at the table`}
     >
-      {/* Rail — the dark band a real table has around its felt. Seats sit ON
-          it, which is what makes them look seated rather than nearby. */}
+      {/*
+        The felt, in layers. See index.css — leather, brushed brass, cloth,
+        weave, vignette, embossed suit. Every edge here is a change in light
+        rather than a stroke, which is the difference between a table and a
+        drawing of one.
+      */}
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-        style={{
-          width: 2 * (w + r),
-          height: 2 * r,
-          background: 'linear-gradient(160deg, #2a2318, #14100a 60%, #0d0b07)',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.45), inset 0 1px 0 rgba(212,175,55,0.10)',
-        }}
-      />
-
-      {/* Felt. A radial lift in the middle so it reads as a surface under a
-          light rather than a flat shape, and a gold hairline at the rail. */}
-      <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full flex flex-col items-center justify-center transition-[filter] duration-200"
-        style={{
-          width: 2 * (w + r) - 22,
-          height: 2 * r - 22,
-          background:
-            'radial-gradient(ellipse at 50% 40%, #17452f 0%, #0f3222 52%, #071a11 100%)',
-          border: '1px solid rgba(212,175,55,0.45)',
-          boxShadow: 'inset 0 8px 24px rgba(0,0,0,0.45)',
-          filter: quiet ? 'saturate(0.55) brightness(0.92)' : undefined,
-        }}
+        className="felt-shell"
+        style={{ width: 2 * w, height: 2 * h, borderRadius: r }}
       >
-        <span className="text-[10px] uppercase tracking-[0.18em] text-white/45">In play</span>
-        <span className="text-xl font-bold text-white tabular-nums leading-tight">
-          {formatAmount(night.chipsInPlay)}
-        </span>
+        <div className="felt-rail" />
+
+        <div
+          className="felt-trim"
+          style={{ inset: railW, borderRadius: Math.max(8, r - railW) }}
+        >
+          <div
+            className="felt-surface"
+            style={{
+              inset: 2,
+              borderRadius: Math.max(6, r - railW - 2),
+              // The night quietens as people leave — the cloth loses its light
+              // rather than the app announcing that the night is ending.
+              filter: quiet ? 'saturate(0.6) brightness(0.9)' : undefined,
+              transition: 'filter 200ms ease-out',
+            }}
+          >
+            <div className="felt-weave" />
+            <div className="felt-vignette" />
+            <span className="felt-mark" style={{ fontSize: Math.round(h * 1.05) }} aria-hidden="true">
+              ♠
+            </span>
+
+            <div className="relative z-10 h-full flex flex-col items-center justify-center">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">In play</span>
+              <span className="text-2xl font-semibold text-white/95 tabular-nums leading-tight">
+                {formatAmount(night.chipsInPlay)}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {ordered.map((seat, i) => {
-        const { x, y } = position(i, count, w, r);
+        const { x, y } = position(i, count, w, h, r);
         // Labels sit below the avatar everywhere, including the top run. That
         // needed the felt's edges darkened first — the flip that put them above
         // was working around a centre that was too light, and it cost the top
