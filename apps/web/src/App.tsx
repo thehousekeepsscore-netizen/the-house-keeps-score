@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from
 import { Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
+import { useOAuthLanding } from './lib/use-oauth-landing';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -196,17 +198,18 @@ export default function App() {
    *   /login?error=...   the API rejected the flow before returning (oauth.google.ts:46, :84)
    *   authError          the code came back but the exchange failed
    */
-  useEffect(() => {
-    const { pathname, search } = window.location;
-    if (pathname !== '/login') return;
-    const error = new URLSearchParams(search).get('error');
-    window.history.replaceState({}, '', '/');
-    if (error === 'oauth_state') {
-      addToast('Sign-in expired', 'That sign-in attempt timed out. Please try again.', 'warning');
-    } else if (error) {
-      addToast('Sign-in failed', 'Google sign-in could not be completed. Please try again.', 'warning');
-    }
-  }, [addToast]);
+  const reportOAuthError = useCallback(
+    (error: string) => {
+      if (error === 'oauth_state') {
+        addToast('Sign-in expired', 'That sign-in attempt timed out. Please try again.', 'warning');
+      } else {
+        addToast('Sign-in failed', 'Google sign-in could not be completed. Please try again.', 'warning');
+      }
+    },
+    [addToast]
+  );
+
+  useOAuthLanding(authStatus, reportOAuthError);
 
   useEffect(() => {
     if (!authError) return;
@@ -582,20 +585,28 @@ export default function App() {
       ) : (
         <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route
-            path="/"
-            element={
-              <RouteBoundary title="your clubs">
-                <ClubDashboardView
-                  currentUser={authUser}
-                  playerAvatarUrl={playerAvatarUrl}
-                  onSelectClub={handleSelectClub}
-                  onProceedToLobby={() => { /* legacy table game, unreachable */ }}
-                  onSignOut={logout}
-                />
-              </RouteBoundary>
-            }
-          />
+          {/* Every dashboard tab is its own address, generated from the same
+              map the dashboard reads, so the two can never disagree about
+              which tabs exist. They all render one screen — the tab is chosen
+              from the path — which is what lets Back and Forward walk the tabs
+              instead of leaving the app. */}
+          {Object.values(DASHBOARD_TAB_TO_PATH).map(path => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RouteBoundary title="your clubs">
+                  <ClubDashboardView
+                    currentUser={authUser}
+                    playerAvatarUrl={playerAvatarUrl}
+                    onSelectClub={handleSelectClub}
+                    onProceedToLobby={() => { /* legacy table game, unreachable */ }}
+                    onSignOut={logout}
+                  />
+                </RouteBoundary>
+              }
+            />
+          ))}
           {/* Both forms render the same screen. /clubs/:clubId is the bare
               club — treated as the session tab — while /clubs/:clubId/:tab
               addresses a specific one. Kept as two routes rather than an

@@ -2,10 +2,16 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=apps/api"],
+      "port": 4001
+    },
+    {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/web", "--", "--port", "5180", "--strictPort"],
-      "port": 5180
+      "runtimeArgs": ["run", "dev", "--workspace=apps/web"],
+      "port": 3000
     }
   ]
 }
