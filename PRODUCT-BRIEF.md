@@ -1,8 +1,12 @@
 # Master product redesign brief — mobile first
 
-# `PRODUCT-BRIEF v1.2` — frozen 2026-08-06
+# `PRODUCT-BRIEF v1.3` — frozen 2026-08-06
 
-**Branch:** `product-polish` · **Status:** canonical, frozen
+**Branch:** `product-polish` · **Status:** canonical, frozen · **design frozen**
+**v1.3** — §2.6 *the eye should never have to choose where to look*. Design is
+now frozen: from here every implementation decision refers back to these
+documents, and a contradiction found while building is raised before anything
+changes.
 **v1.2** — §2.5 *live controls never move under a thumb*, promoted from an
 implementation detail found while mapping the live session's interaction model.
 Nothing revised; one principle added.
@@ -158,6 +162,27 @@ It is also the rule that settles arguments the others cannot. "Newest first"
 would be better by §2.1 — you would see the new request instantly — and is
 forbidden by this, because it relocates a live Approve button under a
 descending finger. Where the two conflict, this wins.
+
+### 2.6 The eye should never have to choose where to look
+
+> **At any instant there is exactly one thing asking for attention.**
+
+One primary action. One animated element. One highlighted player. One pending
+queue. One control in the bottom bar — or none.
+
+This is the strongest filter in the document, because it is the one that
+resolves conflicts between the others rather than adding a new demand. When
+§2.1 wants to surface something and §2.3 wants to hide it, this decides: does
+adding it mean the eye now has two candidates? Then it does not go there.
+
+It is also what makes §2.5's scarcity work. Motion means something only when
+it is rare — and it can only be rare if, at any moment, one element has earned
+it and the rest have not.
+
+Applied backwards, it explains decisions already made: why an empty action
+queue is absent rather than reported, why the bottom bar shows nothing when
+there is nothing to do, why exactly one seat may pulse, and why a nav badge
+changes value without animating.
 
 ## 3. The complete journey
 

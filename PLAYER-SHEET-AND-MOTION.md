@@ -199,6 +199,46 @@ If an animation cannot be described as *where did this come from*, it is
 removed. That test alone deletes most of the ninety transitions currently in the
 codebase, which share one default duration and describe nothing.
 
+### 5.1 Motion is the implementation. Feedback is the requirement.
+
+Every action that commits anything answers four questions, in order. The first
+three are the ritual; the fourth is the one products skip.
+
+| | Question | When | How |
+|---|---|---|---|
+| **1** | Did the app understand me? | **Immediately** — same frame as the touch | The control depresses. No network involved, ever |
+| **2** | Is it happening? | **100–200ms** | The thing being acted on starts to change |
+| **3** | Did it finish? | **~300ms** | The consequence lands somewhere visible, and everything rests |
+| **4** | **Or did it not?** | when the server says so | The change **returns to where it was**, with the reason |
+
+Stage 4 is not optional and is the one this app currently gets wrong. The
+mutations here are optimistic — the row collapses before the server has
+answered — so a rejection has to *reverse* something the user already watched
+complete. An error toast over a UI still showing the wrong state is worse than
+no feedback at all, because now two things disagree and one of them is lying.
+
+**A reversal re-enters the way it left:** the row returns at 260ms decelerating,
+carrying the reason in place of its buttons — *"That request expired before you
+approved it."* Never a toast alone.
+
+### 5.2 One visual story — no starting guns
+
+> **No two elements may begin moving at the same instant, and at most one may be
+> the focus of attention at any instant.**
+
+If the badge, the queue, the table, the avatar and the total all move together,
+the eye has nowhere to land and the whole thing reads as a flicker.
+
+**This is not a ban on overlap.** A relay has a handoff: the outgoing runner is
+still moving when the incoming one starts, and that is precisely what carries
+attention from one to the other. What is banned is five things firing on one
+gun. The distinction is *staggered starts, with attention transferring* versus
+*simultaneous starts, with attention fragmenting*.
+
+Peripheral things — a nav badge count — do not animate at all. They change
+value. Anything outside the eye's focus that moves is competing for a focus it
+should not want.
+
 ## 6. The scale — four durations, three curves
 
 Four. The codebase currently has one, applied to everything, which is not a
@@ -264,19 +304,35 @@ never look staged.
 
 ### Approving a request — 5 to 15 times a night, so it matters most
 
+One story, one focus at a time, staggered starts:
+
 ```
-   tap Approve
-     ↓  0ms     the button acknowledges the press          120ms
-     ↓  0ms     the row's height collapses to zero         200ms  accelerate
-     ↓ 120ms    Priya's seat amount cross-fades 5,000→8,000 120ms
-     ↓ 120ms    her ring pulses once                        200ms
-     ↓ 200ms    content below rises into the freed space    260ms  decelerate
+             │ FOCUS                    │ answers
+   ──────────┼──────────────────────────┼──────────
+     0ms     │ the button depresses     │ ① understood
+    60ms     │ the row begins to leave  │ ② happening
+   180ms     │ the seat takes over —    │
+             │   amount cross-fades,    │
+             │   ring pulses once       │ ③ finished
+   320ms     │ content rises, rests     │
+   ──────────┴──────────────────────────┴──────────
+     the nav badge just changes value. It never animates.
 ```
 
-**The overlap is the point.** The row leaves *while* the seat gains — so the eye
-connects the request to the person, and the money is visibly seen going
-somewhere. Today the row vanishes and nothing else changes, which reads as
-*something disappeared* rather than *something completed*.
+**The handoff is the point.** The row is still leaving when the seat begins
+responding — that overlap is what carries the eye from the request to the
+person, so the money is *seen going somewhere*. Today the row vanishes and
+nothing else changes, which reads as *something disappeared* rather than
+*something completed*.
+
+Note what is **not** here: the badge does not animate, the table does not move
+until everything else has rested, and nothing starts at the same moment as
+anything else. Five things change; one story.
+
+**If the server rejects it** — an expired request, a 409 — the row returns at
+260ms with the reason where its buttons were, and the seat's amount reverts at
+120ms. The reversal is the same story played backwards, which is the only way a
+user can trust what they watched.
 
 If it was the last row, the section unmounts and the table rises — the only
 moment the table travels upward.
