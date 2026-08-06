@@ -168,7 +168,7 @@ function seatMetrics(count: number, w: number, h: number, r: number) {
   // Floor of 24px. Past roughly thirty players a 320px table cannot hold
   // another face without them touching — a property of the phone, not of the
   // layout. It degrades rather than breaking, and is far past a real table.
-  const size = Math.round(Math.max(22, Math.min(cap, spacing - labelHeight - 4)));
+  const size = Math.round(Math.max(22, Math.min(cap, spacing - labelHeight - 18)));
   return { spacing, detail, size, boxHeight: size + labelHeight };
 }
 
@@ -215,7 +215,10 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   const quiet = night.phase === 'windingDown';
   // The rail scales with the table so a small game does not get a chunky frame
   // and a large one does not get a hairline.
-  const railW = Math.round(Math.max(11, Math.min(18, h * 0.11)));
+  // A rail you could rest your forearms on: thick enough to read as padded,
+  // scaled so a small game does not get a chunky frame nor a large one a
+  // hairline.
+  const railW = Math.round(Math.max(13, Math.min(22, h * 0.14)));
 
   return (
     <div
@@ -226,40 +229,59 @@ export const PokerTable: React.FC<PokerTableProps> = ({
       aria-label={`${seats.length} at the table`}
     >
       {/*
-        The felt, in layers. See index.css — leather, brushed brass, cloth,
-        weave, vignette, embossed suit. Every edge here is a change in light
-        rather than a stroke, which is the difference between a table and a
-        drawing of one.
+        Built outside in — see index.css. Cast shadow, crowned leather rail,
+        stitching, brass hairline, recessed felt, woven cloth, then the money.
+        Every edge is a change in light; none of them is a stroke.
       */}
       <div
-        className="felt-shell"
+        className="table-shadow"
         style={{ width: 2 * w, height: 2 * h, borderRadius: r }}
       >
-        <div className="felt-rail" />
+        <div className="table-rail" style={{ borderRadius: r }} />
+
+        {/* Stitching, a thread and its shadow one pixel apart. Drawn rather
+            than bordered so the dash length is ours to choose — a browser's
+            dashed border is far too coarse to read as sewing. */}
+        <svg className="table-stitch" viewBox={`0 0 ${2 * w} ${2 * h}`} aria-hidden="true">
+          <rect
+            x={railW - 3} y={railW - 3}
+            width={2 * w - 2 * (railW - 3)} height={2 * h - 2 * (railW - 3)}
+            rx={Math.max(6, r - railW + 3)}
+            fill="none" stroke="rgba(0,0,0,0.55)" strokeWidth="1"
+            strokeDasharray="2.5 4"
+          />
+          <rect
+            x={railW - 3} y={railW - 4}
+            width={2 * w - 2 * (railW - 3)} height={2 * h - 2 * (railW - 3)}
+            rx={Math.max(6, r - railW + 3)}
+            fill="none" stroke="rgba(233,208,155,0.16)" strokeWidth="1"
+            strokeDasharray="2.5 4"
+          />
+        </svg>
 
         <div
-          className="felt-trim"
+          className="table-brass"
           style={{ inset: railW, borderRadius: Math.max(8, r - railW) }}
         >
           <div
-            className="felt-surface"
+            className="table-felt"
             style={{
-              inset: 2,
-              borderRadius: Math.max(6, r - railW - 2),
-              // The night quietens as people leave — the cloth loses its light
+              inset: 1.5,
+              borderRadius: Math.max(7, r - railW - 1.5),
+              // The night quietens as people leave: the cloth loses its light
               // rather than the app announcing that the night is ending.
-              filter: quiet ? 'saturate(0.6) brightness(0.9)' : undefined,
-              transition: 'filter 200ms ease-out',
+              filter: quiet ? 'saturate(0.62) brightness(0.9)' : undefined,
+              transition: 'filter var(--motion-exit) ease-out',
             }}
           >
-            <div className="felt-weave" />
-            <div className="felt-vignette" />
-            <span className="felt-mark" style={{ fontSize: Math.round(h * 1.05) }} aria-hidden="true">
+            <div className="table-weave" />
+            <div className="table-vignette" />
+            <span className="table-mark" style={{ fontSize: Math.round(h * 1.05) }} aria-hidden="true">
               ♠
             </span>
 
             <div className="relative z-10 h-full flex flex-col items-center justify-center">
-              <span className="text-[10px] uppercase tracking-[0.2em] text-white/40">In play</span>
+              <span className="text-[10px] uppercase tracking-[0.22em] text-white/38">In play</span>
               <span className="text-2xl font-semibold text-white/95 tabular-nums leading-tight">
                 {formatAmount(night.chipsInPlay)}
               </span>
@@ -320,7 +342,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
               {/* State, as one mark. Paired with the caption below it. */}
               <span
                 className={`absolute rounded-full ring-2 ring-bg ${DOT[seat.state]}`}
-                style={{ width: size * 0.24, height: size * 0.24, right: 0, bottom: 0 }}
+                style={{ width: Math.max(7, size * 0.24), height: Math.max(7, size * 0.24), right: 1, bottom: 1 }}
                 aria-hidden="true"
               />
             </span>

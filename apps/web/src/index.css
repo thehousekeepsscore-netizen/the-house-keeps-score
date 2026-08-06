@@ -158,124 +158,179 @@
  * carried by a dashed border and a word, so nothing is lost.
  */
 @keyframes seat-wait {
-  0%, 100% { border-color: var(--color-warning); }
-  50% { border-color: color-mix(in oklab, var(--color-warning) 35%, transparent); }
+  /* The brass collar catches a little more light, then less. Not a colour
+     change and not a scale: the seat is asking, not alarming, and nothing on
+     a table made of leather and metal is springy. */
+  0%, 100% { opacity: 1; filter: brightness(1.5) saturate(1.15); }
+  50% { opacity: 0.72; filter: brightness(1); }
 }
 
 /*
- * The felt, as a material rather than a shape.
+ * ===========================================================================
+ * THE TABLE — built like furniture, from the outside in
+ * ===========================================================================
  *
- * A flat green fill with a border reads as a diagram of a poker table. What
- * makes the real thing feel expensive is layering: leather catches light along
- * its top edge, brushed brass reflects anisotropically so it is never one
- * colour, and woven felt scatters light so it is never quite flat. None of
- * that is decoration — it is what stops the centrepiece of the app looking
- * like a placeholder.
+ * Not an SVG with a border. A handcrafted object, and every layer here is a
+ * real part of one:
  *
- * Built from stacked layers, cheapest first:
+ *   1  cast shadow      it has weight and rests on the floor
+ *   2  leather rail     thick, padded, gently CROWNED — the light runs along
+ *                       the top of the roll and falls away on both sides
+ *   3  stitching        follows the inside perimeter, two-tone thread
+ *   4  brass ring       a hairline of brushed metal parting leather from cloth
+ *   5  recessed felt    sunk INTO the leather, with a real shadow at the join
+ *   6  felt material    matte emerald, woven, lit from above centre
+ *   7  the pot          the middle belongs to the money and nothing else
  *
- *   1  ambient shadow      the table sits on something
- *   2  leather rail        radial fall-off, grain, lit along the top
- *   3  brushed gold trim   a directional gradient, not a solid stroke
- *   4  felt surface        emerald into forest, lit from above centre
- *   5  woven texture       two fine cross-hatches, barely there
- *   6  vignette            edges fall away, so the centre reads as lit
- *   7  embossed watermark  a suit pressed into the cloth, not printed on it
- *
- * Nothing glows. Every edge is a change in light, never a stroke.
+ * The crown is the part that makes it read as padded rather than printed. A
+ * rail is a rolled cushion: brightest along the top of the roll, darker at the
+ * outer lip where it turns away, darker again at the inner lip where it falls
+ * toward the felt. Three stops, not one.
  */
 
-.felt-shell {
+.table-shadow {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  /* Broad and soft. A tight shadow makes a card; this makes furniture. */
   box-shadow:
-    0 24px 48px -12px rgba(0, 0, 0, 0.7),
-    0 2px 6px rgba(0, 0, 0, 0.4);
+    0 40px 80px -28px rgba(0, 0, 0, 0.85),
+    0 12px 28px -10px rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-/* 2 — leather. Lit from above, falling to near-black at the bottom edge. */
-.felt-rail {
+/* 2 — the rail. */
+.table-rail {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background:
-    radial-gradient(130% 120% at 50% -20%, var(--rail-lit) 0%, var(--rail-mid) 38%, #100c07 70%, var(--rail-dark) 100%);
+    /* the crown: light along the top of the roll, falling both ways */
+    linear-gradient(
+      180deg,
+      #3a2f1e 6%, #4a3d27 13%, #2e2617 34%,
+      #201a10 62%, #16110a 84%, #0d0a06 100%
+    );
   box-shadow:
-    inset 0 1px 0 rgba(255, 236, 190, 0.14),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.55);
+    /* outer lip turning away from the lamp */
+    inset 0 2px 1px rgba(255, 233, 189, 0.13),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.6),
+    inset 3px 0 8px rgba(0, 0, 0, 0.34),
+    inset -3px 0 8px rgba(0, 0, 0, 0.34);
 }
 
-/* Grain, on the leather only. Fine enough to read as hide rather than noise. */
-.felt-rail::after {
+/* Hide grain. Discovered, never noticed. */
+.table-rail::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  opacity: 0.16;
+  opacity: 0.14;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='h'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23h)'/%3E%3C/svg%3E");
 }
 
-/*
- * 3 — brushed brass. A single gold would read as a drawn outline; real brass
- * is bright where it faces the light and dark where it turns away, so the
- * gradient runs across the trim rather than around it.
- */
-.felt-trim {
+/* 3 — stitching. Two threads: a lit one and its shadow, one pixel apart. On a
+   low-density screen the pair collapses into a single faint dotted line, which
+   is the correct failure — it disappears rather than dominating. */
+.table-stitch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* 4 — brushed brass, a hairline. Directional so it is never one flat colour. */
+.table-brass {
   position: absolute;
   background: linear-gradient(
-    100deg,
-    var(--brass-dark) 0%, var(--brass-mid) 16%, var(--brass-lit) 32%,
-    #f0e0b4 40%, var(--brass-mid) 54%, var(--brass-dark) 70%,
-    var(--brass-lit) 86%, var(--brass-dark) 100%
+    104deg,
+    var(--brass-dark) 0%, var(--brass-mid) 20%, var(--brass-lit) 34%,
+    var(--brass-mid) 50%, var(--brass-dark) 68%, var(--brass-mid) 84%,
+    var(--brass-dark) 100%
   );
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55);
 }
 
-/* 4 — the cloth. Emerald under the light, forest at the rail. */
-.felt-surface {
+/* 5 + 6 — the cloth, sunk into the leather. The heavy top inset is the shadow
+   the rail casts down onto it; that shadow is the entire reason it reads as
+   recessed rather than painted on. */
+.table-felt {
   position: absolute;
   overflow: hidden;
   background:
-    radial-gradient(105% 120% at 50% 20%, var(--felt-lit) 0%, var(--felt-mid) 44%, #0c2b1e 72%, var(--felt-edge) 100%);
+    radial-gradient(102% 118% at 50% 18%, var(--felt-lit) 0%, var(--felt-mid) 46%, #0c2b1e 74%, var(--felt-edge) 100%);
+  box-shadow:
+    inset 0 10px 18px -6px rgba(0, 0, 0, 0.72),
+    inset 0 2px 3px rgba(0, 0, 0, 0.55),
+    inset 0 -6px 14px -6px rgba(0, 0, 0, 0.5);
 }
 
-/* 5 — the weave. Two cross-hatches at opposing angles, almost invisible
-   individually, which together stop the surface reading as paint. */
-.felt-weave {
+/* Woven cloth. Two cross-hatches at opposing angles — individually invisible,
+   together enough that the surface never reads as paint. */
+.table-weave {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background-image:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 3px),
-    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 3px);
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.020) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.05) 0 1px, transparent 1px 3px);
 }
 
-/* 6 — vignette. The edges fall away so the middle reads as lit, rather than
-   the middle being painted brighter. */
-.felt-vignette {
+.table-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(100% 100% at 50% 40%, transparent 44%, rgba(0, 0, 0, 0.34) 78%, rgba(0, 0, 0, 0.55) 100%);
-  box-shadow: inset 0 6px 22px rgba(0, 0, 0, 0.45);
+  background: radial-gradient(100% 100% at 50% 38%, transparent 42%, rgba(0, 0, 0, 0.3) 76%, rgba(0, 0, 0, 0.52) 100%);
 }
 
-/* 7 — the suit, pressed into the cloth. Light above, shadow below: the same
+/* A suit pressed into the cloth. Light above the stroke, shadow below — the
    trick an embossing die plays, and the reason it does not look printed. */
-.felt-mark {
+.table-mark {
   position: absolute;
   left: 50%;
   top: 46%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   line-height: 1;
-  /* Pressed into the cloth, not printed on it: you should notice it only
-     after you have stopped looking for it. At 22% it was a graphic. */
   color: rgba(0, 0, 0, 0.07);
   text-shadow: 0 1.5px 0 rgba(255, 255, 255, 0.035);
+}
+
+/*
+ * SEATS — engineered into the rail, not pasted onto the felt.
+ *
+ * A chip holder milled into the leather: the socket is a recess, so it is dark
+ * where the light cannot reach over its top lip and catches a little along its
+ * lower edge — the exact inverse of the rail's crown. The avatar sits inside
+ * it, which is what stops the seat floating.
+ */
+.seat-socket {
+  position: relative;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #0b0906 0%, #17120b 60%, #241c11 100%);
+  box-shadow:
+    inset 0 3px 5px rgba(0, 0, 0, 0.85),
+    inset 0 -1px 0 rgba(255, 231, 183, 0.10),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* The brass collar around the seat. Thin, worn, never a glow. */
+.seat-collar {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  padding: 1.5px;
+  background: linear-gradient(
+    118deg, var(--brass-dark) 0%, var(--brass-mid) 26%, var(--brass-lit) 42%,
+    var(--brass-mid) 60%, var(--brass-dark) 84%, var(--brass-mid) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 /*
