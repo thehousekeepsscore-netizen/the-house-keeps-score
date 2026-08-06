@@ -537,9 +537,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           type="button"
           onClick={() => setRecordsUnit(value)}
           aria-pressed={recordsUnit === value}
-          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-colors ${
-            recordsUnit === value
-              ? 'bg-accent text-accent-contrast'
+          className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+ recordsUnit === value
+ ? 'bg-accent text-accent-contrast'
               : 'text-text-muted hover:text-text'
           }`}
         >
@@ -1971,7 +1971,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               and pushed every screen down by ~40px.
             */}
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-text truncate leading-tight">
+              <h1 className="text-lg font-semibold text-text truncate leading-tight">
                 {club.name}
               </h1>
               <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
@@ -1992,7 +1992,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         : 'Reconnecting — figures may be out of date until this clears.'
                     }
                     className={`px-2 py-0.5 border font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1.5 ${
-                      connection === 'offline'
+ connection === 'offline'
                         ? 'bg-danger/10 border-danger text-danger'
                         : 'bg-warning/10 border-warning text-warning'
                     }`}
@@ -2033,8 +2033,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 >
                   <Coins className="w-5 h-5 text-accent" />
                   <div className="text-left">
-                    <div className="text-[9px] uppercase tracking-widest text-accent font-black">CLUB POT BALANCE</div>
-                    <div className="text-xs font-mono font-black text-text">
+                    <div className="text-[9px] uppercase tracking-widest text-accent font-semibold">Club pot balance</div>
+                    <div className="text-xs font-mono font-semibold text-text">
                       {formatVal(club.clubPotBalance || 0)}
                     </div>
                   </div>
@@ -2045,7 +2045,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   onClick={() => startSessionAction.run()}
                   disabled={startSessionAction.pending}
-                  className="bg-accent hover:bg-accent text-accent-contrast font-black px-3.5 py-2 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow"
+                  className="bg-accent hover:bg-accent text-accent-contrast font-semibold px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 shadow"
                 >
                   <Plus className="w-4 h-4" /> Start New Session
                 </button>
@@ -2073,16 +2073,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 key={item.key}
                 onClick={item.onSelect}
                 aria-current={isSelected ? 'page' : undefined}
-                className={`relative flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors cursor-pointer border-b-2 -mb-px ${
-                  isSelected
-                    ? 'text-accent border-accent'
+                className={`relative flex items-center gap-2 px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors cursor-pointer border-b-2 -mb-px ${
+ isSelected
+ ? 'text-accent border-accent'
                     : 'text-text-muted border-transparent hover:text-text'
                 }`}
               >
                 <item.Icon className={`w-4 h-4 ${item.iconClass ?? ''}`} />
                 {item.desktopLabel}
                 {item.badge > 0 && (
-                  <span className="bg-danger text-white font-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
+                  <span className="bg-danger text-white font-semibold text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
                     {item.badge}
                   </span>
                 )}
@@ -2134,7 +2134,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 ) : !activeSession ? (
                   <div className="p-8 furniture rounded-3xl text-center space-y-4">
                     <Clock className="w-12 h-12 text-text-muted mx-auto opacity-60" />
-                    <h3 className="text-lg font-bold text-text uppercase tracking-wide">
+                    <h3 className="text-lg font-semibold text-text ">
                       No Active Poker Session
                     </h3>
                     <p className="text-xs text-text-muted max-w-md mx-auto leading-relaxed">
@@ -2145,7 +2145,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <button
                           onClick={() => startSessionAction.run()}
                           disabled={startSessionAction.pending}
-                          className="bg-accent hover:bg-accent text-accent-contrast font-black px-5 py-3 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg transition-all"
+                          className="bg-accent hover:bg-accent text-accent-contrast font-semibold px-5 py-3 rounded-xl text-xs cursor-pointer shadow-lg transition-all"
                         >
                           Start New Session
                         </button>
@@ -2193,26 +2193,26 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           {isSeated && !myCashOut && (
                             <button
                               onClick={() => { setStandUpAmount(0); setShowStandUpModal(true); }}
-                              className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
+                              className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium px-4 py-2.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
                             >
                               <LogOut className="w-4 h-4" /> Stand Up
                             </button>
                           )}
                           {myCashOut?.status === 'pending' && (
-                            <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs">
+                            <span className="border border-dashed border-line-strong text-text-muted font-medium px-4 py-2.5 rounded-xl text-xs">
                               Cash-out pending…
                             </span>
                           )}
                           {!isSeated && (
                             hasRequestedSitIn ? (
-                              <span className="border border-dashed border-line-strong text-text-muted font-bold px-4 py-2.5 rounded-xl text-xs">
+                              <span className="border border-dashed border-line-strong text-text-muted font-medium px-4 py-2.5 rounded-xl text-xs">
                                 Sit-in requested…
                               </span>
                             ) : isAdmin ? (
                               <button
                                 onClick={() => joinTableAction.run()}
                                 disabled={joinTableAction.pending}
-                                className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold px-4 py-2.5 rounded-xl text-xs cursor-pointer"
+                                className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium px-4 py-2.5 rounded-xl text-xs cursor-pointer"
                               >
                                 Sit In
                               </button>
@@ -2231,7 +2231,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Players seated around the table */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-text-muted flex items-center gap-2">
+                        <h3 className="text-xs font-medium text-text-muted flex items-center gap-2">
                           <Users className="w-4 h-4 text-accent" /> At the table
                         </h3>
 
@@ -2239,7 +2239,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             on the table itself — everyone needs to know what
                             they can take without opening the buy-in form. */}
                         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-bg border border-line rounded-2xl">
-                          <span className="text-[10px] font-bold text-text-muted flex items-center gap-1.5">
+                          <span className="text-[10px] font-medium text-text-muted flex items-center gap-1.5">
                             <Coins className="w-3.5 h-3.5 text-accent" /> Max buy-in
                             <InfoHint>
                               {(club.buyInMode ?? 'MATCH_HIGHEST') === 'UNCAPPED'
@@ -2303,13 +2303,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {isAdmin && pendingCashOuts.length > 0 && (
                         <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-bold text-text">
+                          <h3 className="text-xs font-medium text-text">
                             Cash-outs to Confirm ({pendingCashOuts.length})
                           </h3>
                           {pendingCashOuts.map((c) => (
                             <div key={c.userId} className="p-3 bg-bg border border-line rounded-2xl space-y-2">
                               <div className="text-xs text-text">
-                                <span className="font-bold">
+                                <span className="font-semibold">
                                   {c.userId === currentUser.uid ? 'You' : (allUsers[c.userId]?.displayName || 'Player')}
                                 </span>
                                 <span className="text-text-muted"> is standing up with </span>
@@ -2322,14 +2322,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => decideCashOutAction.run(c.userId, true)}
                                   disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-accent text-accent-contrast cursor-pointer flex items-center justify-center gap-1"
+                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-accent text-accent-contrast cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <Check className="w-3 h-3" /> Confirm
                                 </button>
                                 <button
                                   onClick={() => decideCashOutAction.run(c.userId, false)}
                                   disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center justify-center gap-1"
+                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center justify-center gap-1"
                                 >
                                   <X className="w-3 h-3" /> Reject
                                 </button>
@@ -2342,12 +2342,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       {/* Sit-in requests waiting on an admin */}
                       {isAdmin && pendingSitInUids.length > 0 && (
                         <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-bold text-text">
+                          <h3 className="text-xs font-medium text-text">
                             Sit-in Requests ({pendingSitInUids.length})
                           </h3>
                           {pendingSitInUids.map(uid => (
                             <div key={uid} className="p-3 bg-bg border border-line rounded-2xl flex items-center justify-between gap-3">
-                              <span className="text-xs font-bold text-text">
+                              <span className="text-xs font-medium text-text">
                                 {allUsers[uid]?.displayName || `Player (${uid.slice(0, 6)})`}
                                 <span className="text-text-muted font-normal ml-2">wants to be dealt in</span>
                               </span>
@@ -2355,14 +2355,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => decideSitInAction.run(uid, true)}
                                   disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-accent text-accent-contrast cursor-pointer flex items-center gap-1"
+                                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-accent text-accent-contrast cursor-pointer flex items-center gap-1"
                                 >
                                   <Check className="w-3 h-3" /> Seat
                                 </button>
                                 <button
                                   onClick={() => decideSitInAction.run(uid, false)}
                                   disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center gap-1"
+                                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center gap-1"
                                 >
                                   <X className="w-3 h-3" /> Decline
                                 </button>
@@ -2377,7 +2377,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <div className="furniture p-6 rounded-3xl space-y-4">
                       <div className="flex items-center justify-between border-b border-line pb-3">
                         <div>
-                          <h2 className="text-base font-bold text-text flex items-center gap-2">
+                          <h2 className="text-base font-semibold text-text flex items-center gap-2">
                             <DollarSign className="w-5 h-5 text-accent" /> {isAdmin ? 'Approvals' : 'My Buy-ins'}
                             <InfoHint>
                               {isAdmin
@@ -2390,7 +2390,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Pending Requests List */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-bold text-text">
+                        <h3 className="text-xs font-medium text-text">
                           {isAdmin ? 'Pending Approvals' : 'Awaiting Approval'} ({visiblePendingBuyIns.length})
                         </h3>
 
@@ -2409,7 +2409,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               return (
                                 <div key={req.id} className="p-4 bg-bg border border-line rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                   <div>
-                                    <div className="text-xs font-bold text-text flex items-center gap-2">
+                                    <div className="text-xs font-medium text-text flex items-center gap-2">
                                       {allUsers[req.userId]?.displayName || 'Player'}
                                       <span className="text-warning font-mono text-sm">
                                         {formatVal(req.amount)}
@@ -2421,7 +2421,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                                     {/* ADMIN SELF-APPROVAL WARNING BADGE */}
                                     {cannotSelfApprove && (
-                                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-warning bg-warning/80 border border-warning/40 px-2 py-0.5 rounded-full">
+                                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/80 border border-warning/40 px-2 py-0.5 rounded-full">
                                         <ShieldAlert className="w-3 h-3" /> Multi-Admin rule: Requires another Admin to approve
                                       </span>
                                     )}
@@ -2432,9 +2432,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                       <button
                                         onClick={() => approveBuyInAction.run(req)}
                                         disabled={cannotSelfApprove || approveBuyInAction.pending}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
-                                          cannotSelfApprove 
-                                            ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1 ${
+ cannotSelfApprove 
+ ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
                                             : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
                                         }`}
                                         title={cannotSelfApprove ? "Another Club Admin must approve your request" : "Approve Bank"}
@@ -2445,7 +2445,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                       <button
                                         onClick={() => rejectBuyInAction.run(req)}
                                         disabled={rejectBuyInAction.pending}
-                                        className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1"
+                                        className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1"
                                       >
                                         <X className="w-3.5 h-3.5" /> Reject
                                       </button>
@@ -2460,7 +2460,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                       {/* Approved / Rejected History */}
                       <div className="pt-4 border-t border-line space-y-3">
-                        <h3 className="text-xs font-bold text-text">
+                        <h3 className="text-xs font-medium text-text">
                           {isAdmin ? 'Processed Buy-ins History' : 'My Past Buy-ins'}
                         </h3>
 
@@ -2474,14 +2474,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           {visibleProcessedBuyIns.slice(0, 10).map(req => (
                             <div key={req.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between text-xs font-mono">
                               <div>
-                                <span className="font-bold text-text">{allUsers[req.userId]?.displayName || 'Player'}</span>
+                                <span className="font-semibold text-text">{allUsers[req.userId]?.displayName || 'Player'}</span>
                                 <span className="text-text-muted ml-2">{formatVal(req.amount)}</span>
                               </div>
                               <div>
                                 {req.status === 'approved' ? (
-                                  <span className="text-accent font-bold">Approved</span>
+                                  <span className="text-accent font-semibold">Approved</span>
                                 ) : (
-                                  <span className="text-danger font-bold">Rejected</span>
+                                  <span className="text-danger font-semibold">Rejected</span>
                                 )}
                               </div>
                             </div>
@@ -2513,7 +2513,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="bg-bg/80 border border-line/80 p-4 sm:p-6 rounded-3xl space-y-4 shadow-2xl backdrop-blur-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 pb-3">
                     <div>
-                      <h2 className="text-base sm:text-lg font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-semibold text-text flex items-center gap-2">
                         <History className="w-5 h-5 text-accent" /> Session History
                         <InfoHint>
                           Every settled night, locked once it's been cashed out. Tap a row to see who played and what they made.
@@ -2526,12 +2526,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       {(isOwner || isSuperUser) && (
                         <button
                           onClick={() => setShowPastSessionModal(true)}
-                          className="text-xs font-bold bg-accent/15 text-accent border border-accent/40 px-3 py-1.5 rounded-xl hover:bg-accent/25 transition-colors flex items-center gap-1.5"
+                          className="text-xs font-medium bg-accent/15 text-accent border border-accent/40 px-3 py-1.5 rounded-xl hover:bg-accent/25 transition-colors flex items-center gap-1.5"
                         >
                           <CalendarPlus className="w-3.5 h-3.5" /> Record a past night
                         </button>
                       )}
-                      <div className="text-xs text-text-muted font-mono font-bold bg-bg border border-line/60 px-3 py-1.5 rounded-xl">
+                      <div className="text-xs text-text-muted font-mono font-medium bg-bg border border-line/60 px-3 py-1.5 rounded-xl">
                         Completed Sessions: <span className="text-accent">{normalizedSessions.length}</span>
                       </div>
                     </div>
@@ -2559,7 +2559,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <div className="text-xs text-text-muted font-sans">
                                   {session.date ? new Date(session.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                                 </div>
-                                <span className="font-extrabold text-text text-base sm:text-lg font-mono tracking-wide">
+                                <span className="font-extrabold text-text text-base sm:text-lg font-mono ">
                                   Session {sessionNumberById.get(String(session.id)) ?? '?'}
                                 </span>
                                 {session.dayTitle && (
@@ -2574,8 +2574,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   const mine = session.playerStats.find((p) => p.userId === currentUser.uid);
                                   if (!mine) return null;
                                   return (
-                                    <div className={`text-[11px] font-mono font-bold pt-0.5 ${
-                                      mine.profit >= 0 ? 'text-accent' : 'text-danger'
+                                    <div className={`text-[11px] font-mono font-medium pt-0.5 ${
+ mine.profit >= 0 ? 'text-accent' : 'text-danger'
                                     }`}>
                                       {formatSignedUnit(mine.profit)}
                                     </div>
@@ -2626,9 +2626,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   {session.playerStats.map((ps, idx) => (
                                     <div key={idx} className="py-3 space-y-1.5 text-xs sm:text-sm">
                                       <div className="flex items-center justify-between">
-                                        <div className="font-bold text-text text-sm sm:text-base font-sans">{ps.name}</div>
-                                        <div className={`font-mono font-black text-sm sm:text-base tracking-tight ${
-                                          ps.profit >= 0 ? 'text-accent' : 'text-danger'
+                                        <div className="font-semibold text-text text-sm sm:text-base font-sans">{ps.name}</div>
+                                        <div className={`font-mono font-semibold text-sm sm:text-base tracking-tight ${
+ ps.profit >= 0 ? 'text-accent' : 'text-danger'
                                         }`}>
                                           {formatSignedUnit(ps.profit)}
                                         </div>
@@ -2664,7 +2664,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="furniture p-6 rounded-3xl space-y-6">
                   <div className="border-b border-line pb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-lg font-black text-accent uppercase flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-accent flex items-center gap-2">
                         <ListChecks className="w-5 h-5" /> Approvals
                         <InfoHint>
                           Buy-ins and session edits waiting on an admin. In clubs with two or more admins, you can't approve your own request — someone else has to.
@@ -2672,14 +2672,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       </h2>
                     </div>
 
-                    <div className="px-3 py-1 bg-bg border border-line text-warning text-xs font-mono font-bold rounded-xl flex items-center gap-1.5">
+                    <div className="px-3 py-1 bg-bg border border-line text-warning text-xs font-mono font-medium rounded-xl flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-accent" /> Total Club Admins: {totalAdminsCount}
                     </div>
                   </div>
 
                   {/* SECTION 1: PENDING BANK BUY-INS */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-xs font-medium text-text flex items-center gap-2">
                       <Coins className="w-4 h-4 text-warning" /> Pending Buy-Ins ({buyInRequests.filter(r => r.status === 'pending').length})
                     </h3>
 
@@ -2698,7 +2698,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           return (
                             <div key={req.id} className="p-4 bg-bg border border-line rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                               <div>
-                                <div className="text-xs font-bold text-text flex items-center gap-2">
+                                <div className="text-xs font-medium text-text flex items-center gap-2">
                                   {allUsers[req.userId]?.displayName || 'Player'}
                                   <span className="text-warning font-mono text-sm">
                                     {formatVal(req.amount)}
@@ -2709,7 +2709,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 </div>
 
                                 {cannotSelfApprove && (
-                                  <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-warning bg-warning/80 border border-warning/40 px-2 py-0.5 rounded-full">
+                                  <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/80 border border-warning/40 px-2 py-0.5 rounded-full">
                                     <ShieldAlert className="w-3 h-3" /> Requires another Admin to approve (Cannot self-approve)
                                   </span>
                                 )}
@@ -2719,9 +2719,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => approveBuyInAction.run(req)}
                                   disabled={cannotSelfApprove || approveBuyInAction.pending}
-                                  className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
-                                    cannotSelfApprove
-                                      ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
+                                  className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1 ${
+ cannotSelfApprove
+ ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
                                       : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
                                   }`}
                                 >
@@ -2731,7 +2731,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 <button
                                   onClick={() => rejectBuyInAction.run(req)}
                                   disabled={rejectBuyInAction.pending}
-                                  className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-2 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-1"
+                                  className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-2 rounded-xl text-xs cursor-pointer flex items-center gap-1"
                                 >
                                   <X className="w-3.5 h-3.5" /> Reject
                                 </button>
@@ -2745,7 +2745,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                   {/* SECTION 2: PENDING SESSION EDITS & DELETIONS */}
                   <div className="space-y-3 pt-4 border-t border-line">
-                    <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-xs font-medium text-text flex items-center gap-2">
                       <FileEdit className="w-4 h-4 text-accent" /> Pending Session Edits & Deletions ({pendingChangeRequests.filter(r => r.status === 'pending').length})
                     </h3>
 
@@ -2766,9 +2766,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line/60 pb-2">
                                 <div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-sm font-black text-text font-mono">{req.sessionTitle}</span>
-                                    <span className={`px-2 py-0.5 font-bold text-[10px] uppercase rounded-full ${
-                                      req.requestType === 'delete_session' 
+                                    <span className="text-sm font-semibold text-text font-mono">{req.sessionTitle}</span>
+                                    <span className={`px-2 py-0.5 font-medium text-[10px] uppercase rounded-full ${
+ req.requestType === 'delete_session' 
                                         ? 'bg-danger/15 text-danger border border-danger/40' 
                                         : 'bg-warning/15 text-warning border border-warning/40'
                                     }`}>
@@ -2784,9 +2784,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   <button
                                     onClick={() => approveChangeAction.run(req)}
                                     disabled={cannotSelfApprove || approveChangeAction.pending}
-                                    className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1 ${
-                                      cannotSelfApprove
-                                        ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
+                                    className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all flex items-center gap-1 ${
+ cannotSelfApprove
+ ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
                                         : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
                                     }`}
                                     title={cannotSelfApprove ? "Another Club Admin must approve your proposal" : "Approve Proposal"}
@@ -2797,7 +2797,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   <button
                                     onClick={() => rejectChangeAction.run(req)}
                                     disabled={rejectChangeAction.pending}
-                                    className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3.5 py-2 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-1"
+                                    className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3.5 py-2 rounded-xl text-xs cursor-pointer flex items-center gap-1"
                                   >
                                     <X className="w-3.5 h-3.5" /> Reject
                                   </button>
@@ -2807,20 +2807,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               {/* Changes Breakdown */}
                               {req.changes && req.changes.length > 0 && (
                                 <div className="bg-surface p-3 rounded-xl space-y-1 font-mono text-xs">
-                                  <div className="text-[10px] text-text-muted uppercase font-bold">Proposed Modifications:</div>
+                                  <div className="text-[10px] text-text-muted uppercase font-medium">Proposed Modifications:</div>
                                   {req.changes.map((c, idx) => (
                                     <div key={idx} className="flex items-center gap-2 text-text-muted">
                                       <span className="text-accent">{c.field}:</span>
                                       <span className="line-through text-text-faint">{c.oldValue || 'None'}</span>
                                       <span>➜</span>
-                                      <span className="text-accent font-bold">{c.newValue}</span>
+                                      <span className="text-accent font-semibold">{c.newValue}</span>
                                     </div>
                                   ))}
                                 </div>
                               )}
 
                               {cannotSelfApprove && (
-                                <p className="text-[10px] text-warning font-bold flex items-center gap-1">
+                                <p className="text-[10px] text-warning font-medium flex items-center gap-1">
                                   <ShieldAlert className="w-3 h-3" /> Multi-Admin Policy: Your proposal requires confirmation from a different Club Admin.
                                 </p>
                               )}
@@ -2840,7 +2840,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="furniture p-6 rounded-3xl space-y-6">
                   <div className="border-b border-line pb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-lg font-black text-text uppercase flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-text flex items-center gap-2">
                         <FileCheck className="w-5 h-5 text-accent" /> Audit Trail & Security Logs
                       </h2>
                       <p className="text-xs text-text-muted mt-1">
@@ -2848,14 +2848,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       </p>
                     </div>
 
-                    <span className="px-3 py-1 bg-warning/80 border border-warning/40 text-warning font-bold text-xs rounded-xl flex items-center gap-1">
+                    <span className="px-3 py-1 bg-warning/80 border border-warning/40 text-warning font-medium text-xs rounded-xl flex items-center gap-1">
                       <Lock className="w-3.5 h-3.5 text-warning" /> Restrict Access: Owner & Super User
                     </span>
                   </div>
 
                   {/* SOFT-DELETED SESSIONS RECOVERY */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-xs font-medium text-text flex items-center gap-2">
                       <RotateCcw className="w-4 h-4 text-warning" /> Soft-Deleted Sessions ({deletedSessions.length})
                     </h3>
 
@@ -2868,13 +2868,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         {deletedSessions.map(item => (
                           <div key={item.id} className="p-3.5 bg-bg border border-line rounded-2xl flex items-center justify-between text-xs">
                             <div>
-                              <span className="font-bold text-danger line-through">{item.title}</span>
+                              <span className="font-semibold text-danger line-through">{item.title}</span>
                             </div>
 
                             <button
                               onClick={() => restoreSessionAction.run(item.id, item.sourceType, item.title)}
                               disabled={restoreSessionAction.isPending(item.id)}
-                              className="px-3 py-1.5 bg-accent hover:bg-accent text-accent-contrast font-sans font-bold text-xs uppercase rounded-xl cursor-pointer flex items-center gap-1 shadow"
+                              className="px-3 py-1.5 bg-accent hover:bg-accent text-accent-contrast font-sans font-medium text-xs rounded-xl cursor-pointer flex items-center gap-1 shadow"
                             >
                               <RotateCcw className="w-3.5 h-3.5" /> Restore Session
                             </button>
@@ -2886,7 +2886,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                   {/* AUDIT LOG FEED */}
                   <div className="space-y-3 pt-4 border-t border-line">
-                    <h3 className="text-xs font-bold text-text uppercase tracking-wider">
+                    <h3 className="text-xs font-medium text-text ">
                       Immutable Log History ({auditLogs.length})
                     </h3>
 
@@ -2899,10 +2899,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         {auditLogs.map(log => (
                           <div key={log.id} className="p-3.5 bg-bg border border-line rounded-2xl space-y-1 text-xs">
                             <div className="flex flex-wrap items-center justify-between text-[11px] text-text-muted">
-                              <span className="font-bold text-accent uppercase">{log.action}</span>
+                              <span className="font-semibold text-accent ">{log.action}</span>
                               <span>{new Date(log.createdAt).toLocaleString()}</span>
                             </div>
-                            <div className="text-text font-bold">{log.sessionTitle}</div>
+                            <div className="text-text font-semibold">{log.sessionTitle}</div>
                             <div className="text-[10px] text-text-muted">
                               Actor: {log.changedByName} {log.approvedByName ? `| Approved by: ${log.approvedByName}` : ''}
                             </div>
@@ -2925,7 +2925,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
                     <div>
-                      <h2 className="text-lg font-black text-text uppercase flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-text flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-accent" /> Club Leaderboard & Historical Statistics
                       </h2>
                       <p className="text-xs text-text-muted">
@@ -2945,23 +2945,23 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <div 
                           key={player.name} 
                           className={`p-4 bg-bg border rounded-2xl space-y-3 ${
-                            isTop3 ? 'border-accent/80 bg-surface' : 'border-line'
+ isTop3 ? 'border-accent/80 bg-surface' : 'border-line'
                           }`}
                         >
                           <div className="flex items-center justify-between border-b border-line/60 pb-2">
                             <div className="flex items-center gap-2">
-                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${
-                                idx === 0 ? 'bg-warning/20 text-accent border border-accent' :
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+ idx === 0 ? 'bg-warning/20 text-accent border border-accent' :
                                 idx === 1 ? 'bg-line-strong/20 text-text-muted border border-line-strong' :
                                 idx === 2 ? 'bg-warning/20 text-warning border border-warning/50' :
                                 'bg-surface text-text-muted'
                               }`}>
                                 {crownBadge}
                               </span>
-                              <span className="font-bold text-text text-sm">{player.name}</span>
+                              <span className="font-medium text-text text-sm">{player.name}</span>
                             </div>
 
-                            <div className={`text-sm font-black ${player.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
+                            <div className={`text-sm font-semibold ${player.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
                               {formatSignedUnit(player.netProfit)}
                             </div>
                           </div>
@@ -2987,13 +2987,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       <tbody className="divide-y divide-line font-mono">
                         {leaderboardData.map((player, idx) => (
                           <tr key={player.name} className="hover:bg-bg/50 transition-colors">
-                            <td className="py-3.5 px-2 font-black text-accent">
+                            <td className="py-3.5 px-2 font-semibold text-accent">
                               #{idx + 1}
                             </td>
-                            <td className="py-3.5 px-2 font-bold text-text">
+                            <td className="py-3.5 px-2 font-semibold text-text">
                               {player.name}
                             </td>
-                            <td className={`py-3.5 px-2 font-black text-xs ${player.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
+                            <td className={`py-3.5 px-2 font-semibold text-xs ${player.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
                               {formatSignedUnit(player.netProfit)}
                             </td>
                           </tr>
@@ -3011,7 +3011,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <div className="space-y-6">
                 <div className="furniture p-6 rounded-3xl space-y-4">
                   <div className="border-b border-line pb-3">
-                    <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                    <h2 className="text-base font-semibold text-text flex items-center gap-2">
                       <Coins className="w-5 h-5 text-accent" /> Club Pot Ledger & Transactions (Admin Only)
                     </h2>
                     <p className="text-xs text-text-muted">
@@ -3023,10 +3023,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     {potLogs.map(log => (
                       <div key={log.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between text-xs font-mono">
                         <div>
-                          <div className="font-bold text-text">{log.note}</div>
+                          <div className="font-semibold text-text">{log.note}</div>
                           <div className="text-[10px] text-text-muted">{new Date(log.createdAt).toLocaleString()}</div>
                         </div>
-                        <div className="text-warning font-bold text-sm">
+                        <div className="text-warning font-medium text-sm">
                           +{formatVal(log.amount)}
                         </div>
                       </div>
@@ -3064,7 +3064,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             >
               <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
                 <div>
-                  <h3 className="text-sm font-black text-accent uppercase tracking-wider">Buy In</h3>
+                  <h3 className="text-sm font-semibold text-accent ">Buy In</h3>
                   <p className="text-[11px] text-text-muted mt-0.5">Tap whoever needs chips</p>
                 </div>
                 {/* Bordered rather than a bare glyph — as a faint muted icon
@@ -3098,16 +3098,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                 {/* Chip amount picker */}
                 <div className="space-y-2">
-                  <label className="text-[11px] font-bold text-text-muted uppercase">Amount</label>
+                  <label className="text-[11px] font-medium text-text-muted uppercase">Amount</label>
                   <div className="flex flex-wrap gap-2">
                     {quickAmounts.map(amt => (
                       <button
                         key={amt}
                         type="button"
                         onClick={() => setBuyInAmount(amt)}
-                        className={`px-3.5 py-2 rounded-full text-xs font-mono font-black cursor-pointer transition-all border ${
-                          buyInAmount === amt
-                            ? 'bg-accent border-accent text-accent-contrast'
+                        className={`px-3.5 py-2 rounded-full text-xs font-mono font-semibold cursor-pointer transition-all border ${
+ buyInAmount === amt
+ ? 'bg-accent border-accent text-accent-contrast'
                             : 'bg-bg border-line text-text hover:border-line-strong'
                         }`}
                       >
@@ -3124,9 +3124,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     step={100}
                     value={buyInAmount}
                     onChange={(e) => setBuyInAmount(Number(e.target.value))}
-                    className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-lg font-mono font-black text-accent focus:border-accent outline-none"
+                    className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-lg font-mono font-semibold text-accent focus:border-accent outline-none"
                   />
-                  <p className="text-[11px] text-accent font-mono font-bold">
+                  <p className="text-[11px] text-accent font-mono font-medium">
                     Equivalent Real Bank Cash: ₹{Math.round(buyInAmount / ((club.enableDevaluation ?? true) ? (club.devaluationFactor ?? 5) : 1)).toLocaleString()} INR
                   </p>
                 </div>
@@ -3134,7 +3134,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 {/* Min/max are enforced on submit via a toast rather than
                     spelled out up front — see handleRequestBuyIn. */}
                 {isAdmin && buyInTargetUser === currentUser.uid && (
-                  <p className="text-[11px] text-warning font-bold">
+                  <p className="text-[11px] text-warning font-medium">
                     ⚠️ As an Admin, another Admin must approve your request.
                   </p>
                 )}
@@ -3142,7 +3142,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="submit"
                         disabled={requestBuyInAction.pending}
-                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                         {requestBuyInAction.pending ? 'Sending…' : <>Buy in {formatPts(buyInAmount)} for {targetName}</>}
                 </button>
@@ -3150,7 +3150,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowBuyInModal(false)}
-                  className="w-full text-center text-xs font-bold text-text-muted hover:text-text transition-colors cursor-pointer py-1"
+                  className="w-full text-center text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer py-1"
                 >
                   Cancel
                 </button>
@@ -3171,7 +3171,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-5 border-b border-line/60 flex items-center justify-between sticky top-0 bg-surface rounded-t-3xl">
-              <h3 className="font-bold text-text flex items-center gap-2">
+              <h3 className="font-semibold text-text flex items-center gap-2">
                 <CalendarPlus className="w-4 h-4 text-accent" /> Record a past night
                 <InfoHint>
                   For a game played before it was entered here. Today's club rules (rake, winners' cut, mismatch handling)
@@ -3185,7 +3185,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             <div className="p-5 space-y-5">
               <div>
-                <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Date played</label>
+                <label className="text-xs font-medium text-text-muted ">Date played</label>
                 <input
                   type="date"
                   value={pastDate}
@@ -3214,14 +3214,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 return (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                      <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">
                         Who played
                       </span>
                       {unseated.length > 0 && (
                         <button
                           type="button"
                           onClick={() => unseated.forEach(addMember)}
-                          className="text-[11px] font-bold text-accent hover:underline"
+                          className="text-[11px] font-medium text-accent hover:underline"
                         >
                           Add everyone
                         </button>
@@ -3236,7 +3236,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             key={uid}
                             type="button"
                             onClick={() => addMember(uid)}
-                            className="flex items-center gap-1.5 bg-bg border border-line/70 hover:border-accent/60 hover:text-accent text-text-muted text-xs font-bold pl-1.5 pr-2.5 py-1 rounded-full transition-colors"
+                            className="flex items-center gap-1.5 bg-bg border border-line/70 hover:border-accent/60 hover:text-accent text-text-muted text-xs font-medium pl-1.5 pr-2.5 py-1 rounded-full transition-colors"
                           >
                             <span className="w-5 h-5 rounded-full bg-surface-alt border border-line/60 flex items-center justify-center text-[10px] text-text">
                               {memberName(uid)[0]?.toUpperCase() || 'M'}
@@ -3252,9 +3252,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               <div className="space-y-2">
                 <div className="grid grid-cols-[1fr_5rem_5rem_1.75rem] gap-2 px-1">
-                  <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Player</span>
-                  <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider text-right">Buy-in</span>
-                  <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider text-right">Cash-out</span>
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider">Player</span>
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider text-right">Buy-in</span>
+                  <span className="text-[10px] font-medium text-text-muted uppercase tracking-wider text-right">Cash-out</span>
                   <span />
                 </div>
                 {pastRows.map((row, i) => (
@@ -3264,7 +3264,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <span className="w-5 h-5 shrink-0 rounded-full bg-surface-alt border border-line/60 flex items-center justify-center text-[10px] text-text">
                           {row.name[0]?.toUpperCase() || 'M'}
                         </span>
-                        <span className="text-sm text-text font-bold truncate">{row.name}</span>
+                        <span className="text-sm text-text font-medium truncate">{row.name}</span>
                       </div>
                     ) : (
                       <input
@@ -3309,7 +3309,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setPastRows((rows) => [...rows, { name: '', buyIn: 0, cashOut: 0 }])}
-                  className="w-full border border-dashed border-line/70 text-text-muted text-xs font-bold py-2 rounded-xl hover:border-accent/50 hover:text-accent transition-colors"
+                  className="w-full border border-dashed border-line/70 text-text-muted text-xs font-medium py-2 rounded-xl hover:border-accent/50 hover:text-accent transition-colors"
                 >
                   + Add a guest
                 </button>
@@ -3347,7 +3347,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 type="button"
                 onClick={() => { setPastCalculated(true); setPastConfirming(false); }}
                 disabled={!pastDate || pastEntryRows.length < 2 || pastHasZeroBuyIn}
-                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-black py-3 rounded-xl text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
+                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
                 <Scale className="w-4 h-4" /> Calculate
               </button>
@@ -3389,7 +3389,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => (pastConfirming ? setPastConfirming(false) : setShowPastSessionModal(false))}
-                  className="flex-1 border border-line text-text-muted font-bold py-3 rounded-xl hover:text-text transition-colors"
+                  className="flex-1 border border-line text-text-muted font-semibold py-3 rounded-xl hover:text-text transition-colors"
                 >
                   {pastConfirming ? 'Back' : 'Cancel'}
                 </button>
@@ -3402,7 +3402,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     type="button"
                     onClick={() => setPastConfirming(true)}
                     disabled={!pastCalculated || !pastPreview || pastPreview.requiresManualResolution}
-                    className="flex-1 bg-accent text-accent-contrast font-bold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Record night
                   </button>
@@ -3411,7 +3411,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     key="past-confirm"
                     type="submit"
                     disabled={savingPast}
-                    className="flex-1 bg-warning text-accent-contrast font-black py-3 rounded-xl disabled:opacity-50 uppercase tracking-wide text-xs"
+                    className="flex-1 bg-warning text-accent-contrast font-semibold py-3 rounded-xl disabled:opacity-50 text-xs"
                   >
                     {savingPast ? 'Saving…' : 'Yes, record it'}
                   </button>
@@ -3433,7 +3433,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           >
             <div className="border-b border-line px-5 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-black text-accent uppercase tracking-wider">Stand Up</h3>
+                <h3 className="text-sm font-semibold text-accent ">Stand Up</h3>
                 <p className="text-[11px] text-text-muted mt-0.5">Count your chips and cash out</p>
               </div>
               <button
@@ -3456,7 +3456,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-text-muted uppercase">Chips you are cashing out</label>
+                <label className="text-[10px] font-medium text-text-muted uppercase">Chips you are cashing out</label>
                 <input
                   type="number"
                   required
@@ -3464,21 +3464,21 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   step={100}
                   value={standUpAmount}
                   onChange={(e) => setStandUpAmount(Math.max(0, Number(e.target.value)))}
-                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-lg font-mono font-black text-accent focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-lg font-mono font-semibold text-accent focus:border-accent outline-none"
                 />
               </div>
 
               <button
                 type="submit"
                       disabled={standUpAction.pending}
-                className="w-full bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-accent text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                       {standUpAction.pending ? 'Sending…' : <>Cash out {formatVal(standUpAmount)}</>}
               </button>
               <button
                 type="button"
                 onClick={() => setShowStandUpModal(false)}
-                className="w-full text-center text-xs font-bold text-text-muted hover:text-text transition-colors cursor-pointer py-1"
+                className="w-full text-center text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer py-1"
               >
                 Cancel
               </button>
@@ -3493,7 +3493,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           <div className="furniture w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
             <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
               <div>
-                <h3 className="text-sm font-black text-accent uppercase tracking-wider flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
                   <Sliders className="w-4 h-4" /> Cashout
                 </h3>
                 <p className="text-[11px] text-text-muted mt-0.5">{activeSession.sessionName}</p>
@@ -3522,11 +3522,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   return (
                     <div key={uid} className="p-3.5 bg-bg border border-line rounded-2xl space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold text-text">
+                        <div className="text-xs font-medium text-text">
                           {uid === currentUser.uid ? 'You' : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 6)})`)}
                         </div>
                         {club.winnerDefinition === 'MANUAL' ? (
-                          <label className="flex items-center gap-1.5 text-[10px] font-bold text-text-muted uppercase cursor-pointer">
+                          <label className="flex items-center gap-1.5 text-[10px] font-medium text-text-muted uppercase cursor-pointer">
                             <input
                               type="checkbox"
                               checked={!!manualWinnerInputs[uid]}
@@ -3536,22 +3536,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             Winner
                           </label>
                         ) : summary?.isWinner ? (
-                          <span className="px-2 py-0.5 bg-accent/15 border border-accent/40 text-accent text-[9px] font-black uppercase rounded-full">Winner</span>
+                          <span className="px-2 py-0.5 bg-accent/15 border border-accent/40 text-accent text-[9px] font-semibold uppercase rounded-full">Winner</span>
                         ) : null}
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-text-muted uppercase">Buy-in</label>
+                          <label className="text-[10px] font-medium text-text-muted uppercase">Buy-in</label>
                           <input
                             type="number"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
                             onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
-                            className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                            className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-text-muted uppercase flex items-center gap-1">
+                          <label className="text-[10px] font-medium text-text-muted uppercase flex items-center gap-1">
                             Cash-out
                             {uid in confirmedCashOutByUid && (
                               <InfoHint>
@@ -3562,10 +3562,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           </label>
                           {uid in confirmedCashOutByUid ? (
                             <div className="w-full bg-surface/60 border border-accent/30 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                              <span className="text-xs font-mono font-bold text-text">
+                              <span className="text-xs font-mono font-medium text-text">
                                 {confirmedCashOutByUid[uid].toLocaleString()}
                               </span>
-                              <span className="flex items-center gap-1 text-[9px] font-black uppercase text-accent">
+                              <span className="flex items-center gap-1 text-[9px] font-semibold uppercase text-accent">
                                 <Lock className="w-2.5 h-2.5" /> Stood up
                               </span>
                             </div>
@@ -3576,7 +3576,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               value={cashOutInputs[uid] ?? ''}
                               onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
                               placeholder="Enter cash-out"
-                              className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                              className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                             />
                           )}
                         </div>
@@ -3598,7 +3598,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <button
                 onClick={() => { setCashoutCalculated(true); setConfirmingSettle(false); }}
                 disabled={!allCashOutsEntered}
-                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-black py-3 rounded-xl text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
+                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
                 <Scale className="w-4 h-4" /> Calculate
               </button>
@@ -3633,7 +3633,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   onClick={() => setConfirmingSettle(true)}
                   disabled={!cashoutCalculated || !allCashOutsEntered || (preview?.requiresManualResolution ?? false)}
-                  className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg"
+                  className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
                   Settle Session
                 </button>
@@ -3649,14 +3649,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => setConfirmingSettle(false)}
-                      className="flex-1 bg-surface-alt border border-line-strong text-text font-bold py-3 rounded-xl text-xs uppercase tracking-wider cursor-pointer"
+                      className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
                     >
                       Go Back
                     </button>
                     <button
                         onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
                         disabled={settleAction.pending}
-                      className="flex-1 bg-accent text-accent-contrast font-black py-3 rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
                     </button>
@@ -3673,7 +3673,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="furniture w-full sm:max-w-sm max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
             <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
-              <h3 className="text-sm font-black text-accent uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
                 <Info className="w-4 h-4" /> Club Rules & Info
               </h3>
               <button onClick={() => setShowClubInfoModal(false)} className="text-text-muted hover:text-text cursor-pointer">
@@ -3744,7 +3744,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="furniture w-full max-w-lg p-6 rounded-3xl space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-base font-semibold text-text flex items-center gap-2">
                 <Settings className="w-5 h-5 text-accent" /> Club Rules & Devaluation Settings
               </h3>
               <button onClick={() => setShowSettingsModal(false)} className="text-text-muted hover:text-text cursor-pointer">
@@ -3755,7 +3755,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {(isOwner || isSuperUser) && (
               <button
                 onClick={() => { setActiveTab('auditTrail'); setShowSettingsModal(false); }}
-                className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl text-xs font-bold text-text-muted hover:text-text transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2"><FileCheck className="w-4 h-4 text-accent" /> Audit Trail & System Logs</span>
                 <ChevronRight className="w-4 h-4" />
@@ -3764,13 +3764,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             <form onSubmit={handleSaveClubSettings} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold text-text-muted uppercase">Club Name</label>
+                <label className="text-[11px] font-medium text-text-muted uppercase">Club Name</label>
                 <input
                   type="text"
                   required
                   value={editClubName}
                   onChange={(e) => setEditClubName(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl px-3.5 py-2.5 text-xs text-text font-bold focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl px-3.5 py-2.5 text-xs text-text font-medium focus:border-accent outline-none"
                 />
               </div>
 
@@ -3793,7 +3793,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     comes from buyInMode. Showing them would imply a limit that
                     isn't enforced. */}
                 <div className="col-span-2 space-y-2">
-                  <label className="text-[11px] font-bold text-text-muted uppercase flex items-center gap-1">
+                  <label className="text-[11px] font-medium text-text-muted uppercase flex items-center gap-1">
                     Buy-in Limit
                     <InfoHint>
                       How much a player may take in one go. The first buy-in of a session is never capped — it sets the reference the rest match.
@@ -3810,10 +3810,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       type="button"
                       onClick={() => setEditBuyInMode(value)}
                       className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
-                        editBuyInMode === value ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'
+ editBuyInMode === value ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'
                       }`}
                     >
-                      <span className={`block text-xs font-bold ${editBuyInMode === value ? 'text-accent' : 'text-text'}`}>{label}</span>
+                      <span className={`block text-xs font-medium ${editBuyInMode === value ? 'text-accent' : 'text-text'}`}>{label}</span>
                       <span className="block text-[10px] text-text-muted mt-0.5">{blurb}</span>
                     </button>
                   ))}
@@ -3822,10 +3822,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               {/* Settlement Rules — everything the Cashout Engine reads at settle time */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-4">
-                <h4 className="text-xs font-black text-accent uppercase tracking-wider">Settlement Rules</h4>
+                <h4 className="text-xs font-semibold text-accent ">Settlement Rules</h4>
 
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-text flex items-center gap-2 cursor-pointer">
+                  <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={editRakeEnabled}
@@ -3839,11 +3839,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 {editRakeEnabled && (
                   <div className="grid grid-cols-2 gap-3 pl-6">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-text-muted uppercase">Rake Method</label>
+                      <label className="text-[10px] font-medium text-text-muted uppercase">Rake Method</label>
                       <select
                         value={editRakeMethod}
                         onChange={(e) => setEditRakeMethod(e.target.value as RakeMethod)}
-                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                       >
                         <option value="PERCENT_PROFIT">% of Winner's Profit</option>
                         <option value="PERCENT_CASHOUT">% of Cashout</option>
@@ -3853,7 +3853,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       </select>
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-text-muted uppercase">
+                      <label className="text-[10px] font-medium text-text-muted uppercase">
                         Rake Value {editRakeMethod === 'PERCENT_PROFIT' || editRakeMethod === 'PERCENT_CASHOUT' ? '(%)' : '(Chips)'}
                       </label>
                       <input
@@ -3861,15 +3861,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         min={0}
                         value={editRakeValue}
                         onChange={(e) => setEditRakeValue(Number(e.target.value))}
-                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-warning focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-warning focus:border-accent outline-none"
                       />
                     </div>
                     <div className="space-y-1 col-span-2">
-                      <label className="text-[10px] font-bold text-text-muted uppercase">Rake Collection Order</label>
+                      <label className="text-[10px] font-medium text-text-muted uppercase">Rake Collection Order</label>
                       <select
                         value={editRakeOrder}
                         onChange={(e) => setEditRakeOrder(e.target.value as RakeOrder)}
-                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                       >
                         <option value="MISMATCH_FIRST">Resolve mismatch first, then rake</option>
                         <option value="RAKE_FIRST">Rake first, then resolve mismatch</option>
@@ -3879,7 +3879,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 )}
 
                 <div className="flex items-center justify-between pt-2 border-t border-line/60">
-                  <label className="text-xs font-bold text-text flex items-center gap-2 cursor-pointer">
+                  <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={editPotEnabled}
@@ -3891,11 +3891,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 </div>
 
                 <div className="space-y-1 pt-2 border-t border-line/60">
-                  <label className="text-[10px] font-bold text-text-muted uppercase">Mismatch Handling Strategy</label>
+                  <label className="text-[10px] font-medium text-text-muted uppercase">Mismatch Handling Strategy</label>
                   <select
                     value={editMismatchStrategy}
                     onChange={(e) => setEditMismatchStrategy(e.target.value as MismatchStrategy)}
-                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                   >
                     <option value="PROPORTIONAL_WINNERS">Deduct from winners proportionally to profit</option>
                     <option value="EQUAL_WINNERS">Deduct equally from winners</option>
@@ -3912,11 +3912,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-line/60">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-text-muted uppercase">Winner Definition</label>
+                    <label className="text-[10px] font-medium text-text-muted uppercase">Winner Definition</label>
                     <select
                       value={editWinnerDefinition}
                       onChange={(e) => setEditWinnerDefinition(e.target.value as WinnerDefinition)}
-                      className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                      className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                     >
                       <option value="PROFIT_POSITIVE">Profit greater than zero</option>
                       <option value="TOP_N">Top N finishers</option>
@@ -3926,24 +3926,24 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   </div>
                   {editWinnerDefinition === 'TOP_N' && (
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-text-muted uppercase">Top N</label>
+                      <label className="text-[10px] font-medium text-text-muted uppercase">Top N</label>
                       <input
                         type="number"
                         min={1}
                         value={editWinnerTopN}
                         onChange={(e) => setEditWinnerTopN(Math.max(1, Number(e.target.value)))}
-                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-bold text-text focus:border-accent outline-none"
+                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                       />
                     </div>
                   )}
                 </div>
 
                 <div className="space-y-1 pt-2 border-t border-line/60">
-                  <label className="text-[10px] font-bold text-text-muted uppercase">Rounding Rule</label>
+                  <label className="text-[10px] font-medium text-text-muted uppercase">Rounding Rule</label>
                   <select
                     value={editRoundingRule}
                     onChange={(e) => setEditRoundingRule(e.target.value as RoundingRule)}
-                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                   >
                     <option value="NONE">No rounding (nearest point)</option>
                     <option value="NEAREST_1">Round to nearest ₹1</option>
@@ -3957,7 +3957,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-xs font-bold text-text flex items-center gap-2 cursor-pointer">
+                    <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={editEnableDevaluation}
@@ -3974,7 +3974,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                 {editEnableDevaluation && (
                   <div className="pt-2 border-t border-line/60 flex flex-wrap items-center gap-3 pl-6">
-                    <label className="text-[11px] font-bold text-text-muted">
+                    <label className="text-[11px] font-medium text-text-muted">
                       Devaluation Ratio:
                     </label>
                     <div className="flex items-center gap-2">
@@ -3984,13 +3984,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         max={100}
                         value={editDevaluationFactor}
                         onChange={(e) => setEditDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 furniture rounded-lg px-2.5 py-1.5 text-xs text-accent font-mono font-bold outline-none focus:border-accent"
+                        className="w-20 furniture rounded-lg px-2.5 py-1.5 text-xs text-accent font-mono font-medium outline-none focus:border-accent"
                       />
-                      <span className="text-xs text-text font-mono font-bold">
+                      <span className="text-xs text-text font-mono font-medium">
                         Chips = ₹1 Cash
                       </span>
                     </div>
-                    <div className="text-[11px] text-accent font-mono font-bold furniture px-3 py-1 rounded-lg w-full">
+                    <div className="text-[11px] text-accent font-mono font-medium furniture px-3 py-1 rounded-lg w-full">
                       Preview: 1,000 Chips = ₹{Math.round(1000 / (editDevaluationFactor || 1))} INR Real Cash Bank
                     </div>
                   </div>
@@ -4002,7 +4002,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   not a rule, so it stays outside the frozen fieldset. */}
               {(isOwner || isSuperUser) && (
                 <div className="p-4 bg-bg border border-line rounded-2xl">
-                  <label className="text-xs font-bold text-text flex items-center gap-2 cursor-pointer">
+                  <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={editLeaderboardVisibleToPlayers}
@@ -4022,7 +4022,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                   <div className="flex items-center justify-between border-b border-line/60 pb-2">
                     <div>
-                      <h4 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                      <h4 className="text-xs font-medium text-text flex items-center gap-1.5">
                         <ShieldCheck className="w-4 h-4 text-accent" /> Club Admin Management ({club.adminUids?.length || 1}/3 Admins)
                       </h4>
                       <p className="text-[10px] text-text-muted mt-0.5">
@@ -4039,19 +4039,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       return (
                         <div key={mUid} className="p-2.5 furniture rounded-xl flex items-center justify-between flex-wrap gap-y-2 text-xs">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className="w-6 h-6 rounded-full bg-bg text-accent text-[10px] font-bold flex items-center justify-center border border-line">
+                            <div className="w-6 h-6 rounded-full bg-bg text-accent text-[10px] font-medium flex items-center justify-center border border-line">
                               {mUid === currentUser.uid ? 'Me' : (allUsers[mUid]?.displayName ? allUsers[mUid].displayName[0].toUpperCase() : 'M')}
                             </div>
-                            <span className="font-bold text-text">
+                            <span className="font-semibold text-text">
                               {mUid === currentUser.uid ? (currentUser.displayName || 'You') : (allUsers[mUid]?.displayName || allUsers[mUid]?.email || `Member (${mUid.slice(0, 6)})`)}
                             </span>
                             {isThisOwner && (
-                              <span className="px-2 py-0.5 bg-warning/15 border border-warning/50 text-warning font-bold text-[9px] uppercase rounded-full">
+                              <span className="px-2 py-0.5 bg-warning/15 border border-warning/50 text-warning font-medium text-[9px] uppercase rounded-full">
                                 👑 Club Owner
                               </span>
                             )}
                             {!isThisOwner && isThisAdmin && (
-                              <span className="px-2 py-0.5 bg-accent/15 border border-accent/50 text-accent font-bold text-[9px] uppercase rounded-full">
+                              <span className="px-2 py-0.5 bg-accent/15 border border-accent/50 text-accent font-medium text-[9px] uppercase rounded-full">
                                 🛡️ Club Admin
                               </span>
                             )}
@@ -4064,7 +4064,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   type="button"
                                   onClick={() => demoteAdminAction.run(mUid)}
                                   disabled={demoteAdminAction.isPending(mUid)}
-                                  className="px-2.5 py-1 bg-warning/80 hover:bg-warning/25 border border-warning/40 text-warning text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors"
+                                  className="px-2.5 py-1 bg-warning/80 hover:bg-warning/25 border border-warning/40 text-warning text-[10px] font-medium uppercase rounded-lg cursor-pointer transition-colors"
                                 >
                                   Demote Admin
                                 </button>
@@ -4073,9 +4073,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                   type="button"
                                   onClick={() => promoteAdminAction.run(mUid)}
                                   disabled={(club.adminUids?.length || 0) >= 3 || promoteAdminAction.pending}
-                                  className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${
-                                    (club.adminUids?.length || 0) >= 3
-                                      ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
+                                  className={`px-2.5 py-1 text-[10px] font-medium uppercase rounded-lg transition-all ${
+ (club.adminUids?.length || 0) >= 3
+ ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
                                       : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
                                   }`}
                                   title={(club.adminUids?.length || 0) >= 3 ? "Max 3 admins reached (1 Owner + 2 Admins)" : "Promote to Admin"}
@@ -4088,7 +4088,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                                 type="button"
                                 onClick={() => removeMemberAction.run(mUid)}
                                 disabled={removeMemberAction.isPending(mUid)}
-                                className="px-2 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors"
+                                className="px-2 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-medium uppercase rounded-lg cursor-pointer transition-colors"
                                 title="Delete / Remove user from club"
                               >
                                 Delete User
@@ -4105,7 +4105,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-3 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-50"
+                className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50"
               >
                 {savingSettings ? 'SAVING SETTINGS...' : 'UPDATE CLUB SETTINGS'}
               </button>
@@ -4119,7 +4119,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="furniture w-full max-w-xl p-6 rounded-3xl space-y-5 my-8">
             <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-base font-semibold text-text flex items-center gap-2">
                 <FileEdit className="w-5 h-5 text-accent" /> Edit Session ({editingSession.dayTitle})
               </h3>
               <button onClick={() => setShowEditSessionModal(false)} className="text-text-muted hover:text-text cursor-pointer">
@@ -4130,18 +4130,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             <form onSubmit={handleSubmitSessionEdit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-text-muted uppercase">Session Date</label>
+                  <label className="text-[11px] font-medium text-text-muted uppercase">Session Date</label>
                   <input
                     type="date"
                     required
                     value={editSessionDate}
                     onChange={(e) => setEditSessionDate(e.target.value)}
-                    className="w-full bg-bg border border-line rounded-xl px-3.5 py-2.5 text-xs text-text font-bold focus:border-accent outline-none font-mono"
+                    className="w-full bg-bg border border-line rounded-xl px-3.5 py-2.5 text-xs text-text font-medium focus:border-accent outline-none font-mono"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-text-muted uppercase">Session Notes</label>
+                  <label className="text-[11px] font-medium text-text-muted uppercase">Session Notes</label>
                   <input
                     type="text"
                     value={editSessionNotes}
@@ -4155,13 +4155,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               {/* PLAYER FINANCIALS EDITOR */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                 <div className="flex items-center justify-between border-b border-line/60 pb-2">
-                  <h4 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-xs font-medium text-text flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-accent" /> Individual Player Buy-Ins & Cash-Outs
                   </h4>
                   <button
                     type="button"
                     onClick={handleAddPlayerToEdit}
-                    className="px-2.5 py-1 bg-surface hover:bg-surface-alt border border-line text-accent text-[10px] font-bold uppercase rounded-lg cursor-pointer"
+                    className="px-2.5 py-1 bg-surface hover:bg-surface-alt border border-line text-accent text-[10px] font-medium uppercase rounded-lg cursor-pointer"
                   >
                     + Add Player
                   </button>
@@ -4179,12 +4179,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             placeholder="Player Name"
                             value={p.name}
                             onChange={(e) => handlePlayerStatChange(idx, 'name', e.target.value)}
-                            className="bg-bg border border-line rounded-lg px-2.5 py-1.5 text-xs text-text font-bold focus:border-accent outline-none flex-1"
+                            className="bg-bg border border-line rounded-lg px-2.5 py-1.5 text-xs text-text font-medium focus:border-accent outline-none flex-1"
                           />
                           {/* Gross cash-out minus buy-in, before the club's
                               rules are applied — Calculate below shows the
                               settled figure. */}
-                          <span className={`text-xs font-mono font-bold tabular-nums ${profit >= 0 ? 'text-accent' : 'text-danger'}`}>
+                          <span className={`text-xs font-mono font-medium tabular-nums ${profit >= 0 ? 'text-accent' : 'text-danger'}`}>
                             {formatSignedVal(profit)}
                           </span>
                           <button
@@ -4199,32 +4199,32 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <label className="text-[10px] text-text-muted font-bold block mb-0.5">Buy-In (Chips)</label>
+                            <label className="text-[10px] text-text-muted font-medium block mb-0.5">Buy-In (Chips)</label>
                             <input
                               type="number"
                               min={0}
                               required
                               value={p.buyIn}
                               onChange={(e) => handlePlayerStatChange(idx, 'buyIn', Number(e.target.value))}
-                              className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-bold focus:border-accent outline-none"
+                              className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-medium focus:border-accent outline-none"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] text-text-muted font-bold block mb-0.5">Cash-Out (Chips)</label>
+                            <label className="text-[10px] text-text-muted font-medium block mb-0.5">Cash-Out (Chips)</label>
                             <input
                               type="number"
                               min={0}
                               required
                               value={p.cashOut}
                               onChange={(e) => handlePlayerStatChange(idx, 'cashOut', Number(e.target.value))}
-                              className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-bold focus:border-accent outline-none"
+                              className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-medium focus:border-accent outline-none"
                             />
                           </div>
                         </div>
 
                         {/* Link to Club Member Dropdown */}
                         <div className="pt-1 flex items-center gap-2">
-                          <label className="text-[10px] text-text-muted font-bold shrink-0">Link Account:</label>
+                          <label className="text-[10px] text-text-muted font-medium shrink-0">Link Account:</label>
                           <select
                             value={p.userId || ''}
                             onChange={(e) => {
@@ -4287,7 +4287,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 type="button"
                 onClick={() => setEditCalculated(true)}
                 disabled={!editPreview}
-                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-black py-3 rounded-xl text-xs uppercase tracking-widest disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
+                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
                 <Scale className="w-4 h-4" /> Calculate
               </button>
@@ -4325,14 +4325,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => (editConfirming ? setEditConfirming(false) : setShowEditSessionModal(false))}
-                  className="flex-1 border border-line text-text-muted font-bold py-3 rounded-xl hover:text-text transition-colors text-xs uppercase tracking-wider"
+                  className="flex-1 border border-line text-text-muted font-medium py-3 rounded-xl hover:text-text transition-colors text-xs "
                 >
                   {editConfirming ? 'Back' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   disabled={submittingEdit || !editCalculated || !editPreview || editPreview.requiresManualResolution}
-                  className={`flex-1 font-black py-3 rounded-xl text-xs uppercase tracking-widest cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${editConfirming ? 'bg-warning text-accent-contrast' : 'bg-accent text-accent-contrast'}`}
+                  className={`flex-1 font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${editConfirming ? 'bg-warning text-accent-contrast' : 'bg-accent text-accent-contrast'}`}
                 >
                   {submittingEdit
                     ? 'Saving…'
@@ -4353,7 +4353,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-surface border border-danger/80 w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 className="text-base font-bold text-danger uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-base font-semibold text-danger flex items-center gap-2">
                 <Trash2 className="w-5 h-5 text-danger" /> Delete Session Record
               </h3>
               <button
@@ -4367,12 +4367,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             <div className="space-y-3 text-xs text-text font-sans">
               <p>
-                Are you sure you want to delete <strong className="text-danger font-bold font-mono">{deletingSessionTarget.dayTitle || 'this session'}</strong> ({deletingSessionTarget.date})?
+                Are you sure you want to delete <strong className="text-danger font-semibold font-mono">{deletingSessionTarget.dayTitle || 'this session'}</strong> ({deletingSessionTarget.date})?
               </p>
 
               <div className="p-3 bg-bg border border-danger/60 rounded-xl space-y-1.5 font-mono text-[11px]">
-                <div className="text-text-muted">Players: <span className="text-text font-bold">{deletingSessionTarget.playersCount}</span></div>
-                <div className="text-text-muted">Total Buy-Ins: <span className="text-warning font-bold">{formatVal(deletingSessionTarget.totalBuyIns)}</span></div>
+                <div className="text-text-muted">Players: <span className="text-text font-semibold">{deletingSessionTarget.playersCount}</span></div>
+                <div className="text-text-muted">Total Buy-Ins: <span className="text-warning font-semibold">{formatVal(deletingSessionTarget.totalBuyIns)}</span></div>
               </div>
 
               <p className="text-[11px] text-text-muted">
@@ -4381,7 +4381,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               {(!isOwner && !isSuperUser && (club.adminUids || []).filter(u => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy).length > 0) && (
                 <div className="p-3 bg-warning/60 border border-warning/40 rounded-xl text-[11px] text-warning space-y-1">
-                  <p className="font-bold flex items-center gap-1">
+                  <p className="font-semibold flex items-center gap-1">
                     <ShieldAlert className="w-3.5 h-3.5 text-warning" /> Multi-Admin Governance
                   </p>
                   <p>
@@ -4395,7 +4395,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <button
                 type="button"
                 onClick={() => setDeletingSessionTarget(null)}
-                className="px-4 py-2.5 bg-bg hover:bg-surface-alt border border-line text-text-muted font-bold rounded-xl text-xs uppercase cursor-pointer"
+                className="px-4 py-2.5 bg-bg hover:bg-surface-alt border border-line text-text-muted font-medium rounded-xl text-xs cursor-pointer"
               >
                 Cancel
               </button>
@@ -4404,7 +4404,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 type="button"
                 disabled={submittingDelete}
                 onClick={() => performDeleteSession(deletingSessionTarget)}
-                className="px-5 py-2.5 bg-danger hover:bg-danger text-white font-black rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-1.5"
+                className="px-5 py-2.5 bg-danger hover:bg-danger text-white font-semibold rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-1.5"
               >
                 {submittingDelete ? 'Deleting...' : 'Confirm Delete'}
               </button>
@@ -4426,7 +4426,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-line pb-3">
-                <span className="text-xs font-black uppercase text-accent tracking-wider">
+                <span className="text-xs font-semibold text-accent ">
                   ⚡ Quick Actions
                 </span>
                 <button 
@@ -4444,7 +4444,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     setBuyInTargetUser(currentUser.uid);
                     setShowBuyInModal(true);
                   }}
-                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-black p-3.5 rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg cursor-pointer min-h-[48px]"
+                  className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg cursor-pointer min-h-[48px]"
                 >
                   <Plus className="w-4 h-4 stroke-[3]" /> Buy In
                 </button>
@@ -4458,7 +4458,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       setMobileFabOpen(false);
                       handleStartSession();
                     }}
-                    className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold p-3.5 rounded-2xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
+                    className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium p-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
                   >
                     <Play className="w-4 h-4 text-accent" /> Start New Session
                   </button>
@@ -4551,18 +4551,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   onClick={item.onSelect}
                   aria-current={isSelected ? 'page' : undefined}
                   className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-                    isSelected ? 'text-accent' : 'text-text-muted hover:text-text'
+ isSelected ? 'text-accent' : 'text-text-muted hover:text-text'
                   }`}
                 >
                   <div className="relative">
                     <item.Icon className={`w-5 h-5 ${item.iconClass ?? ''}`} />
                     {item.badge > 0 && (
-                      <span className="absolute -top-1 -right-1.5 bg-danger text-white font-black text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                      <span className="absolute -top-1 -right-1.5 bg-danger text-white font-semibold text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
                         {item.badge}
                       </span>
                     )}
                   </div>
-                  <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">
+                  <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">
                     {item.label}
                   </span>
                 </button>
@@ -4576,7 +4576,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="furniture w-full max-w-md p-6 rounded-3xl space-y-5">
             <div className="flex items-center justify-between border-b border-line pb-3">
-              <h3 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-base font-semibold text-text flex items-center gap-2">
                 <LinkIcon className="w-5 h-5 text-accent" /> Link Player to Member
               </h3>
               <button onClick={() => setShowLinkModal(false)} className="text-text-muted hover:text-text cursor-pointer">
@@ -4586,19 +4586,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             <div className="space-y-4">
               <div className="p-3 bg-bg border border-line rounded-xl space-y-1 text-xs">
-                <div className="text-[10px] text-text-muted font-bold uppercase">Ledger Player Entry:</div>
-                <div className="text-text font-bold text-sm font-mono">{linkingPlayerName}</div>
+                <div className="text-[10px] text-text-muted font-medium uppercase">Ledger Player Entry:</div>
+                <div className="text-text font-medium text-sm font-mono">{linkingPlayerName}</div>
                 <div className="text-[10px] text-text-muted">Session: {linkingSession?.dayTitle || linkingSession?.sessionDate || 'Historical Session'}</div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-text-muted uppercase block">
+                <label className="text-[11px] font-medium text-text-muted uppercase block">
                   Select Registered Club Member to Link:
                 </label>
                 <select
                   value={linkingSelectedUserUid}
                   onChange={(e) => setLinkingSelectedUserUid(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl p-3 text-xs text-text font-mono font-bold focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl p-3 text-xs text-text font-mono font-medium focus:border-accent outline-none"
                 >
                   <option value="">-- Select Member Account --</option>
                   {allMembersList.map((mUid) => {
@@ -4618,7 +4618,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowLinkModal(false)}
-                  className="flex-1 py-2.5 bg-bg hover:furniture text-text-muted font-bold rounded-xl text-xs uppercase"
+                  className="flex-1 py-2.5 bg-bg hover:furniture text-text-muted font-medium rounded-xl text-xs "
                 >
                   Cancel
                 </button>
@@ -4626,7 +4626,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   type="button"
                   disabled={!linkingSelectedUserUid || isSavingLink}
                   onClick={handleSavePlayerLink}
-                  className="flex-1 py-2.5 bg-accent hover:bg-accent text-accent-contrast font-black rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 shadow-lg"
+                  className="flex-1 py-2.5 bg-accent hover:bg-accent text-accent-contrast font-semibold rounded-xl text-xs cursor-pointer disabled:opacity-50 shadow-lg"
                 >
                   {isSavingLink ? 'LINKING...' : 'SAVE PLAYER LINK'}
                 </button>

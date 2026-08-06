@@ -41,7 +41,7 @@ function Row({
   return (
     <div className={`flex items-baseline gap-3 ${indent ? 'pl-2 text-text-faint' : 'text-text-muted'}`}>
       <span className="flex-1 min-w-0 truncate">{label}</span>
-      <span className={`shrink-0 text-right ${strong ? 'font-bold' : ''} ${indent ? '' : toneClass}`}>{amount}</span>
+      <span className={`shrink-0 text-right ${strong ? 'font-semibold' : ''} ${indent ? '' : toneClass}`}>{amount}</span>
     </div>
   );
 }
@@ -88,7 +88,7 @@ export function SettlementPreview({
                 <span className="flex items-center gap-1.5">
                   {p.userDisplayName}
                   {p.isWinner && (
-                    <span className="px-1.5 py-0.5 bg-accent/15 border border-accent/40 text-accent text-[8px] font-black uppercase rounded-full shrink-0">
+                    <span className="px-1.5 py-0.5 bg-accent/15 border border-accent/40 text-accent text-[8px] font-semibold uppercase rounded-full shrink-0">
                       Winner
                     </span>
                   )}
@@ -110,12 +110,12 @@ export function SettlementPreview({
 
       <div className="grid grid-cols-2 gap-2.5 text-center font-mono pt-1 border-t border-line">
         <div className="p-2.5 bg-surface rounded-xl">
-          <div className="text-[9px] text-text-muted">TOTAL BUY-INS</div>
-          <div className="text-xs font-bold text-text tabular-nums">{formatAmount(result.totalBuyIns)}</div>
+          <div className="text-[9px] text-text-muted">Total buy-ins</div>
+          <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalBuyIns)}</div>
         </div>
         <div className="p-2.5 bg-surface rounded-xl">
-          <div className="text-[9px] text-text-muted">TOTAL CASH-OUTS</div>
-          <div className="text-xs font-bold text-text tabular-nums">{formatAmount(result.totalCashOuts)}</div>
+          <div className="text-[9px] text-text-muted">Total cash-outs</div>
+          <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalCashOuts)}</div>
         </div>
       </div>
 
@@ -143,7 +143,7 @@ export function SettlementPreview({
         <div className="space-y-1.5">
           {result.steps.map((s, idx) => (
             <div key={idx} className="p-2.5 bg-surface border border-line rounded-xl text-[11px] font-mono">
-              <span className="text-accent font-bold uppercase">{s.step}: </span>
+              <span className="text-accent font-semibold ">{s.step}: </span>
               <span className="text-text-muted">{s.detail}</span>
             </div>
           ))}
@@ -157,7 +157,7 @@ export function SettlementPreview({
             outside the app{mismatchAcknowledgement ? ', then confirm below.' : ' before saving.'}
           </p>
           {mismatchAcknowledgement && (
-            <label className="flex items-center gap-2 text-[11px] font-bold text-text cursor-pointer">
+            <label className="flex items-center gap-2 text-[11px] font-medium text-text cursor-pointer">
               <input
                 type="checkbox"
                 checked={mismatchAcknowledgement.checked}
@@ -172,14 +172,14 @@ export function SettlementPreview({
 
       {club.potEnabled && (
         <div className="p-3 bg-surface border border-accent/30 rounded-xl flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-text min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-text min-w-0 flex-1">
             <Coins className="w-4 h-4 text-accent shrink-0" />
             <span className="truncate">{potDisplay === 'share' ? 'Pot share' : 'Club Pot'}</span>
           </div>
           <div className="text-right font-mono tabular-nums shrink-0">
             {potDisplay === 'share' ? (
               <>
-                <div className="text-sm font-black text-accent">{formatAmount(result.potContribution)}</div>
+                <div className="text-sm font-semibold text-accent">{formatAmount(result.potContribution)}</div>
                 <div className="text-[10px] text-text-muted">replaces previous</div>
               </>
             ) : (
@@ -188,7 +188,7 @@ export function SettlementPreview({
                   {formatAmount(club.clubPotBalance || 0)} {result.potContribution >= 0 ? '+' : '-'}{' '}
                   {formatAmount(Math.abs(result.potContribution))}
                 </div>
-                <div className="text-sm font-black text-accent">
+                <div className="text-sm font-semibold text-accent">
                   {formatAmount((club.clubPotBalance || 0) + result.potContribution)}
                 </div>
               </>
@@ -218,7 +218,7 @@ export function SettlementConfirm({ result, title, warning, formatSigned }: Sett
       <div className="flex items-start gap-2">
         <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-black text-text uppercase tracking-wide">{title}</p>
+          <p className="text-sm font-semibold text-text ">{title}</p>
           <p className="text-[11px] text-text-muted mt-0.5">{warning}</p>
         </div>
       </div>

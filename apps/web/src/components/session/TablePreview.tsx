@@ -76,7 +76,7 @@ export const TablePreview: React.FC = () => {
     <div className="min-h-screen bg-bg text-text pb-16">
       {shown.map(([title, { night, users }]) => (
         <section key={title} className="border-b border-line py-4">
-          <h2 className="px-5 pb-2 text-xs uppercase tracking-widest text-text-muted">{title}</h2>
+          <h2 className="px-5 pb-2 text-xs text-text-muted">{title}</h2>
           <PokerTable
             night={night}
             currentUserId="u0"

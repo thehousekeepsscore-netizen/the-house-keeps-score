@@ -114,7 +114,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
     <div className="fixed inset-0 z-[100] bg-bg/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-5">
       <div className="w-full sm:max-w-md bg-surface border border-line rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2">
+          <h2 className="text-sm font-medium text-text flex items-center gap-2">
             <UserCircle className="w-4 h-4 text-accent" /> Profile
           </h2>
           <button onClick={onClose} aria-label="Close account settings" className="text-text-muted hover:text-text cursor-pointer">
@@ -127,12 +127,12 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
             {user?.photoURL ? (
               <img src={user.photoURL} alt="Avatar" className="w-14 h-14 rounded-full object-cover border-2 border-accent shrink-0" />
             ) : (
-              <div className="w-14 h-14 rounded-full bg-accent text-accent-contrast font-black flex items-center justify-center text-lg shrink-0">
+              <div className="w-14 h-14 rounded-full bg-accent text-accent-contrast font-semibold flex items-center justify-center text-lg shrink-0">
                 {(user?.displayName || user?.email || 'P')[0].toUpperCase()}
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-black text-text truncate">{user?.displayName || user?.username || 'Player'}</div>
+              <div className="text-sm font-semibold text-text truncate">{user?.displayName || user?.username || 'Player'}</div>
               {user?.username && <div className="text-xs text-text-muted truncate">@{user.username}</div>}
               {user?.email && <div className="text-xs text-text-faint truncate">{user.email}</div>}
               <div className="text-xs text-text-faint truncate">
@@ -142,7 +142,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
             {!editing && (
               <button
                 onClick={startEditing}
-                className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-accent hover:opacity-80 cursor-pointer"
+                className="shrink-0 flex items-center gap-1 text-[11px] font-medium text-accent hover:opacity-80 cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5" /> Edit
               </button>
@@ -152,7 +152,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
           {editing && (
             <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-text-muted uppercase">Display name</label>
+                <label className="text-[10px] font-medium text-text-muted uppercase">Display name</label>
                 <input
                   value={form.displayName}
                   onChange={(e) => setForm({ ...form, displayName: e.target.value })}
@@ -160,7 +160,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-text-muted uppercase">Username</label>
+                <label className="text-[10px] font-medium text-text-muted uppercase">Username</label>
                 <input
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -168,7 +168,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-text-muted uppercase flex items-center gap-1">
+                <label className="text-[10px] font-medium text-text-muted uppercase flex items-center gap-1">
                   Phone number
                   <InfoHint>
                     Where result and buy-in notifications are sent. Leave blank to receive none.
@@ -189,14 +189,14 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
                 <button
                   onClick={() => setEditing(false)}
                   disabled={savingDetails}
-                  className="flex-1 bg-surface-alt border border-line-strong text-text font-bold py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                  className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-2.5 rounded-xl text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={saveDetails}
                   disabled={savingDetails}
-                  className="flex-1 bg-accent text-accent-contrast font-black py-2.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                  className="flex-1 bg-accent text-accent-contrast font-semibold py-2.5 rounded-xl text-xs cursor-pointer disabled:opacity-50"
                 >
                   {savingDetails ? 'Saving…' : 'Save'}
                 </button>
@@ -208,7 +208,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
           {record && (
             <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                <h3 className="text-xs font-medium text-text flex items-center gap-1.5">
                   <Trophy className="w-4 h-4 text-accent" /> My Record
                 </h3>
                 <span className="text-[10px] text-text-muted truncate max-w-[45%]">{club?.name}</span>
@@ -217,29 +217,29 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
               <div className="flex items-end justify-between gap-3">
                 <div>
                   <div className="text-[10px] text-text-muted uppercase tracking-wider">All time</div>
-                  <div className={`text-2xl font-black ${record.row.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
+                  <div className={`text-2xl font-semibold ${record.row.netProfit >= 0 ? 'text-accent' : 'text-danger'}`}>
                     {signed(record.row.netProfit)}
-                    <span className="text-xs font-bold text-text-muted ml-1">Chips</span>
+                    <span className="text-xs font-medium text-text-muted ml-1">Chips</span>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] text-text-muted uppercase tracking-wider">Rank</div>
-                  <div className="text-2xl font-black text-accent">{ordinal(record.rank)}</div>
+                  <div className="text-2xl font-semibold text-accent">{ordinal(record.rank)}</div>
                   <div className="text-[10px] text-text-faint">of {record.total}</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-line text-center">
                 <div>
-                  <div className="text-sm font-bold text-text">{record.row.sessionsPlayed}</div>
+                  <div className="text-sm font-medium text-text">{record.row.sessionsPlayed}</div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wide">Sessions</div>
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-accent">{signed(record.row.biggestWin)}</div>
+                  <div className="text-sm font-medium text-accent">{signed(record.row.biggestWin)}</div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wide">Best</div>
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-danger">{signed(record.row.biggestLoss)}</div>
+                  <div className="text-sm font-medium text-danger">{signed(record.row.biggestLoss)}</div>
                   <div className="text-[9px] text-text-muted uppercase tracking-wide">Worst</div>
                 </div>
               </div>
@@ -251,10 +251,10 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
               not part of this player's own account. */}
           {club && isClubAdmin && onOpenClubSettings && (
             <div className="pt-1 space-y-2">
-              <h3 className="text-[10px] font-bold text-text-faint uppercase tracking-wider">Admin</h3>
+              <h3 className="text-[10px] font-medium text-text-faint uppercase tracking-wider">Admin</h3>
               <button
                 onClick={onOpenClubSettings}
-                className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl text-xs font-bold text-text hover:border-line-strong transition-colors cursor-pointer"
+                className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl text-xs font-medium text-text hover:border-line-strong transition-colors cursor-pointer"
               >
                 <span className="flex items-center gap-2 min-w-0">
                   <Settings className="w-4 h-4 text-accent shrink-0" />
@@ -267,7 +267,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
 
           <button
             onClick={() => logout()}
-            className="w-full flex items-center justify-center gap-2 p-3 border border-line rounded-xl text-xs font-bold text-text-muted hover:text-danger hover:border-danger/50 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 p-3 border border-line rounded-xl text-xs font-medium text-text-muted hover:text-danger hover:border-danger/50 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" /> Sign Out
           </button>

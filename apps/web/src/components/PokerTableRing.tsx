@@ -128,7 +128,7 @@ export const PokerTableRing: React.FC<PokerTableRingProps> = ({
           user already knew; the number is the thing they keep asking for.
         */}
         <div className="relative text-center px-2">
-          <div className="text-[10px] text-accent/60 tracking-wide">On the table</div>
+          <div className="text-[10px] text-accent/60 ">On the table</div>
           <div className="text-base font-semibold text-accent tabular-nums">
             {formatBank(players.reduce((sum, p) => sum + p.bank, 0))}
           </div>
@@ -174,7 +174,7 @@ export const PokerTableRing: React.FC<PokerTableRingProps> = ({
                 <span className="relative block">
                   <span
                     className={`block rounded-full overflow-hidden ring-2 ${
-                      isSelected ? 'ring-accent ring-[3px]' : style.ring
+ isSelected ? 'ring-accent ring-[3px]' : style.ring
                     } ${style.dim ? 'opacity-45 grayscale' : ''} transition-all duration-200`}
                     style={{ width: avatarPx, height: avatarPx }}
                   >
@@ -216,7 +216,7 @@ export const PokerTableRing: React.FC<PokerTableRingProps> = ({
                   {style.badge && (
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 rounded-full flex items-center justify-center border-2 border-bg ${
-                        style.badge === 'buyin' ? 'bg-warning' : 'bg-success'
+ style.badge === 'buyin' ? 'bg-warning' : 'bg-success'
                       } ${style.pulse ? 'animate-pulse' : ''}`}
                       style={{ width: avatarPx * 0.36, height: avatarPx * 0.36 }}
                       aria-hidden="true"
@@ -232,7 +232,7 @@ export const PokerTableRing: React.FC<PokerTableRingProps> = ({
 
                 <span
                   className={`font-medium truncate max-w-[76px] leading-tight ${
-                    isSelected ? 'text-accent' : style.dim ? 'text-text-muted' : 'text-text'
+ isSelected ? 'text-accent' : style.dim ? 'text-text-muted' : 'text-text'
                   }`}
                   style={{ fontSize: count > 6 ? 11 : 12 }}
                 >

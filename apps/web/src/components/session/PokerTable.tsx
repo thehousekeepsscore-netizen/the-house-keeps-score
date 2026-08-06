@@ -292,7 +292,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
             // instead of replacing it — every seat would be shifted half its
             // own box twice and the ring would sit off the felt.
             className={`absolute left-1/2 top-1/2 flex items-center rounded-2xl active:opacity-70 transition-opacity duration-[120ms] ${
-              labelAbove ? 'flex-col-reverse' : 'flex-col'
+ labelAbove ? 'flex-col-reverse' : 'flex-col'
             }`}
             style={{
               transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
@@ -303,7 +303,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
             <span className="relative block">
               <span
                 className={`block rounded-full ring-2 ring-accent/70 ${
-                  seat.state === 'waitingToSit' || seat.pendingBuyIn !== null
+ seat.state === 'waitingToSit' || seat.pendingBuyIn !== null
                     ? 'animate-[seat-wait_2s_ease-in-out_infinite]'
                     : ''
                 }`}
@@ -328,13 +328,13 @@ export const PokerTable: React.FC<PokerTableProps> = ({
             {detail !== 'avatar' && (
               <span className={`w-full text-center leading-tight ${labelAbove ? 'mb-1' : 'mt-1'}`}>
                 {isMe && (
-                  <span className="inline-block px-1.5 rounded-full bg-accent/20 text-accent text-[8px] font-bold tracking-wider">
+                  <span className="inline-block px-1.5 rounded-full bg-accent/20 text-accent text-[8px] font-medium ">
                     YOU
                   </span>
                 )}
                 <span
                   className={`block text-[11px] truncate ${
-                    dim === 'gone' ? 'text-text-muted' : 'text-text'
+ dim === 'gone' ? 'text-text-muted' : 'text-text'
                   }`}
                 >
                   {name}
@@ -344,7 +344,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                     // A question gets its own weight. As a caption it read like
                     // a smaller version of a chip count, which is the confusion
                     // this whole vocabulary exists to prevent.
-                    <span className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-bold uppercase tracking-wide whitespace-nowrap">
+                    <span className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-medium uppercase tracking-wide whitespace-nowrap">
                       {seatCaption(seat, formatAmount)}
                     </span>
                   ) : (

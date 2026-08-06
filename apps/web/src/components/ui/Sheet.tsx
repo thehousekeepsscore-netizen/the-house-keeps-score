@@ -207,15 +207,15 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         aria-labelledby={titleId.current}
         tabIndex={-1}
         className="
-          relative w-full sm:max-w-md
-          furniture furniture-raised
-          rounded-t-3xl sm:rounded-3xl
-          outline-none
-          max-h-[90vh] flex flex-col
-          animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
-          sm:animate-[fade-in_160ms_ease-out]
-          safe-bottom
-        "
+ relative w-full sm:max-w-md
+ furniture furniture-raised
+ rounded-t-3xl sm:rounded-3xl
+ outline-none
+ max-h-[90vh] flex flex-col
+ animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
+ sm:animate-[fade-in_160ms_ease-out]
+ safe-bottom
+ "
       >
         {/* Grab handle. Purely a signifier that this surface came from the
             bottom and can be dismissed downward — the convention every native
@@ -225,7 +225,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         </div>
 
         <div className="px-5 pt-3 pb-4 shrink-0">
-          <h2 id={titleId.current} className="text-base font-bold text-text">
+          <h2 id={titleId.current} className="text-base font-semibold text-text">
             {title}
           </h2>
           {description && (

@@ -145,7 +145,7 @@ const Header: React.FC<{
   <header className="px-5 pt-4 pb-3 shrink-0">
     <div className="flex items-baseline gap-2 min-w-0">
       {session && (
-        <h1 className="text-base font-bold text-text truncate">{session.sessionName}</h1>
+        <h1 className="text-base font-semibold text-text truncate">{session.sessionName}</h1>
       )}
       {elapsed && (
         <span className="ml-auto text-xs text-text-muted tabular-nums shrink-0">{elapsed}</span>

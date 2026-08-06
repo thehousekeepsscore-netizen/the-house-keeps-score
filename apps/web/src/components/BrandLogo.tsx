@@ -45,7 +45,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       )}
 
       <span
-        className={`${letterClassName} font-black leading-none select-none`}
+        className={`${letterClassName} font-semibold leading-none select-none`}
         style={{
           fontFamily: "'Playfair Display', Georgia, serif",
           transform: 'translateY(3%)',

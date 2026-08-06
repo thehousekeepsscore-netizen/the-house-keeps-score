@@ -107,7 +107,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onBack }) => {
         >
           <BrandLogo />
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-accent" style={{ fontFamily: SERIF }}>
+            <h1 className="text-3xl font-semibold tracking-tight text-accent" style={{ fontFamily: SERIF }}>
               The House Keeps Score
             </h1>
           </div>
@@ -126,7 +126,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onBack }) => {
           className="space-y-5"
         >
           <div className="text-center">
-            <h2 className="text-xl font-bold text-text">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+            <h2 className="text-xl font-semibold text-text">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
             <p className="text-sm text-text-muted mt-1">{isSignUp ? 'Join your private table' : 'Track the game. Keep it fair.'}</p>
           </div>
 
@@ -192,7 +192,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onBack }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-14 flex items-center justify-center rounded-2xl text-accent-contrast font-bold text-base active:scale-[0.99] transition disabled:opacity-50 cursor-pointer shadow-lg shadow-black/30"
+              className="w-full h-14 flex items-center justify-center rounded-2xl text-accent-contrast font-semibold text-base active:scale-[0.99] transition disabled:opacity-50 cursor-pointer shadow-lg shadow-black/30"
               style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 70%, white), var(--color-accent) 55%, color-mix(in srgb, var(--color-accent) 80%, black))' }}
             >
               {loading ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign In'}

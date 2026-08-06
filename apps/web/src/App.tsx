@@ -689,11 +689,11 @@ const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>[
       // silently bouncing to the dashboard, which would look like a bug.
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
-          <p className="text-sm font-bold text-text">This club isn't available.</p>
+          <p className="text-sm font-medium text-text">This club isn't available.</p>
           <p className="text-xs text-text-muted">It may have been deleted, or you may not be a member.</p>
           <button
             onClick={() => navigate('/', { replace: true })}
-            className="bg-accent text-accent-contrast font-bold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer"
+            className="bg-accent text-accent-contrast font-medium px-4 py-2 rounded-xl text-xs cursor-pointer"
           >
             Back to my clubs
           </button>
