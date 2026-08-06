@@ -1,4 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
+import { LiveSession } from './session/LiveSession';
+import { deriveNight } from '../lib/night-state';
+import { useNextLiveSession } from '../lib/feature-flags';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { ActionQueue, type QueueItem } from './session/ActionQueue';
@@ -715,6 +718,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return changed ? next : prev;
     });
   }, [confirmedCashOutByUid]);
+  // The redesigned screen derives everything it needs from one place, rather
+  // than from the two dozen inline computations above that it will replace.
+  const showNextLiveSession = useNextLiveSession();
+  const night = useMemo(
+    () =>
+      deriveNight({
+        session: activeSession ?? null,
+        buyIns: buyInRequests,
+        currentUserId: currentUser.uid,
+        isAdmin,
+      }),
+    [activeSession, buyInRequests, currentUser.uid, isAdmin]
+  );
+
   const isSeated = !!activeSession?.activePlayerUids.includes(currentUser.uid);
   const hasRequestedSitIn = pendingSitInUids.includes(currentUser.uid);
 
@@ -2077,8 +2094,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         <div className="space-y-6">
             
 
+            {/*
+              PR #3 builds the live session as a new component tree rather than
+              mutating this one. Both exist until the cutover; the flag is what
+              keeps that safe, and it is deleted along with the old screen.
+              Opt in with ?next-session=1.
+            */}
+            {activeTab === 'activeSession' && showNextLiveSession && (
+              <LiveSession
+                club={club}
+                session={activeSession ?? null}
+                night={night}
+                currentUserId={currentUser.uid}
+                isAdmin={isAdmin}
+                users={allUsers}
+                connection={connection}
+                onStartSession={handleStartSession}
+                onSelectPlayer={() => {
+                  /* the player sheet lands in the next milestone */
+                }}
+              />
+            )}
+
             {/* TAB: MERGED ACTIVE SESSION & BUY-INS */}
-            {activeTab === 'activeSession' && (
+            {activeTab === 'activeSession' && !showNextLiveSession && (
               <div className="space-y-6">
                 {!sessionLoaded ? (
                   <div
@@ -4440,7 +4479,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           The label changes with the situation, because the "next thing" genuinely
           differs: chips when you are seated, settle when the night is over.
         */}
-        {activeTab === 'activeSession' && activeSession && (
+        {/* The redesigned screen owns its own next-action bar, and its whole
+            point is that there often isn't one. Leaving this pair underneath it
+            would put the two competing primaries back on the screen that exists
+            to remove them. */}
+        {activeTab === 'activeSession' && activeSession && !showNextLiveSession && (
           <div className="md:hidden fixed bottom-[4.25rem] left-0 right-0 z-40 px-4 pointer-events-none">
             <div className="max-w-md mx-auto pointer-events-auto flex gap-2">
               {/*
