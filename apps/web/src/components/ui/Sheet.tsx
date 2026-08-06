@@ -1,4 +1,79 @@
 import React, { useCallback, useEffect, useRef } from 'react';
+import { useInRouterContext, useLocation, useNavigate } from 'react-router-dom';
+
+/**
+ * Makes an open sheet a history entry, so the platform's own Back closes it.
+ *
+ * On a phone Back is the edge swipe, and it is the gesture people reach for
+ * first to dismiss anything that slid up over the screen. Without this it does
+ * the one thing nobody wants: leaves the screen behind the sheet — or the app —
+ * while the sheet itself was the only thing they meant to dismiss.
+ *
+ * Mounted only while the sheet is open, so its lifecycle *is* the sheet's:
+ *
+ *   mount      push an entry at the current URL, marked with this sheet's id
+ *   Back       the marker disappears, so the sheet closes and nothing navigates
+ *   unmount    if the entry is still ours, pop it, so closing by button,
+ *              backdrop or Escape leaves the history stack as it found it
+ *
+ * A separate component rather than a hook inside Sheet, because Sheet must keep
+ * working outside a router — every existing Sheet test renders it bare, and
+ * hooks cannot be called conditionally while components can be rendered so.
+ */
+const SheetHistoryEntry: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const idRef = useRef(`sheet-${Math.random().toString(36).slice(2, 9)}`);
+  const pushedRef = useRef(false);
+  // Only treat a missing marker as a Back press once the marker has actually
+  // been seen. The push below is asynchronous, so this effect runs once against
+  // the pre-push location — without this the sheet would close the instant it
+  // opened.
+  const sawMarkerRef = useRef(false);
+
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+
+  useEffect(() => {
+    const { pathname, search, hash, state } = locationRef.current;
+    // Same URL, new entry. The address bar is unchanged — a sheet is not a
+    // place, it is a thing open on top of one — but the stack gains a step for
+    // Back to consume.
+    navigate(
+      { pathname, search, hash },
+      { state: { ...(state as Record<string, unknown> | null), __sheet: idRef.current } }
+    );
+    pushedRef.current = true;
+
+    return () => {
+      // Closed by something other than Back, so our entry is still on the
+      // stack. Leaving it there would make the next Back a no-op that looks
+      // like the gesture broke.
+      if (pushedRef.current) navigate(-1);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    const isOurs =
+      (location.state as { __sheet?: string } | null)?.__sheet === idRef.current;
+
+    if (isOurs) {
+      sawMarkerRef.current = true;
+      return;
+    }
+    if (!sawMarkerRef.current) return;
+
+    // The marker was there and is gone: Back popped our entry. The history is
+    // already where it should be, so close without navigating again.
+    pushedRef.current = false;
+    onCloseRef.current();
+  }, [location]);
+
+  return null;
+};
 
 /**
  * A bottom sheet. The app's one dialog surface.
@@ -48,6 +123,9 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useRef(`sheet-${Math.random().toString(36).slice(2, 9)}`);
+  // Sheet is used in tests and stories with no router around it, and a missing
+  // Back gesture is a far smaller loss than a component that refuses to render.
+  const inRouter = useInRouterContext();
 
   // Remember what had focus so it can be given back. Without this, closing a
   // sheet dumps focus onto <body> and a keyboard user restarts from the top of
@@ -110,6 +188,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
       className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center"
       onKeyDown={onKeyDown}
     >
+      {inRouter && <SheetHistoryEntry onClose={onClose} />}
       {/*
         The backdrop closes on tap, which is what every native sheet does and
         what none of the replaced native dialogs could do. aria-hidden because it
