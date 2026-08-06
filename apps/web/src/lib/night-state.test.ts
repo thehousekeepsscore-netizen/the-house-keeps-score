@@ -183,6 +183,66 @@ describe('seat state', () => {
   });
 });
 
+describe('seat order is fixed for the night', () => {
+  it('orders by when each player first took a bank', () => {
+    const night = derive({
+      session: session({ activePlayerUids: ['c', 'a', 'b'] }),
+      buyIns: [
+        buyIn({ userId: 'c', createdAt: ago(30) }),
+        buyIn({ userId: 'a', createdAt: ago(90) }),
+        buyIn({ userId: 'b', createdAt: ago(60) }),
+      ],
+    });
+    expect(night.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('does not move anyone when a player is counted out', () => {
+    // The rule the felt has to keep. Confirming a cash-out removes a player
+    // from activePlayerUids, so deriving order from the live lists would send
+    // them to the end and shift every seat after them — the whole table
+    // rearranging during the ten minutes when people are leaving.
+    const buyIns = [
+      buyIn({ userId: 'a', createdAt: ago(90) }),
+      buyIn({ userId: 'b', createdAt: ago(60) }),
+      buyIn({ userId: 'c', createdAt: ago(30) }),
+    ];
+    const before = derive({
+      session: session({ activePlayerUids: ['a', 'b', 'c'] }),
+      buyIns,
+    });
+    const after = derive({
+      session: session({
+        activePlayerUids: ['a', 'c'],
+        cashOuts: [{ userId: 'b', amount: 7000, status: 'confirmed', requestedAt: ago(2) }],
+      }),
+      buyIns,
+    });
+
+    expect(before.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
+    expect(after.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
+    expect(after.seats[1].state).toBe('cashedOut');
+  });
+
+  it('is deterministic for players with no bank yet', () => {
+    const night = derive({
+      session: session({ activePlayerUids: ['z', 'm', 'a'] }),
+    });
+    expect(night.seats.map((s) => s.userId)).toEqual(['a', 'm', 'z']);
+  });
+
+  it('seats a banked player ahead of one who has only asked for a seat', () => {
+    const night = derive({
+      session: session({
+        activePlayerUids: ['b'],
+        pendingSitInUids: ['a'],
+        sitInRequestedAt: { a: ago(1) },
+      }),
+      buyIns: [buyIn({ userId: 'b', createdAt: ago(50) })],
+    });
+    expect(night.seats.map((s) => s.userId)).toEqual(['b', 'a']);
+  });
+});
+
 describe('chips in play', () => {
   it('counts approved buy-ins less confirmed cash-outs', () => {
     const night = derive({

@@ -177,3 +177,23 @@
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
+
+/*
+ * The only repeating animation in the application.
+ *
+ * A seat waiting on a decision — someone who has asked for chips or for a seat.
+ * It loops because it must not be missed, and it is the *only* thing that loops
+ * because motion means nothing when it is everywhere: if six seats were always
+ * moving, the one seat that needs attention could not ask for it by moving.
+ *
+ * Deliberately not a scale or a bounce. The felt is a table, not a toy, and a
+ * seat that jumps would read as urgent rather than as waiting. Opacity on the
+ * ring only, slow enough to notice without demanding.
+ *
+ * Disabled under prefers-reduced-motion by the rule above — the state is also
+ * carried by a dashed border and a word, so nothing is lost.
+ */
+@keyframes seat-wait {
+  0%, 100% { border-color: var(--color-warning); }
+  50% { border-color: color-mix(in oklab, var(--color-warning) 35%, transparent); }
+}

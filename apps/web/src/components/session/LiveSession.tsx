@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Night } from '../../lib/night-state';
 import { Club, PokerSession } from '../../types';
 import { Button } from '../ui/Button';
+import { PokerTable } from './PokerTable';
+import { seatSentence } from '../../lib/seat-vocabulary';
 
 /**
  * The live session, rebuilt.
@@ -209,17 +211,32 @@ const Stage: React.FC<{
     case 'closed':
       return <Closed />;
     default:
-      // running / windingDown — the table and the queue arrive next.
+      // running / windingDown — the same felt in both. It never disappears
+      // because people are leaving; it quietens.
       return (
-        <Placeholder
-          night={night}
-          users={users}
-          currentUserId={currentUserId}
-          onSelectPlayer={onSelectPlayer}
-        />
+        <section className="px-3 pt-2 pb-4">
+          <PokerTable
+            night={night}
+            currentUserId={currentUserId}
+            users={users}
+            onSelectPlayer={onSelectPlayer}
+            formatAmount={formatAmount}
+          />
+          {night.mySeat && (
+            <p className="mt-3 text-center text-sm text-text-muted">
+              {night.mySeat.state === 'cashedOut'
+                ? `You counted out ${formatAmount(night.mySeat.confirmedCashOut ?? 0)}`
+                : `You're in for ${formatAmount(night.mySeat.totalBuyIn)}`}
+            </p>
+          )}
+        </section>
       );
   }
 };
+
+/** Plain grouping, no currency symbol — the club's own devaluation settings
+ *  make "chips" and "rupees" different things, and the felt shows chips. */
+const formatAmount = (n: number) => n.toLocaleString();
 
 const Dark: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => (
   <section className="px-5 py-10 text-center">
@@ -272,7 +289,7 @@ const Opening: React.FC<{
                   {nameOf(users, uid, currentUserId)}
                 </span>
                 <span className="text-sm text-text-muted shrink-0">
-                  {seat ? describe(seat) : 'not yet'}
+                  {seat ? seatSentence(seat, formatAmount) : 'not yet'}
                 </span>
               </button>
             </li>
@@ -300,61 +317,6 @@ const Closed: React.FC = () => (
     <p className="text-base text-text">This night is settled.</p>
   </section>
 );
-
-/** Temporary. The table and the action queue land in the next milestones. */
-const Placeholder: React.FC<{
-  night: Night;
-  users: LiveSessionProps['users'];
-  currentUserId: string;
-  onSelectPlayer: (userId: string) => void;
-}> = ({ night, users, currentUserId, onSelectPlayer }) => (
-  <section className="px-5 pb-4">
-    <ul className="divide-y divide-line">
-      {night.seats.map((seat) => (
-        <li key={seat.userId}>
-          <button
-            type="button"
-            onClick={() => onSelectPlayer(seat.userId)}
-            className="w-full min-h-[56px] flex items-center gap-3 py-3 text-left"
-          >
-            <span className="w-9 h-9 rounded-full bg-surface-alt border border-line shrink-0" />
-            <span className="flex-1 min-w-0">
-              <span className="block text-base text-text truncate">
-                {nameOf(users, seat.userId, currentUserId)}
-              </span>
-              <span className="block text-sm text-text-muted">{describe(seat)}</span>
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  </section>
-);
-
-/**
- * One sentence per seat, in the vocabulary of its state.
- *
- * This is the rule the old screen broke: a player with a pending request was
- * rendered as "Arjun · 0 Chips", which is true and useless — settled-state
- * vocabulary describing an unsettled situation. Waiting, in play and counted
- * out are three different vocabularies and they stay apart.
- */
-function describe(seat: Night['seats'][number]): string {
-  if (seat.pendingBuyIn !== null) return `asked for ${seat.pendingBuyIn.toLocaleString()}`;
-  switch (seat.state) {
-    case 'waitingToSit':
-      return 'wants a seat';
-    case 'countingOut':
-      return `counting out ${seat.pendingCashOut?.toLocaleString() ?? ''}`.trim();
-    case 'cashedOut':
-      return `counted out ${seat.confirmedCashOut?.toLocaleString() ?? ''}`.trim();
-    case 'seatedNoChips':
-      return 'no chips yet';
-    case 'inPlay':
-    default:
-      return `in ${seat.totalBuyIn.toLocaleString()}`;
-  }
-}
 
 /* ---------------------------------------------------------------- zone C */
 

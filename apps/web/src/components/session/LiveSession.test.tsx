@@ -195,9 +195,13 @@ describe('seat vocabulary', () => {
         },
       ]
     );
-    expect(screen.getByText(/wants a seat/i)).toBeInTheDocument();
-    expect(screen.getByText(/^in 5,000$/i)).toBeInTheDocument();
-    expect(screen.getByText(/counted out 4,100/i)).toBeInTheDocument();
+    // The running phase renders the felt, so the seat carries the short form
+    // and its accessible name carries the sentence — two renderings of one
+    // vocabulary (lib/seat-vocabulary.ts), so they cannot drift apart.
+    const seats = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
+    expect(seats.join(' | ')).toMatch(/wants a seat/i);
+    expect(seats.join(' | ')).toMatch(/in 5,000/i);
+    expect(seats.join(' | ')).toMatch(/counted out 4,100/i);
   });
 });
 

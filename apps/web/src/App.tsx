@@ -4,6 +4,7 @@ import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
 import { useOAuthLanding } from './lib/use-oauth-landing';
+import { TablePreview } from './components/session/TablePreview';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -632,6 +633,7 @@ export default function App() {
           {/* Developer instrumentation. Deliberately unlinked from the UI, and
               inside the authenticated tree so it is not a public endpoint. */}
           <Route path="/debug/performance" element={<PerformanceDebugView />} />
+          <Route path="/debug/table" element={<TablePreview />} />
           <Route path="/setup" element={<Navigate to="/" replace />} />
           {/* Unknown URLs — including the OAuth callback, whose code
               AuthProvider has already consumed and whose URL it has rewritten. */}

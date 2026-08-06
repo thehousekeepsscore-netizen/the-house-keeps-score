@@ -169,9 +169,35 @@ export function deriveNight(input: NightInput): Night {
     new Set([...activeUids, ...confirmedCashOuts.map((c) => c.userId)])
   );
 
+  // Seat order is FIXED FOR THE NIGHT, by when each player first took a bank.
+  //
+  // Deriving it from the live lists would reorder the table every time someone
+  // moved between them — confirming a cash-out removes a player from
+  // activePlayerUids, so they would jump to the end of the array and every seat
+  // after them would shift. During the ten minutes when people are leaving,
+  // that is the whole table rearranging itself repeatedly, and it breaks the
+  // one rule the felt has to keep: a seat never moves because someone else
+  // left. It would also move live controls under a thumb (PRODUCT-BRIEF §2.5).
+  //
+  // First approved buy-in, then sit-in request, then uid — so the order is
+  // arrival order where that is known, and deterministic where it is not.
+  const firstBank = new Map<string, number>();
+  for (const r of approved) {
+    const t = Date.parse(r.createdAt);
+    if (!Number.isFinite(t)) continue;
+    const prev = firstBank.get(r.userId);
+    if (prev === undefined || t < prev) firstBank.set(r.userId, t);
+  }
+  const joinedAt = (uid: string) => {
+    const banked = firstBank.get(uid);
+    if (banked !== undefined) return banked;
+    const asked = Date.parse(session.sitInRequestedAt?.[uid] ?? '');
+    return Number.isFinite(asked) ? asked : Number.POSITIVE_INFINITY;
+  };
+
   const everyone = Array.from(
     new Set([...activeUids, ...pendingSitInUids, ...cashOuts.map((c) => c.userId)])
-  );
+  ).sort((a, b) => joinedAt(a) - joinedAt(b) || (a < b ? -1 : a > b ? 1 : 0));
 
   const seats: Seat[] = everyone.map((userId) => {
     const pendingCashOut = pendingCashOuts.find((c) => c.userId === userId) ?? null;
