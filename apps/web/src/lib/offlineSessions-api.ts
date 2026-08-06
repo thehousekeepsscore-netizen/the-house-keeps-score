@@ -16,6 +16,7 @@ export interface ApiOfflineSession {
   endedAt: string | null;
   activePlayerUids: string[];
   pendingSitInUids?: string[];
+  sitInRequestedAt?: Record<string, string>;
   cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
   assignedDealerUid?: string;
   assignedDealerName?: string;
@@ -36,6 +37,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     status: s.status,
     activePlayerUids: s.activePlayerUids || [],
     pendingSitInUids: s.pendingSitInUids || [],
+    // Was dropped here, which is why sit-ins had no countdown and could not be
+    // ordered against buy-ins and cash-outs. The payload always carried it.
+    sitInRequestedAt: s.sitInRequestedAt || {},
     cashOuts: s.cashOuts || [],
     startedBy: s.startedById,
     createdAt: s.createdAt,

@@ -129,6 +129,13 @@ export interface PokerSession {
   status: 'active' | 'settled';
   activePlayerUids: string[];
   pendingSitInUids?: string[];
+  /**
+   * When each pending sit-in was asked for. The server has always sent this —
+   * it is part of engineState — but the client dropped it, which left sit-ins
+   * as the one request type with no timestamp, so they could not be ordered
+   * against the other two or shown a countdown.
+   */
+  sitInRequestedAt?: Record<string, string>;
   cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
   startedBy: string;
   createdAt: string;
