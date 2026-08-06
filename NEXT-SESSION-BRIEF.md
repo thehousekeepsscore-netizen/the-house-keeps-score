@@ -1,6 +1,14 @@
 # Next session — full mobile experience redesign
 
-**Written:** 2026-08-06 · **Branch:** `product-polish` · **Status:** brief, not started
+> **SUPERSEDED by [`PRODUCT-BRIEF.md`](PRODUCT-BRIEF.md). Do not follow this file.**
+>
+> Two of its stated facts were disproved: the club-name duplication was already
+> fixed (the session label is built from the date, not the club name), and
+> "Day 1 · Session 1" cannot be built — `dayNumber` is a count of nights, and
+> nothing models a day containing sessions. Its deliverables also ask for concept
+> work that is now complete. Kept for history only.
+
+**Written:** 2026-08-06 · **Branch:** `product-polish` · **Status:** superseded
 
 Read this first. It exists so a cold session starts from what we already know
 rather than re-deriving it from the code.
