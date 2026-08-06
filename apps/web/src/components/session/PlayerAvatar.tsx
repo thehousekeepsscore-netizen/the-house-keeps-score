@@ -1,42 +1,26 @@
 import React from 'react';
+import { Spade, Heart, Diamond, Club } from 'lucide-react';
 
 /**
  * A player's face at the table.
  *
- * A photo where one exists. Where it does not, a generated chip — not a
- * monogram on a grey circle, and never a platform emoji, which would be the one
- * element on screen rendered by someone else's design system.
+ * Their uploaded photo where there is one. Where there is not, the placeholder
+ * this app already had: a hue derived from their id, one of the four suits, and
+ * their initials. Carried over from PokerTableRing rather than reinvented, so a
+ * player looks like the same person on the redesigned screen as on the one it
+ * replaces — and so the two do not disagree while both are in the bundle.
  *
- * The generated form is a poker chip seen face-on: a coloured body, the ring of
- * edge spots every casino chip has, and the player's initials struck in the
- * middle. It reads as belonging to this app rather than as a placeholder
- * apologising for a missing photo.
- *
- * **The same player always gets the same chip.** Colour is chosen by hashing the
- * uid, so identity is stable across every surface — the felt, the queue, the
- * sheet, settlement, history — and a nine-player night stays scannable because
- * a person is recognisable before their name is read.
+ * The hue and the suit are hashed from the uid, so **the same player always gets
+ * the same placeholder**. That is what makes a busy table scannable: a person is
+ * recognisable before their name is read.
  */
 
-/** Chip denominations, roughly. Chosen to stay distinguishable side by side and
- *  to survive both themes; none is close to the accent used for actions. */
-const CHIPS = [
-  { body: '#8f1d2b', spot: '#e8c9cd' }, // red
-  { body: '#1d3f8f', spot: '#c9d4e8' }, // blue
-  { body: '#1f6b45', spot: '#c6e2d4' }, // green
-  { body: '#4a2a6b', spot: '#d8cbe6' }, // purple
-  { body: '#8a5a12', spot: '#eddcbe' }, // bronze
-  { body: '#1c1c1c', spot: '#cfcfcf' }, // black
-  { body: '#0f5f6b', spot: '#c3e2e6' }, // teal
-  { body: '#7a2f5e', spot: '#e8c8dd' }, // plum
-] as const;
+const SUITS = [Spade, Heart, Diamond, Club] as const;
 
-/** Stable across sessions, devices and reloads — a plain string hash, not
- *  Math.random, or a player would change identity on every render. */
-function chipFor(seed: string) {
+function hashOf(uid: string): number {
   let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
-  return CHIPS[Math.abs(h) % CHIPS.length];
+  for (let i = 0; i < uid.length; i += 1) h = (h * 31 + uid.charCodeAt(i)) >>> 0;
+  return h;
 }
 
 function initials(name: string): string {
@@ -63,61 +47,43 @@ export const PlayerAvatar: React.FC<{
    */
   dim?: 'here' | 'leaving' | 'gone';
 }> = ({ userId, name, photoUrl, size, dim = 'here' }) => {
-  const style: React.CSSProperties = { width: size, height: size };
   const muted =
-    dim === 'gone' ? 'opacity-40 saturate-[0.35]' : dim === 'leaving' ? 'opacity-70 saturate-75' : '';
+    dim === 'gone' ? 'opacity-40 grayscale' : dim === 'leaving' ? 'opacity-70' : '';
 
-  if (photoUrl) {
-    return (
-      <img
-        src={photoUrl}
-        alt=""
-        style={style}
-        className={`rounded-full object-cover bg-surface-alt transition-opacity duration-200 ${muted}`}
-      />
-    );
-  }
-
-  const chip = chipFor(userId);
-  // Eight spots, the arrangement almost every casino chip uses.
-  const spots = Array.from({ length: 8 }, (_, i) => (i * 360) / 8);
+  const Suit = SUITS[hashOf(userId) % SUITS.length];
+  const hue = hashOf(userId) % 360;
 
   return (
-    <svg
-      viewBox="0 0 100 100"
-      style={style}
-      className={`rounded-full shrink-0 transition-opacity duration-200 ${muted}`}
-      role="img"
-      aria-label=""
+    <span
+      className={`block rounded-full overflow-hidden shrink-0 transition-opacity duration-200 ${muted}`}
+      style={{ width: size, height: size }}
     >
-      <circle cx="50" cy="50" r="50" fill={chip.body} />
-      {spots.map((deg) => (
-        <rect
-          key={deg}
-          x="46"
-          y="1"
-          width="8"
-          height="13"
-          rx="3"
-          fill={chip.spot}
-          opacity="0.85"
-          transform={`rotate(${deg} 50 50)`}
-        />
-      ))}
-      <circle cx="50" cy="50" r="34" fill="none" stroke={chip.spot} strokeOpacity="0.35" strokeWidth="2" />
-      <text
-        x="50"
-        y="51"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill={chip.spot}
-        fontSize="30"
-        fontWeight="700"
-        fontFamily="system-ui, -apple-system, sans-serif"
-        letterSpacing="0.5"
-      >
-        {initials(name)}
-      </text>
-    </svg>
+      {photoUrl ? (
+        <img src={photoUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+      ) : (
+        <span
+          className="w-full h-full flex flex-col items-center justify-center"
+          style={{ background: `linear-gradient(145deg, hsl(${hue} 30% 22%), hsl(${hue} 35% 12%))` }}
+        >
+          {/* The suit is dropped once the avatar is too small to carry two
+              marks — below about 36px the glyph and the initials fight for the
+              same pixels and neither reads. */}
+          {size >= 36 && (
+            <Suit
+              className="text-accent/70"
+              fill="currentColor"
+              style={{ width: size * 0.3, height: size * 0.3 }}
+              aria-hidden="true"
+            />
+          )}
+          <span
+            className="font-semibold text-text/90 leading-none"
+            style={{ fontSize: Math.max(9, size * 0.24), marginTop: size >= 36 ? 2 : 0 }}
+          >
+            {initials(name)}
+          </span>
+        </span>
+      )}
+    </span>
   );
 };

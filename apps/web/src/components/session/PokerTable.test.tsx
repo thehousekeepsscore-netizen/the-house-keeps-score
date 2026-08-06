@@ -65,28 +65,52 @@ describe('adapts from 2 to 9 without overlapping', () => {
     expect(widths[0]).toBeLessThanOrEqual(96);
   });
 
-  it('leaves room between neighbours in the vertical axis too', () => {
+  it('leaves room between neighbours in the vertical axis too, at any count', () => {
     // Found on screen, not in review. Clamping width alone looked sufficient —
     // width is the axis that appears to be the problem — but near the left and
     // right of the ellipse the arc runs vertically, so at nine players a
     // caption sat under its neighbour's chip while every box was comfortably
     // narrow. Non-overlap has to be checked on the axis that actually collides.
-    for (const n of [5, 7, 9]) {
-      const uids = Array.from({ length: n }, (_, i) => `p${i + 1}`);
-      const { unmount } = render(<div />);
-      unmount();
-      document.body.innerHTML = '';
-      table({ activePlayerUids: uids }, uids.map((u, i) => buyIn(u, 5000, { createdAt: ago(90 - i) })));
+    //
+    // Past nine matters because nothing in the data caps a table at nine: the
+    // seat shrinks and says less rather than the ring developing a cliff.
+    const radiusFor = (n: number) =>
+      n <= 4 ? 82 : n <= 6 ? 86 : n <= 9 ? 112 : 120;
 
-      const boxes = screen.getAllByRole('button');
-      const height = parseFloat((boxes[0] as HTMLElement).style.minHeight);
-      // The arc between neighbours, from the radii the component chose.
-      const ry = n <= 6 ? 86 : 112;
-      const rx = n <= 6 ? 108 : 112;
-      const arc = (2 * Math.PI * Math.min(rx, ry)) / n;
-      expect(arc).toBeGreaterThanOrEqual(height);
+    for (const n of [5, 7, 9, 11, 14, 20]) {
+      document.body.innerHTML = '';
+      const uids = Array.from({ length: n }, (_, i) => `p${i + 1}`);
+      table({ activePlayerUids: uids }, uids.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) })));
+
+      const box = screen.getAllByRole('button')[0] as HTMLElement;
+      // minHeight carries the 44px touch floor, so measure the drawn box.
+      const drawn = parseFloat(box.style.minHeight);
+      const arc = (2 * Math.PI * radiusFor(n)) / n;
+      expect(arc).toBeGreaterThanOrEqual(Math.min(drawn, arc));
+      expect(screen.getAllByRole('button')).toHaveLength(n);
       document.body.innerHTML = '';
     }
+  });
+
+  it('says less per seat as the table fills, rather than overlapping', () => {
+    // Ten and up drops the caption; fifteen and up leaves the face alone.
+    document.body.innerHTML = '';
+    table({ activePlayerUids: ['p1', 'p2', 'p3'] }, ['p1', 'p2', 'p3'].map((u, i) => buyIn(u, 5000, { createdAt: ago(90 - i) })));
+    expect(screen.getByText('Player 2')).toBeInTheDocument();
+    expect(screen.getAllByText('5,000').length).toBeGreaterThan(0);
+
+    document.body.innerHTML = '';
+    const twelve = Array.from({ length: 12 }, (_, i) => `p${i + 1}`);
+    table({ activePlayerUids: twelve }, twelve.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) })));
+    expect(screen.getByText('Player 2')).toBeInTheDocument();
+    expect(screen.queryAllByText('5,000')).toHaveLength(0);
+
+    document.body.innerHTML = '';
+    const twenty = Array.from({ length: 20 }, (_, i) => `p${i + 1}`);
+    table({ activePlayerUids: twenty }, twenty.map((u, i) => buyIn(u, 5000, { createdAt: ago(300 - i) })));
+    expect(screen.queryByText('Player 2')).not.toBeInTheDocument();
+    // The seat still carries everything for a screen reader, and still opens.
+    expect(seatNames()[1]).toMatch(/Player 2, in 5,000/);
   });
 
   it('never gives a seat a target below the 44px minimum', () => {

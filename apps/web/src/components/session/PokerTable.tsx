@@ -35,39 +35,56 @@ export interface PokerTableProps {
   formatAmount: (n: number) => string;
 }
 
-/** Avatars shrink as the table fills; the touch target does not. */
-function avatarSize(count: number): number {
-  if (count <= 4) return 56;
-  if (count <= 6) return 48;
-  return 40;
-}
-
 /**
- * Small games are intimate, large ones are balanced.
- *
- * The ellipse widens rather than the seats crowding: at nine players a circle
- * would put four of them shoulder to shoulder across the top.
- */
-/**
- * Seat radii and felt radii are separate numbers.
+ * Seat radii, and how much of a seat there is room to draw.
  *
  * Seats sit ON the rim, the way people sit at a table, so the felt is very
  * slightly smaller than the ring. Sizing the felt independently of the seats
  * was the first version and it looked like three people standing near a table
- * rather than around one — and at three players the bottom seat covered the
- * figure in the middle.
+ * rather than around one.
  *
- * Every rx is chosen so that rx + boxWidth/2 stays inside the 320px container:
- * a seat that overflows is clipped by the phone, not by the design.
+ * rx is bounded by the 320px container; ry is free below nine because the
+ * ellipse is what makes a small game feel intimate. At nine and above it
+ * becomes a circle, because equal angles map to the shortest arc at the
+ * major-axis ends — which is exactly where labels collided.
  */
 function radii(count: number) {
   if (count <= 2) return { rx: 0, ry: 76, feltRx: 74, feltRy: 68 };
   if (count <= 4) return { rx: 92, ry: 82, feltRx: 90, feltRy: 74 };
   if (count <= 6) return { rx: 108, ry: 86, feltRx: 106, feltRy: 78 };
-  // A true circle at seven-plus: the ellipse is what makes a small game feel
-  // intimate, and what makes a large one collide, because equal angles map to
-  // the shortest arc at the major-axis ends.
-  return { rx: 112, ry: 112, feltRx: 106, feltRy: 106 };
+  if (count <= 9) return { rx: 112, ry: 112, feltRx: 106, feltRy: 106 };
+  return { rx: 120, ry: 120, feltRx: 112, feltRy: 112 };
+}
+
+/**
+ * How much a seat says, by how much room it has.
+ *
+ * A physical table seats ten or eleven, but nothing in the data stops a club
+ * running more, so the ring must not have a cliff at nine. Rather than a fixed
+ * size per tier, the avatar is derived from the arc between neighbours — so
+ * adding a player shrinks the table instead of overlapping it, at any count.
+ *
+ *   full     name and what they are doing
+ *   name     name only; the caption moves into the sheet behind the seat
+ *   avatar   the face alone — at this density a label is unreadable anyway
+ */
+type Detail = 'full' | 'name' | 'avatar';
+
+const LABEL_HEIGHT: Record<Detail, number> = { full: 31, name: 18, avatar: 0 };
+
+function seatMetrics(count: number, rx: number, ry: number) {
+  const spacing = count > 1 ? (2 * Math.PI * Math.min(rx || ry, ry)) / count : 200;
+  const detail: Detail = count <= 9 ? 'full' : count <= 14 ? 'name' : 'avatar';
+  const labelHeight = LABEL_HEIGHT[detail];
+
+  // The floor is 24px. Below roughly twenty-five players a 320px ring cannot
+  // hold another face without them touching, and no arrangement of one ring
+  // can — that is a property of the phone, not of the layout. It degrades
+  // rather than breaking, and a table that large is far past a real one.
+  const cap = count <= 4 ? 56 : count <= 6 ? 48 : 40;
+  const size = Math.round(Math.max(24, Math.min(cap, spacing - labelHeight - 6)));
+
+  return { spacing, detail, size, boxHeight: size + labelHeight };
 }
 
 /** Seat i, clockwise from bottom-centre where the viewer sits. */
@@ -104,20 +121,16 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   const mineAt = seats.findIndex((s) => s.userId === currentUserId);
   const ordered = mineAt > 0 ? [...seats.slice(mineAt), ...seats.slice(0, mineAt)] : seats;
 
-  const size = avatarSize(count);
   const { rx, ry, feltRx, feltRy } = radii(count);
+  const { spacing, detail, size, boxHeight } = seatMetrics(count, rx, ry);
 
   // Non-overlap by construction, in BOTH axes.
   //
   // The first version clamped width only, which is the axis that looks like the
   // problem. It is not: near the left and right extremes of the ellipse the arc
   // runs vertically, so at nine players a seat's caption landed under its
-  // neighbour's chip while the boxes were comfortably narrow. The radii are
-  // chosen so the arc between neighbours is at least as long as a seat box is
-  // tall, and boxHeight below is what that promise is measured against.
-  const spacing = count > 1 ? (2 * Math.PI * Math.min(rx || ry, ry)) / count : 200;
+  // neighbour's chip while the boxes were comfortably narrow.
   const boxWidth = Math.max(size, Math.min(96, spacing - 6));
-  const boxHeight = size + 4 + 14 + 13;
 
   return (
     <div
@@ -184,16 +197,20 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                 dim={dim}
               />
             </span>
-            <span className="w-full text-center leading-tight">
-              <span
-                className={`block text-[11px] truncate ${dim === 'gone' ? 'text-text-muted' : 'text-text'}`}
-              >
-                {name}
+            {detail !== 'avatar' && (
+              <span className="w-full text-center leading-tight">
+                <span
+                  className={`block text-[11px] truncate ${dim === 'gone' ? 'text-text-muted' : 'text-text'}`}
+                >
+                  {name}
+                </span>
+                {detail === 'full' && (
+                  <span className="block text-[10px] text-text-muted truncate tabular-nums">
+                    {seatCaption(seat, formatAmount)}
+                  </span>
+                )}
               </span>
-              <span className="block text-[10px] text-text-muted truncate tabular-nums">
-                {seatCaption(seat, formatAmount)}
-              </span>
-            </span>
+            )}
           </button>
         );
       })}

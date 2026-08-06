@@ -15,7 +15,8 @@ import { PokerSession, BuyInRequest } from '../../types';
  * players and a pending cash-out at the same moment.
  */
 
-const NAMES = ['Priya', 'Arjun', 'Sam', 'Meera', 'Ishaan', 'Nikhil', 'Rhea', 'Kabir', 'Tara'];
+const NAMES = ['Priya', 'Arjun', 'Sam', 'Meera', 'Ishaan', 'Nikhil', 'Rhea', 'Kabir', 'Tara',
+  'Dev', 'Anya', 'Vikram', 'Sana', 'Omar', 'Leela', 'Zaid', 'Nina', 'Rohit'];
 const at = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString();
 
 function scenario(
@@ -48,6 +49,8 @@ export const TablePreview: React.FC = () => {
     ['2 — a pair, not an empty ring', scenario(2)],
     ['5', scenario(5)],
     ['9 — labels narrow, targets do not', scenario(9)],
+    ['12 — the caption steps aside', scenario(12)],
+    ['18 — faces only; the seat still opens', scenario(18)],
     ['pending buy-in — the seat asks', scenario(5, {}, [pending('u2', 3000)])],
     [
       'pending cash-out',
