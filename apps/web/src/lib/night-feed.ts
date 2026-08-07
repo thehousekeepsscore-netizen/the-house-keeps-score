@@ -1,0 +1,233 @@
+import { PokerSession, BuyInRequest } from '../types';
+
+/**
+ * The story of the night, told from what already happened.
+ *
+ * DERIVED, not streamed. A socket feed would only ever show you what has
+ * happened since you unlocked your phone, which is exactly backwards: the whole
+ * point is that you glance at it after twenty minutes of playing cards and
+ * immediately know how the evening is going. Everything here is recovered from
+ * the buy-ins and cash-outs the client already holds, so the story is complete
+ * the moment the screen opens, on any device, with no schema change and no new
+ * endpoint.
+ *
+ * It is a story, not a log. The distinction is what it refuses to say:
+ * requested, pending, awaiting approval, approved by. Nobody at a table cares
+ * that a workflow advanced — they care that Tara sat down and that the maximum
+ * just went up. Every event here is something that happened in the room.
+ *
+ * TWO HONEST LIMITS, both from the shape of the data rather than from choice:
+ *
+ *   Buy-ins carry `createdAt` (when it was asked for) and no approval time, and
+ *   cash-outs carry `requestedAt` and no confirmation time. So an event is
+ *   timestamped when it was ASKED, not when it was agreed. The gap is bounded
+ *   by the five-minute request window and is usually seconds.
+ *
+ *   "Priya is now hosting" is not derivable at all — admin changes carry no
+ *   timestamp anywhere in the payload — so it is absent rather than guessed at.
+ */
+
+export type FeedKind =
+  /** Seated, with no money down yet — the arrival phase. */
+  | 'joined'
+  /** Their first chips of the night. */
+  | 'bought-in'
+  /** Any chips after that. */
+  | 'topped-up'
+  /** Counted up, waiting on somebody to agree. */
+  | 'stood-up'
+  /** Agreed. They are out of the game and in the room. */
+  | 'left'
+  /** The table maximum moved, which under MATCH_HIGHEST it does all night. */
+  | 'ceiling'
+  /** The night is over. */
+  | 'settled';
+
+export interface FeedEvent {
+  /** Stable across renders, so React keys and the "what is new" check both hold. */
+  id: string;
+  kind: FeedKind;
+  /** ISO. See the timestamp caveat above. */
+  at: string;
+  userId?: string;
+  amount?: number;
+}
+
+export interface FeedInput {
+  session: PokerSession | null;
+  buyIns: BuyInRequest[];
+  /** The club's ceiling rule, mirroring getBuyInCeiling on the server. */
+  buyInMode?: 'UNCAPPED' | 'MATCH_HIGHEST' | string;
+  clubMaxBuyIn?: number;
+  /** Older events fall off the end; nobody scrolls to the start of the evening. */
+  limit?: number;
+}
+
+const DEFAULT_LIMIT = 30;
+
+/** Mirrors getBuyInCeiling: the biggest bank held, or the club's own maximum until one is. */
+function ceilingOf(
+  banks: Map<string, number>,
+  mode: string | undefined,
+  clubMax: number | undefined
+): number | null {
+  if ((mode ?? 'MATCH_HIGHEST') === 'UNCAPPED') return null;
+  const highest = banks.size ? Math.max(...banks.values()) : 0;
+  return highest > 0 ? highest : clubMax ?? null;
+}
+
+export function deriveFeed(input: FeedInput): FeedEvent[] {
+  const { session, buyIns, buyInMode, clubMaxBuyIn } = input;
+  const limit = input.limit ?? DEFAULT_LIMIT;
+  if (!session) return [];
+
+  const events: FeedEvent[] = [];
+
+  // Chronological on the way in, because two of these are cumulative: whether a
+  // buy-in is somebody's first, and whether it moved the ceiling. Reversed at
+  // the end, once the answers are known.
+  const approved = buyIns
+    .filter((r) => r.sessionId === session.id && r.status === 'approved')
+    .slice()
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+  const banks = new Map<string, number>();
+  let ceiling = ceilingOf(banks, buyInMode, clubMaxBuyIn);
+
+  for (const r of approved) {
+    const first = !banks.has(r.userId);
+    banks.set(r.userId, (banks.get(r.userId) ?? 0) + r.amount);
+
+    events.push({
+      id: `buyin:${r.id}`,
+      kind: first ? 'bought-in' : 'topped-up',
+      at: r.createdAt,
+      userId: r.userId,
+      amount: r.amount,
+    });
+
+    /*
+     * A rise is only worth saying when it is not already on the line above it.
+     *
+     * Under MATCH_HIGHEST the ceiling is the biggest bank anyone HOLDS, so a
+     * player's first buy-in sets it to exactly that amount: "Kabir bought in
+     * for 10,000" followed by "Max buy-in is now 10,000" is the same number
+     * twice, and in a night where each player takes a little more than the last
+     * it turns half the feed into an echo.
+     *
+     * A top-up is the case that earns the line — someone at 3,000 buying
+     * another 5,000 pushes the maximum to 8,000, which appears nowhere else.
+     *
+     * A fall is not announced at all. The ceiling cannot drop while a night
+     * runs, but a club switching modes mid-session would otherwise report a cut
+     * nobody made.
+     */
+    const next = ceilingOf(banks, buyInMode, clubMaxBuyIn);
+    if (next !== null && ceiling !== null && next > ceiling && next !== r.amount) {
+      events.push({ id: `ceiling:${r.id}`, kind: 'ceiling', at: r.createdAt, amount: next });
+    }
+    ceiling = next;
+  }
+
+  // Seated with nothing down yet. Only for people who have not bought in at all,
+  // so an arrival and their first chips are never two lines about one moment.
+  for (const userId of session.pendingSitInUids ?? []) {
+    const at = session.sitInRequestedAt?.[userId];
+    if (at && !banks.has(userId)) {
+      events.push({ id: `join:${userId}`, kind: 'joined', at, userId });
+    }
+  }
+
+  // One event per person, not two. A confirmed cash-out carries no separate
+  // confirmation time, so emitting both "stood up" and "left" would put two
+  // lines at one timestamp — the line simply becomes the later of the two when
+  // the count is agreed, and keeps the figure either way.
+  for (const c of session.cashOuts ?? []) {
+    events.push({
+      id: `cashout:${c.userId}`,
+      kind: c.status === 'confirmed' ? 'left' : 'stood-up',
+      at: c.requestedAt,
+      userId: c.userId,
+      amount: c.amount,
+    });
+  }
+
+  if (session.status === 'settled' && session.endedAt) {
+    events.push({ id: 'settled', kind: 'settled', at: session.endedAt });
+  }
+
+  return events
+    .sort((a, b) => {
+      const d = Date.parse(b.at) - Date.parse(a.at);
+      // A buy-in and the ceiling it moved share a timestamp exactly. The rise
+      // has to read as the consequence, so it sorts above the cause.
+      if (d !== 0) return d;
+      if (a.kind === 'ceiling' && b.kind !== 'ceiling') return -1;
+      if (b.kind === 'ceiling' && a.kind !== 'ceiling') return 1;
+      return 0;
+    })
+    .slice(0, limit);
+}
+
+/** One glyph per kind. The only place in the app that uses emoji, and it earns
+ *  them: a feed is scanned down the left edge, and a shape is faster than a word. */
+const ICON: Record<FeedKind, string> = {
+  joined: '👤',
+  'bought-in': '🟢',
+  'topped-up': '💰',
+  'stood-up': '💵',
+  left: '✅',
+  ceiling: '⬆️',
+  settled: '🏁',
+};
+
+/**
+ * The line, in the second person wherever it is about you.
+ *
+ * "You bought another 5,000" and "Arjun bought another 5,000" are the same event
+ * and not the same sentence, and the difference is the whole reason this reads
+ * as your view of the night rather than a system log.
+ */
+export function feedLine(
+  event: FeedEvent,
+  nameOf: (userId: string) => string,
+  amount: (n: number) => string
+): { icon: string; text: string } {
+  const icon = ICON[event.kind];
+  const who = event.userId ? nameOf(event.userId) : '';
+  const you = who === 'You';
+  const n = event.amount ?? 0;
+
+  switch (event.kind) {
+    case 'joined':
+      return { icon, text: `${who} joined the table` };
+    case 'bought-in':
+      return { icon, text: `${who} bought in for ${amount(n)}` };
+    case 'topped-up':
+      return { icon, text: `${who} bought another ${amount(n)}` };
+    case 'stood-up':
+      return { icon, text: `${who} stood up with ${amount(n)}` };
+    case 'left':
+      // "has left" for someone else, "have left" for you — the one place the
+      // second person needs a different verb, and the reason to write both out
+      // rather than assemble them.
+      return { icon, text: you ? `You left the table with ${amount(n)}` : `${who} left the table with ${amount(n)}` };
+    case 'ceiling':
+      return { icon, text: `Max buy-in is now ${amount(n)}` };
+    case 'settled':
+      return { icon, text: 'Settlement started' };
+  }
+}
+
+/** "2 sec ago" — coarse on purpose, because the feed is glanced at, not read. */
+export function agoLabel(at: string, now: number): string {
+  const t = Date.parse(at);
+  if (!Number.isFinite(t)) return '';
+  const secs = Math.max(0, Math.round((now - t) / 1000));
+  if (secs < 10) return 'just now';
+  if (secs < 60) return `${secs} sec ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m ago`;
+}

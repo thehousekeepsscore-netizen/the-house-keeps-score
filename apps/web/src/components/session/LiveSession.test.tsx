@@ -69,6 +69,7 @@ function renderScreen(over: Partial<LiveSessionProps> = {}, buyIns: BuyInRequest
     onSelectPlayer: vi.fn(),
     onSettleNight: vi.fn(),
     onAddPlayer: vi.fn(),
+    feed: [],
     ...over,
   };
   render(<LiveSession {...props} />);

@@ -4,6 +4,7 @@ import { PlayerSheet } from './PlayerSheet';
 import { AddPlayerSheet } from './AddPlayerSheet';
 import { WaitingRow } from './WaitingForYou';
 import { deriveNight } from '../../lib/night-state';
+import { deriveFeed } from '../../lib/night-feed';
 import { Club, PokerSession, BuyInRequest } from '../../types';
 
 /**
@@ -122,6 +123,7 @@ export const SessionPreview: React.FC = () => {
   ];
 
   const night = deriveNight({ session, buyIns, currentUserId: me, isAdmin: true });
+  const feed = deriveFeed({ session, buyIns, buyInMode: 'MATCH_HIGHEST', clubMaxBuyIn: club.maxBuyIn ?? 5000 });
 
   /*
    * The buy-in ceiling, mirroring getBuyInCeiling on the server:
@@ -163,6 +165,7 @@ export const SessionPreview: React.FC = () => {
         ceiling={ceiling}
         onSettleNight={() => {}}
         onAddPlayer={() => setAddOpen(true)}
+        feed={feed}
       />
 
       <AddPlayerSheet

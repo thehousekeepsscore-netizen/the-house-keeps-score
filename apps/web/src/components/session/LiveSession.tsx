@@ -6,6 +6,8 @@ import { PokerTable } from './PokerTable';
 import { seatSentence } from '../../lib/seat-vocabulary';
 import { WaitingForYou, WaitingRow } from './WaitingForYou';
 import { TheRoom } from './TheRoom';
+import { LiveFeed } from './LiveFeed';
+import { FeedEvent } from '../../lib/night-feed';
 
 /**
  * The live session, rebuilt.
@@ -61,6 +63,11 @@ export interface LiveSessionProps {
   onSettleNight?: () => void;
   /** Admins only. Opens the pick-a-person sheet; the amount is asked for after. */
   onAddPlayer?: () => void;
+  /**
+   * The night's story, newest first. Derived rather than streamed — see
+   * night-feed.ts — so it is complete the moment the screen opens.
+   */
+  feed: FeedEvent[];
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -101,6 +108,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   ceiling,
   onSettleNight,
   onAddPlayer,
+  feed,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const live = night.phase !== 'dark' && night.phase !== 'closed';
@@ -140,10 +148,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         </div>
       )}
 
-      {/* The elastic region. It scrolls rather than growing, because growing is
-          how the guest list — which is every club member during the arrival
-          phase — used to push the settle footer off the bottom of the screen. */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
+      {/* The elastic region. Each phase decides what inside it scrolls — the
+          feed while a night runs, the guest list while people are arriving —
+          because a scroller nested in a scroller eats the gesture. */}
+      <div className="flex-1 min-h-0 flex flex-col">
         <Stage
           night={night}
           club={club}
@@ -153,6 +161,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onSelectPlayer={onSelectPlayer}
           formatAmount={formatAmount}
           onAddPlayer={onAddPlayer}
+          feed={feed}
         />
       </div>
 
@@ -332,7 +341,11 @@ const Stage: React.FC<{
   onSelectPlayer: (userId: string) => void;
   formatAmount: (n: number) => string;
   onAddPlayer?: () => void;
-}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount, onAddPlayer }) => {
+  feed: FeedEvent[];
+}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount, onAddPlayer, feed }) => {
+  // The feed speaks in the second person wherever it is about the viewer, which
+  // is what makes it their view of the night rather than a system log.
+  const feedNameOf = (uid: string) => nameOf(users, uid, currentUserId);
   switch (night.phase) {
     case 'dark':
       return <Dark isAdmin={isAdmin} />;
@@ -358,24 +371,39 @@ const Stage: React.FC<{
       //
       // flex-1 is the whole of item 9: the table is the region that grows, so
       // everything above it can be fixed and nothing above it can push it.
+      /*
+       * Table, then the story, then the room.
+       *
+       * The table takes the size it needs rather than all the space there is:
+       * it is still the hero, and it is the thing at the top of the screen, but
+       * the half below it belonged to nobody. A player's screen said "You're in
+       * for 3,000" and then went silent for four hours.
+       *
+       * The feed is the elastic region now — it scrolls inside itself, so the
+       * table above it and the room below it both stay where they are.
+       */
       return (
-        <section className="flex-1 min-h-0 flex flex-col justify-center px-1 py-2">
-          <PokerTable
-            night={night}
-            currentUserId={currentUserId}
-            users={users}
-            onSelectPlayer={onSelectPlayer}
-            formatAmount={formatAmount}
-            onAddPlayer={isAdmin ? onAddPlayer : undefined}
-          />
+        <section className="flex-1 min-h-0 flex flex-col">
+          <div className="shrink-0 px-1 pt-2">
+            <PokerTable
+              night={night}
+              currentUserId={currentUserId}
+              users={users}
+              onSelectPlayer={onSelectPlayer}
+              formatAmount={formatAmount}
+              onAddPlayer={isAdmin ? onAddPlayer : undefined}
+            />
 
-          {night.mySeat && night.mySeat.state !== 'cashedOut' && (
-            <p className="mt-3 text-center text-sm text-text-muted">
-              You're in for {formatAmount(night.mySeat.totalBuyIn)}
-            </p>
-          )}
+            {night.mySeat && night.mySeat.state !== 'cashedOut' && (
+              <p className="mt-2 text-center text-sm text-text-muted">
+                You're in for {formatAmount(night.mySeat.totalBuyIn)}
+              </p>
+            )}
+          </div>
 
-          {/* The room, under the table. People who have finished do not
+          <LiveFeed events={feed} nameOf={feedNameOf} formatAmount={formatAmount} />
+
+          {/* The room, under the story. People who have finished do not
               disappear — they step back from the felt. */}
           <TheRoom
             room={night.room}
@@ -425,7 +453,7 @@ const Opening: React.FC<{
   const roster = club.memberUids ?? [];
 
   return (
-    <section className="px-5 pb-4">
+    <section className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
       <h2 className="text-sm font-semibold text-text-muted mb-3">Who's playing?</h2>
       <ul className="divide-y divide-line">
         {roster.map((uid) => {

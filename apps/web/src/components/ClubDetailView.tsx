@@ -8,6 +8,7 @@ import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { type WaitingRow } from './session/WaitingForYou';
 import { PlayerSheet } from './session/PlayerSheet';
 import { AddPlayerSheet } from './session/AddPlayerSheet';
+import { deriveFeed } from '../lib/night-feed';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
@@ -1954,6 +1955,24 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
 
   /**
+   * The night's story, recovered from what the client already holds.
+   *
+   * Not a socket stream: a stream would only show what happened since this
+   * phone was unlocked, and the whole point is that you glance at it after
+   * twenty minutes of playing cards and know how the evening is going.
+   */
+  const nightFeed = useMemo(
+    () =>
+      deriveFeed({
+        session: activeSession ?? null,
+        buyIns: buyInRequests,
+        buyInMode: club.buyInMode,
+        clubMaxBuyIn: club.maxBuyIn ?? DEFAULT_MAX_BUY_IN,
+      }),
+    [activeSession, buyInRequests, club.buyInMode, club.maxBuyIn]
+  );
+
+  /**
    * The one screen that is a frame rather than a document.
    *
    * The felt is the hero, so it takes whatever height is left after the fixed
@@ -2137,7 +2156,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   );
 
   return (
-    <div className="min-h-screen bg-bg text-text font-sans flex flex-col">
+    /*
+      min-h-screen is a floor, not a ceiling, which is fine for a document and
+      wrong for a frame: the live table's regions size themselves against the
+      space available, and with only a minimum there IS no ceiling to size
+      against — the page simply grew 9px past the viewport and started
+      scrolling the moment the feed had a couple of lines in it.
+
+      h-[100dvh] gives the chain a definite height to divide up. dvh rather than
+      vh because mobile browser chrome slides away as you scroll, and vh is
+      measured against the taller state.
+    */
+    <div
+      className={`bg-bg text-text font-sans flex flex-col ${
+        liveTableFillsScreen ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'
+      }`}
+    >
       
       {/* Top Header */}
       <header className="bg-bg/95 border-b border-line sticky top-0 z-50 backdrop-blur-md px-4 py-3">
@@ -2321,6 +2355,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 ceiling={buyInCeiling}
                 onSettleNight={() => setSettlePlaceholderOpen(true)}
                 onAddPlayer={() => setAddPlayerOpen(true)}
+                feed={nightFeed}
               />
             )}
 

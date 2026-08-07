@@ -138,6 +138,20 @@
   100% { filter: brightness(1); }
 }
 
+/*
+ * A line arriving at the top of the live feed.
+ *
+ * It slides DOWN from above rather than up from below, because it is pushing
+ * the older lines away — the motion has to agree with what actually happened to
+ * the list, or it reads as a glitch. Short, and only ever applied to one row:
+ * the feed changes while nobody is looking at it, which is exactly when several
+ * things moving at once is worst.
+ */
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
