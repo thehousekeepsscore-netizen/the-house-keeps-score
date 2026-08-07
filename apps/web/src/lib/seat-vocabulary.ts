@@ -52,8 +52,26 @@ export function seatSentence(seat: Seat, amount: (n: number) => string): string 
   }
 }
 
-/** Short form. The felt, where a seat has about 90px and a face above it. */
-export function seatCaption(seat: Seat, amount: (n: number) => string): string {
+/**
+ * Short form. The felt, where a seat has about 90px and a face above it.
+ *
+ * `tight` is the crowded table — twelve players and up, where a seat gets
+ * nearer 60px. There the words go and the figure stays, because a figure is the
+ * one thing that survives being small: "PULLING UP A CHAIR" at eighteen players
+ * ran clean across the next player's chip count, and a state you cannot read
+ * without also failing to read your neighbour's is worse than no state at all.
+ * The colour, the dot and the accessible name still carry it.
+ */
+export function seatCaption(seat: Seat, amount: (n: number) => string, tight = false): string {
+  if (tight) {
+    if (seat.pendingBuyIn !== null) return `+${amount(seat.pendingBuyIn)}`;
+    if (seat.state === 'waitingToSit') return 'waiting';
+    if (seat.state === 'countingOut') return `${amount(seat.pendingCashOut ?? 0)}?`;
+    if (seat.state === 'cashedOut') return amount(seat.confirmedCashOut ?? 0);
+    if (seat.state === 'seatedNoChips') return '—';
+    return amount(seat.totalBuyIn);
+  }
+
   // Somebody arriving is described by their arrival, not by the figure — the
   // figure is what they are bringing, and the interesting fact is that they
   // are about to sit down.

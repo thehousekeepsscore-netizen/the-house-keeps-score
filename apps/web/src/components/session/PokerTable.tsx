@@ -37,6 +37,8 @@ export interface PokerTableProps {
   onSelectPlayer: (userId: string) => void;
   /** The club's own formatter — respects the chips/₹ toggle and devaluation. */
   formatAmount: (n: number) => string;
+  /** Admins only. Absent rather than disabled for everyone else. */
+  onAddPlayer?: () => void;
 }
 
 /**
@@ -63,8 +65,13 @@ function felt(count: number, available: number) {
   const boxGuess = count <= 6 ? 88 : count <= 14 ? 64 : 56;
   const maxW = Math.max(120, available / 2 - 3 - boxGuess / 2);
 
+  // Small games got a small table, which sounds right and was not: at two to
+  // four players the seats are at their LARGEST, and the viewer's own seat
+  // carries an extra "YOU" line, so the felt's usable middle was smaller at
+  // four players than at twelve. The add-player stud ended up resting on the
+  // viewer's face. There is plenty of screen at four players — spend it.
   const h =
-    count <= 4 ? 92 : count <= 6 ? 106 : count <= 9 ? 126 : count <= 14 ? 146 : 158;
+    count <= 4 ? 116 : count <= 6 ? 124 : count <= 9 ? 132 : count <= 14 ? 146 : 158;
   const wWanted = count <= 4 ? 120 : count <= 6 ? 140 : count <= 9 ? 158 : 170;
   const w = Math.round(Math.min(maxW, wWanted));
 
@@ -197,6 +204,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   users,
   onSelectPlayer,
   formatAmount,
+  onAddPlayer,
 }) => {
   const seats = night.seats;
   const count = Math.max(seats.length, 1);
@@ -212,6 +220,24 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   const { w, h, r } = felt(count, available);
   const { spacing, detail, size, boxHeight } = seatMetrics(count, w, h, r);
   const boxWidth = Math.max(size, Math.min(96, spacing - 6));
+  /*
+   * Does a seat have room for words, or only for figures?
+   *
+   * Measured against SPACING — the arc between neighbours — rather than against
+   * the seat box, because the box is capped at 96px and the pill is deliberately
+   * wider than the box. Judging by the box said "plenty of room" at nine
+   * players while "PULLING UP A CHAIR" was running straight across the next
+   * player's name.
+   *
+   * 136px is the pill at its longest plus a hair: below that the felt drops the
+   * words and keeps the figure, which is the one thing that survives being
+   * small. The state is still carried by the dot, the colour and the seat's
+   * accessible name.
+   */
+  const tight = spacing < 136;
+  // A hard stop as well as a threshold. Whatever the tuning above, a pill can
+  // never be wider than the gap it sits in.
+  const pillMax = Math.max(56, spacing - 8);
   const quiet = night.phase === 'windingDown';
   // The rail scales with the table so a small game does not get a chunky frame
   // and a large one does not get a hairline.
@@ -280,11 +306,61 @@ export const PokerTable: React.FC<PokerTableProps> = ({
               ♠
             </span>
 
-            <div className="relative z-10 h-full flex flex-col items-center justify-center">
+            {/*
+              Centred in the FREE interior, not in the felt.
+
+              The seat boxes at the top and bottom of the ring hang over the
+              cloth by half their height, so the felt's own centre is not the
+              centre of the space nothing else is using. Centring on the felt
+              put the add-player stud underneath the bottom seat — always the
+              viewer's own — at small player counts, where the table is
+              shortest and the seats are biggest.
+            */}
+            <div
+              // inset-x-0 rather than left-1/2: an absolutely positioned box
+              // offset from the left shrinks to fit within the space that
+              // remains, which capped this column at half the felt and wrapped
+              // "13,000 Chips" onto two lines.
+              className="absolute inset-x-0 top-1/2 z-10 flex flex-col items-center justify-center"
+              style={{
+                // Less a gutter than a guarantee. The free interior ends exactly
+                // where the nearest avatar begins, so a stack sized to fill it
+                // sits flush against that face — measured at 2, 3 and 4 players,
+                // where the felt is shortest and the avatars are largest. The
+                // 16px keeps metal off skin.
+                height: Math.max(48, 2 * (h - boxHeight / 2) - 16),
+                transform: 'translateY(-50%)',
+              }}
+            >
               <span className="text-[10px] uppercase tracking-[0.22em] text-white/38">In play</span>
               <span className="text-2xl font-semibold text-white/95 tabular-nums leading-tight">
                 {formatAmount(night.chipsInPlay)}
               </span>
+
+              {/*
+                Bringing somebody to the table, on the table.
+
+                Not a floating action button. A FAB is an app control that
+                happens to hover over content; this is a brass stud set into the
+                cloth. It is the only control that lives on the felt, and it
+                earns that by being the one thing a host does that is not about
+                a person already seated.
+
+                In the centre column rather than at the felt's bottom edge,
+                which is where it started: down there it sat underneath the
+                bottom-centre seat — always the viewer's own — and the two
+                overlapped at every player count.
+              */}
+              {onAddPlayer && (
+                <button
+                  type="button"
+                  onClick={onAddPlayer}
+                  aria-label="Add a player to the table"
+                  className="table-stud mt-3"
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -319,7 +395,11 @@ export const PokerTable: React.FC<PokerTableProps> = ({
             // `translate` property, which composes on top of `transform`
             // instead of replacing it — every seat would be shifted half its
             // own box twice and the ring would sit off the felt.
-            className={`absolute left-1/2 top-1/2 flex items-center rounded-2xl active:opacity-70 transition-opacity duration-[120ms] ${
+            // The transform is animated, so a seat leaving does not teleport
+            // everyone else. Every remaining player slides round to their new
+            // place, which is what actually happens when somebody stands up and
+            // the table shuffles along.
+            className={`absolute left-1/2 top-1/2 flex items-center rounded-2xl active:opacity-70 transition-[opacity,transform] duration-[var(--motion-enter)] ease-[cubic-bezier(0.32,0.72,0,1)] ${
  labelAbove ? 'flex-col-reverse' : 'flex-col'
             }`}
             style={{
@@ -368,9 +448,10 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                   {name}
                 </span>
                 {detail === 'full' &&
+                  (!tight &&
                   (seat.pendingBuyIn !== null ||
-                  seat.state === 'waitingToSit' ||
-                  seat.state === 'countingOut' ? (
+                    seat.state === 'waitingToSit' ||
+                    seat.state === 'countingOut') ? (
                     // A question gets its own weight. As a caption it read like
                     // a smaller version of a chip count, which is the confusion
                     // this whole vocabulary exists to prevent.
@@ -379,12 +460,21 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                     // nobody has agreed to yet. It also does not fit the 96px
                     // caption, which truncated it to "tanding up 7,200"; the
                     // pill is allowed to be wider than the seat box.
-                    <span className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-medium uppercase tracking-wide whitespace-nowrap">
+                    <span
+                      className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-medium uppercase tracking-wide whitespace-nowrap overflow-hidden text-ellipsis align-middle"
+                      style={{ maxWidth: pillMax }}
+                    >
                       {seatCaption(seat, formatAmount)}
                     </span>
                   ) : (
-                    <span className="block text-[10px] text-accent/85 truncate tabular-nums">
-                      {seatCaption(seat, formatAmount)}
+                    <span
+                      className={`block text-[10px] truncate tabular-nums ${
+ tight && (seat.pendingBuyIn !== null || seat.state === 'countingOut')
+ ? 'text-warning'
+ : 'text-accent/85'
+                      }`}
+                    >
+                      {seatCaption(seat, formatAmount, tight)}
                     </span>
                   ))}
               </span>

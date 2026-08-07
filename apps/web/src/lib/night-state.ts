@@ -109,7 +109,24 @@ export interface Seat {
 
 export interface Night {
   phase: NightPhase;
+  /**
+   * Everyone around the table — which is everyone still in the game, including
+   * the two states that are waiting on somebody: pulling up a chair, and
+   * standing up with a count nobody has agreed to yet.
+   *
+   * Deliberately NOT everyone in the night. Somebody whose cash-out has been
+   * confirmed has finished playing, and leaving them on the felt kept a chair
+   * warm for a person who had already pushed it back.
+   */
   seats: Seat[];
+  /**
+   * People who have finished and are still in the room.
+   *
+   * They do not vanish when their cash-out is confirmed — at a real table they
+   * are standing behind you with a drink, and they can sit back down. Rendered
+   * under the table rather than on it.
+   */
+  room: Seat[];
   /** Oldest first — the longest wait is the biggest social cost at a real table. */
   queue: QueuedRequest[];
   /** Bought in, less anything already counted out. Not a pot. */
@@ -149,6 +166,7 @@ export function deriveNight(input: NightInput): Night {
     return {
       phase: 'dark',
       seats: [],
+      room: [],
       queue: [],
       chipsInPlay: 0,
       playersAtTable: 0,
@@ -232,7 +250,7 @@ export function deriveNight(input: NightInput): Night {
     ])
   ).sort((a, b) => joinedAt(a) - joinedAt(b) || (a < b ? -1 : a > b ? 1 : 0));
 
-  const seats: Seat[] = everyone.map((userId) => {
+  const allSeats: Seat[] = everyone.map((userId) => {
     const pendingCashOut = pendingCashOuts.find((c) => c.userId === userId) ?? null;
     const confirmedCashOut = confirmedCashOuts.find((c) => c.userId === userId) ?? null;
     const pendingBuyIn = pendingBuyIns.find((r) => r.userId === userId) ?? null;
@@ -267,6 +285,12 @@ export function deriveNight(input: NightInput): Night {
       confirmedCashOut: confirmedCashOut?.amount ?? null,
     };
   });
+
+  // The felt and the room. Splitting here rather than at the call site is the
+  // point: the ring redistributes off `seats.length`, so anything that leaves
+  // the felt has to leave this array or it keeps its chair.
+  const seats = allSeats.filter((s) => s.state !== 'cashedOut');
+  const room = allSeats.filter((s) => s.state === 'cashedOut');
 
   const mine = (userId: string) => isAdmin || userId === currentUserId;
 
@@ -331,12 +355,15 @@ export function deriveNight(input: NightInput): Night {
   return {
     phase,
     seats,
+    room,
     queue,
     chipsInPlay,
     playersAtTable: activeUids.length,
     settlementUids,
     canSettle: phase === 'ready' && settleBlockedReason === null,
     settleBlockedReason,
-    mySeat: seats.find((s) => s.userId === currentUserId) ?? null,
+    // Either place. Somebody who has cashed out still has a seat in the sense
+    // that matters here — the screen has something of theirs to open.
+    mySeat: allSeats.find((s) => s.userId === currentUserId) ?? null,
   };
 }

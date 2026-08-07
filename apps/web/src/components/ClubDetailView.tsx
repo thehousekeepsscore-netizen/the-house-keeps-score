@@ -7,6 +7,7 @@ import { useConfirm } from './ui/ConfirmDialog';
 import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { type WaitingRow } from './session/WaitingForYou';
 import { PlayerSheet } from './session/PlayerSheet';
+import { AddPlayerSheet } from './session/AddPlayerSheet';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
@@ -1950,6 +1951,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [sheetUid, setSheetUid] = useState<string | null>(null);
   const [sheetBusy, setSheetBusy] = useState(false);
   const [settlePlaceholderOpen, setSettlePlaceholderOpen] = useState(false);
+  const [addPlayerOpen, setAddPlayerOpen] = useState(false);
 
   /**
    * The one screen that is a frame rather than a document.
@@ -1963,9 +1965,31 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const liveTableFillsScreen = showNextLiveSession && activeTab === 'activeSession';
 
   const sheetSeat = useMemo(
-    () => night.seats.find((s) => s.userId === sheetUid) ?? null,
-    [night.seats, sheetUid]
+    () => [...night.seats, ...night.room].find((s) => s.userId === sheetUid) ?? null,
+    [night.seats, night.room, sheetUid]
   );
+
+  /**
+   * Who a host can still bring to the table.
+   *
+   * Anyone already in the night is absent rather than greyed — including the
+   * people in the room, who rejoin by being tapped where they stand rather than
+   * by being added again. A disabled row is a name the host has to read and
+   * then discard, fifteen times a night.
+   */
+  const addablePlayers = useMemo(() => {
+    const inTheNight = new Set([
+      ...night.seats.map((s) => s.userId),
+      ...night.room.map((s) => s.userId),
+    ]);
+    return (club.memberUids ?? [])
+      .filter((uid) => !inTheNight.has(uid))
+      .map((uid) => ({
+        userId: uid,
+        name: uid === currentUser.uid ? 'You' : allUsers[uid]?.displayName || 'Player',
+        avatarUrl: allUsers[uid]?.avatarUrl,
+      }));
+  }, [club.memberUids, night.seats, night.room, allUsers, currentUser.uid]);
 
   // The club's own figures. The ceiling is passed separately and shown as a
   // limit — never as a button, because under MATCH_HIGHEST it climbs all night.
@@ -2296,8 +2320,23 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onSelectPlayer={setSheetUid}
                 ceiling={buyInCeiling}
                 onSettleNight={() => setSettlePlaceholderOpen(true)}
+                onAddPlayer={() => setAddPlayerOpen(true)}
               />
             )}
+
+            {/* Picks a person, and nothing else. Choosing one opens their own
+                sheet, which opens on the bank chooser because they have no
+                seat — so there is exactly one "how many chips" in the app,
+                entered from two doors. */}
+            <AddPlayerSheet
+              open={addPlayerOpen}
+              onClose={() => setAddPlayerOpen(false)}
+              candidates={addablePlayers}
+              onSelect={(uid) => {
+                setAddPlayerOpen(false);
+                setSheetUid(uid);
+              }}
+            />
 
             {/* The sheet is where every action originates. Mounted beside the
                 screen rather than inside it, so the felt never has to know

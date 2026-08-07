@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LiveSession, LiveSessionProps } from './LiveSession';
 import { deriveNight } from '../../lib/night-state';
@@ -68,6 +68,7 @@ function renderScreen(over: Partial<LiveSessionProps> = {}, buyIns: BuyInRequest
     onStartSession: vi.fn(),
     onSelectPlayer: vi.fn(),
     onSettleNight: vi.fn(),
+    onAddPlayer: vi.fn(),
     ...over,
   };
   render(<LiveSession {...props} />);
@@ -279,10 +280,82 @@ describe('seat vocabulary', () => {
     // The running phase renders the felt, so the seat carries the short form
     // and its accessible name carries the sentence — two renderings of one
     // vocabulary (lib/seat-vocabulary.ts), so they cannot drift apart.
-    const seats = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
-    expect(seats.join(' | ')).toMatch(/pulling up a chair/i);
-    expect(seats.join(' | ')).toMatch(/in 5,000/i);
-    expect(seats.join(' | ')).toMatch(/stood up with 4,100/i);
+    const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
+    expect(labels.join(' | ')).toMatch(/pulling up a chair/i);
+    expect(labels.join(' | ')).toMatch(/in 5,000/i);
+    // Arjun's count was agreed, so he is in the room under the table rather
+    // than holding a chair on it.
+    expect(labels.join(' | ')).toMatch(/cashed out with 4,100/i);
+  });
+});
+
+/**
+ * People who have finished, and are still here.
+ *
+ * Leaving them on the felt kept a chair warm for somebody who had pushed it
+ * back; deleting them said the night had never included them. The room is the
+ * third answer, and it is the one a real table gives.
+ */
+describe('the room under the table', () => {
+  const settled = () =>
+    renderScreen(
+      {
+        session: session({
+          activePlayerUids: ['host'],
+          cashOuts: [{ userId: 'arjun', amount: 4100, status: 'confirmed', requestedAt: ago(5) }],
+        }),
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'host', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'host', createdAt: ago(60),
+        },
+      ]
+    );
+
+  it('shows what someone left with, quietly, once their count is agreed', () => {
+    settled();
+    expect(screen.getByRole('group', { name: /at the table/i })).toBeInTheDocument();
+    const room = screen.getByRole('region', { name: /1 in the room/i });
+    expect(room).toHaveTextContent(/arjun/i);
+    expect(room).toHaveTextContent('4,100');
+  });
+
+  it('is the same way in as a seat, so rejoining needs no special path', async () => {
+    const { onSelectPlayer } = settled();
+    const room = screen.getByRole('region', { name: /1 in the room/i });
+    await userEvent.click(within(room).getByRole('button', { name: /arjun/i }));
+    expect(onSelectPlayer).toHaveBeenCalledWith('arjun');
+  });
+
+  it('is absent while everyone is still playing', () => {
+    renderScreen({ session: session({ activePlayerUids: ['host', 'priya'] }) });
+    expect(screen.queryByRole('region', { name: /in the room/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('bringing someone to the table', () => {
+  // The control lives on the felt, so the night has to have reached it — the
+  // arrival phase is a guest list, and every name on it is already tappable.
+  const running = (over: Partial<LiveSessionProps> = {}) =>
+    renderScreen(
+      { session: session({ activePlayerUids: ['host', 'priya'] }), ...over },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(60),
+        },
+      ]
+    );
+
+  it('gives an admin one control on the felt itself', () => {
+    running();
+    expect(screen.getByRole('button', { name: /add a player/i })).toBeInTheDocument();
+  });
+
+  it('offers it to nobody else, absent rather than disabled', () => {
+    running({ isAdmin: false });
+    expect(screen.queryByRole('button', { name: /add a player/i })).not.toBeInTheDocument();
   });
 });
 

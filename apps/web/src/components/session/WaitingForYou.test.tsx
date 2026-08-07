@@ -15,6 +15,15 @@ import { WaitingForYou, WaitingRow } from './WaitingForYou';
 
 const fmt = (n: number) => n.toLocaleString();
 
+/**
+ * The tag and how long they have waited share one line — "More chips • 2m" —
+ * so matching the tag means matching within a node rather than the whole of it.
+ */
+const tagLine = (re: RegExp) =>
+  screen.getByText((_, el) => el?.tagName === 'P' && re.test(el.textContent ?? ''));
+const noTagLine = (re: RegExp) =>
+  screen.queryByText((_, el) => el?.tagName === 'P' && re.test(el.textContent ?? ''));
+
 function row(over: Partial<WaitingRow> = {}): WaitingRow {
   return {
     id: 'q1',
@@ -36,7 +45,7 @@ describe('every row is a person', () => {
     render(<WaitingForYou rows={[row()]} formatAmount={fmt} />);
     expect(screen.getByText('Priya')).toBeInTheDocument();
     expect(screen.getByText('5,000')).toBeInTheDocument();
-    expect(screen.getByText('Join table')).toBeInTheDocument();
+    expect(tagLine(/^Join table •/)).toBeInTheDocument();
     // Nothing to parse, and nothing that reads as a database operation.
     expect(screen.queryByText(/wants to|request|pending/i)).not.toBeInTheDocument();
   });
@@ -44,12 +53,12 @@ describe('every row is a person', () => {
   it('tells arriving apart from topping up, though the server cannot', () => {
     // Identical rows in the database; completely different people to talk to.
     const { unmount } = render(<WaitingForYou rows={[row({ joining: true })]} formatAmount={fmt} />);
-    expect(screen.getByText('Join table')).toBeInTheDocument();
+    expect(tagLine(/^Join table •/)).toBeInTheDocument();
     unmount();
 
     render(<WaitingForYou rows={[row({ joining: false, amount: 3000 })]} formatAmount={fmt} />);
-    expect(screen.getByText('More chips')).toBeInTheDocument();
-    expect(screen.queryByText('Join table')).not.toBeInTheDocument();
+    expect(tagLine(/^More chips •/)).toBeInTheDocument();
+    expect(noTagLine(/Join table/)).not.toBeInTheDocument();
   });
 
   it('tags someone leaving with the kind of request, and the figure they counted', () => {
@@ -59,7 +68,7 @@ describe('every row is a person', () => {
         formatAmount={fmt}
       />
     );
-    expect(screen.getByText('Cash out')).toBeInTheDocument();
+    expect(tagLine(/^Cash out •/)).toBeInTheDocument();
     expect(screen.getByText('7,200')).toBeInTheDocument();
     // One verb across all three kinds. The host is answering the same question
     // every time — yes or not yet — and three different words for "yes" made
@@ -86,7 +95,7 @@ describe('the queue never moves the table', () => {
     const list = container.querySelector('ul')!;
     expect(list.className).toMatch(/overflow-y-auto/);
     // Two cards' worth, and no more, whatever arrives.
-    expect(list.style.maxHeight).toBe('176px');
+    expect(list.style.maxHeight).toBe('152px');
   });
 
   it('does not cap itself when everything already fits', () => {
@@ -104,19 +113,42 @@ describe('when the person is the reader', () => {
     // to say "You needs more chips"; a tag simply does not have the problem.
     render(<WaitingForYou rows={[row({ name: 'You', joining: false })]} formatAmount={fmt} />);
     expect(screen.getByText('You')).toBeInTheDocument();
-    expect(screen.getByText('More chips')).toBeInTheDocument();
+    expect(tagLine(/^More chips •/)).toBeInTheDocument();
   });
 });
 
+/**
+ * How long they have been waiting, and — only at the end — how long is left.
+ *
+ * Age is the social fact, and it is the right reading for almost the whole life
+ * of a request: "Arjun asked two minutes ago". A deadline ticking on every row
+ * would make an ordinary queue look like an emergency.
+ *
+ * The last minute is the exception, because the server auto-rejects at five and
+ * the request simply disappears. That is the one moment the honest reading is
+ * that it is about to.
+ */
 describe('the five-minute window', () => {
-  it('shows time left rather than time waited', () => {
-    render(<WaitingForYou rows={[row({ msRemaining: 61_000 })]} formatAmount={fmt} />);
-    expect(screen.getByText('1:01')).toBeInTheDocument();
+  it('reads as how long they have been waiting', () => {
+    render(<WaitingForYou rows={[row({ msRemaining: 3 * 60_000 })]} formatAmount={fmt} />);
+    expect(tagLine(/• 2m$/)).toBeInTheDocument();
+  });
+
+  it('says "just now" rather than "0m" for someone who has only asked', () => {
+    render(<WaitingForYou rows={[row({ msRemaining: 4.6 * 60_000 })]} formatAmount={fmt} />);
+    expect(tagLine(/• just now$/)).toBeInTheDocument();
+  });
+
+  it('switches to the deadline in the final minute, and marks it', () => {
+    render(<WaitingForYou rows={[row({ msRemaining: 30_000 })]} formatAmount={fmt} />);
+    const warning = screen.getByText('expires in 30s');
+    expect(warning).toBeInTheDocument();
+    expect(warning.className).toMatch(/text-warning/);
   });
 
   it('says nothing when there is no timestamp to count from', () => {
     render(<WaitingForYou rows={[row({ msRemaining: null })]} formatAmount={fmt} />);
-    expect(screen.queryByText(/^\d+:\d\d$/)).not.toBeInTheDocument();
+    expect(noTagLine(/•/)).not.toBeInTheDocument();
   });
 });
 
@@ -153,7 +185,7 @@ describe('acting on a row', () => {
     await userEvent.click(screen.getByRole('button', { name: /approve/i }));
     expect(onApprove).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByRole('button', { name: /not now/i }));
+    await userEvent.click(screen.getByRole('button', { name: /later/i }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

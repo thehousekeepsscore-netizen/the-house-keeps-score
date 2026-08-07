@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { PokerTable } from './PokerTable';
 import { seatSentence } from '../../lib/seat-vocabulary';
 import { WaitingForYou, WaitingRow } from './WaitingForYou';
+import { TheRoom } from './TheRoom';
 
 /**
  * The live session, rebuilt.
@@ -58,6 +59,8 @@ export interface LiveSessionProps {
   ceiling: number | null;
   /** Admins only, and always available — settlement itself lands in the next PR. */
   onSettleNight?: () => void;
+  /** Admins only. Opens the pick-a-person sheet; the amount is asked for after. */
+  onAddPlayer?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -97,6 +100,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   waiting,
   ceiling,
   onSettleNight,
+  onAddPlayer,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const live = night.phase !== 'dark' && night.phase !== 'closed';
@@ -148,6 +152,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           isAdmin={isAdmin}
           onSelectPlayer={onSelectPlayer}
           formatAmount={formatAmount}
+          onAddPlayer={onAddPlayer}
         />
       </div>
 
@@ -326,7 +331,8 @@ const Stage: React.FC<{
   isAdmin: boolean;
   onSelectPlayer: (userId: string) => void;
   formatAmount: (n: number) => string;
-}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount }) => {
+  onAddPlayer?: () => void;
+}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount, onAddPlayer }) => {
   switch (night.phase) {
     case 'dark':
       return <Dark isAdmin={isAdmin} />;
@@ -360,14 +366,24 @@ const Stage: React.FC<{
             users={users}
             onSelectPlayer={onSelectPlayer}
             formatAmount={formatAmount}
+            onAddPlayer={isAdmin ? onAddPlayer : undefined}
           />
-          {night.mySeat && (
+
+          {night.mySeat && night.mySeat.state !== 'cashedOut' && (
             <p className="mt-3 text-center text-sm text-text-muted">
-              {night.mySeat.state === 'cashedOut'
-                ? `You counted out ${formatAmount(night.mySeat.confirmedCashOut ?? 0)}`
-                : `You're in for ${formatAmount(night.mySeat.totalBuyIn)}`}
+              You're in for {formatAmount(night.mySeat.totalBuyIn)}
             </p>
           )}
+
+          {/* The room, under the table. People who have finished do not
+              disappear — they step back from the felt. */}
+          <TheRoom
+            room={night.room}
+            users={users}
+            currentUserId={currentUserId}
+            onSelectPlayer={onSelectPlayer}
+            formatAmount={formatAmount}
+          />
         </section>
       );
   }

@@ -83,7 +83,7 @@ describe('adapts from 2 to 9 without overlapping', () => {
     const feltFor = (n: number) => {
       const boxGuess = n <= 6 ? 88 : n <= 14 ? 64 : 56;
       const maxW = Math.max(120, 360 / 2 - 3 - boxGuess / 2);
-      const h = n <= 4 ? 92 : n <= 6 ? 106 : n <= 9 ? 126 : n <= 14 ? 146 : 158;
+      const h = n <= 4 ? 116 : n <= 6 ? 124 : n <= 9 ? 132 : n <= 14 ? 146 : 158;
       const wWanted = n <= 4 ? 120 : n <= 6 ? 140 : n <= 9 ? 158 : 170;
       const w = Math.round(Math.min(maxW, wWanted));
       return { w, h, r: Math.round(Math.min(w, h) * 0.74) };
@@ -106,6 +106,48 @@ describe('adapts from 2 to 9 without overlapping', () => {
       expect(screen.getAllByRole('button')).toHaveLength(n);
       document.body.innerHTML = '';
     }
+  });
+
+  /**
+   * The brass pill is DELIBERATELY wider than the seat box, which is fine at
+   * six players and a collision at nine.
+   *
+   * Found on screen by measuring every text node against every other across
+   * 2–18: at nine, "PULLING UP A CHAIR" ran straight across the next player's
+   * name. The box was a comfortable 96px the whole time, which is why judging
+   * by the box missed it — the box is capped, and the pill is not.
+   */
+  describe('words while there is room, figures once there is not', () => {
+    const seatWithPending = (n: number) => {
+      document.body.innerHTML = '';
+      const uids = Array.from({ length: n }, (_, i) => `p${i + 1}`);
+      table(
+        { activePlayerUids: uids, pendingSitInUids: ['newcomer'], sitInRequestedAt: { newcomer: ago(1) } },
+        uids.map((u, i) => buyIn(u, 5000, { createdAt: ago(200 - i) }))
+      );
+    };
+
+    it('spells out an arrival while the seats are far apart', () => {
+      seatWithPending(4);
+      expect(screen.getByText('pulling up a chair')).toBeInTheDocument();
+    });
+
+    it('drops the words on a crowded table rather than crossing a neighbour', () => {
+      seatWithPending(12);
+      expect(screen.queryByText('pulling up a chair')).not.toBeInTheDocument();
+      // The figure survives being small; the words do not. State is still
+      // carried by the dot, the colour and the accessible name.
+      expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label')).join(' '))
+        .toMatch(/pulling up a chair/i);
+    });
+
+    it('never lets a pill grow wider than the gap it sits in', () => {
+      // The hard stop behind the threshold: whatever the tuning, a pill is
+      // capped to the arc between neighbours.
+      seatWithPending(4);
+      const pill = screen.getByText('pulling up a chair');
+      expect(parseFloat((pill as HTMLElement).style.maxWidth)).toBeGreaterThan(0);
+    });
   });
 
   it('says less per seat as the table fills, rather than overlapping', () => {
@@ -198,7 +240,11 @@ describe('a seat says what it is doing', () => {
     expect(pill.className).toMatch(/whitespace-nowrap/);
   });
 
-  it('stood up — past tense, and still at the table', () => {
+  it('gives up the chair once the count is agreed', () => {
+    // A confirmed cash-out is the end of that person's game, and a seat held
+    // for somebody who has pushed their chair back is the scarcest thing on
+    // the screen at eighteen players. They are not deleted — they move to the
+    // room under the table, which TheRoom renders.
     table(
       {
         activePlayerUids: ['p2'],
@@ -207,21 +253,23 @@ describe('a seat says what it is doing', () => {
       [buyIn('p1'), buyIn('p2', 5000, { createdAt: ago(80) })]
     );
     const names = seatNames();
-    expect(names).toHaveLength(2);
-    expect(names.join(' ')).toMatch(/stood up with 8,200/i);
+    expect(names).toHaveLength(1);
+    expect(names.join(' ')).not.toMatch(/stood up/i);
   });
 });
 
-describe('the ring never reflows', () => {
-  it('holds every seat in place when a player is counted out', () => {
-    // The rule the felt has to keep. If seats moved when someone left, the
-    // whole table would rearrange during the ten minutes when everyone is
-    // leaving at once — which is exactly when a moving control is worst.
-    const buyIns = [
-      buyIn('p1', 5000, { createdAt: ago(90) }),
-      buyIn('p2', 5000, { createdAt: ago(80) }),
-      buyIn('p3', 5000, { createdAt: ago(70) }),
-    ];
+describe('the ring closes up without reshuffling', () => {
+  const buyIns = [
+    buyIn('p1', 5000, { createdAt: ago(90) }),
+    buyIn('p2', 5000, { createdAt: ago(80) }),
+    buyIn('p3', 5000, { createdAt: ago(70) }),
+  ];
+
+  it('keeps everyone else in the same order when one player leaves', () => {
+    // The rule the felt has to keep. Seats redistribute when somebody goes —
+    // an empty chair is worse than a shuffle — but the people who remain must
+    // stay in the same sequence, or the whole table rearranges during the ten
+    // minutes when everyone is leaving at once.
     table({ activePlayerUids: ['p1', 'p2', 'p3'] }, buyIns);
     const before = seatNames().map((l) => l.split(',')[0]);
 
@@ -235,7 +283,28 @@ describe('the ring never reflows', () => {
     );
     const after = seatNames().map((l) => l.split(',')[0]);
 
-    expect(after).toEqual(before);
+    expect(after).toEqual(before.filter((n) => n !== 'Player 2'));
+  });
+
+  it('holds the chair while a count is still only claimed', () => {
+    // The distinction the whole split turns on: standing up is a request, and
+    // a request must not move anybody. Only agreement frees the seat.
+    table(
+      {
+        activePlayerUids: ['p1', 'p2', 'p3'],
+        cashOuts: [{ userId: 'p2', amount: 7000, status: 'pending', requestedAt: ago(1) }],
+      },
+      buyIns
+    );
+    expect(seatNames()).toHaveLength(3);
+  });
+
+  it('slides seats to their new places rather than cutting to them', () => {
+    // "Redistribute smoothly": every seat animates its transform, so a player
+    // leaving does not teleport the rest of the table.
+    table({ activePlayerUids: ['p1', 'p2', 'p3'] }, buyIns);
+    const seat = screen.getAllByRole('button')[0];
+    expect(seat.className).toMatch(/transition-\[opacity,transform\]/);
   });
 });
 

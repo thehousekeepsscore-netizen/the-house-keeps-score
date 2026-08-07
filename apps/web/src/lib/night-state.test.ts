@@ -165,7 +165,10 @@ describe('seat state', () => {
     expect(night.seats[0].state).toBe('waitingToSit');
   });
 
-  it('keeps a cashed-out player in the night, and in the settlement set', () => {
+  it('moves a cashed-out player off the felt and into the room', () => {
+    // Not deleted, and not still sitting there. A confirmed cash-out ends that
+    // person's game, so the chair goes back — but they are standing behind you
+    // with a drink, and quite often they sit down again.
     const night = derive({
       session: session({
         activePlayerUids: ['b'],
@@ -173,13 +176,25 @@ describe('seat state', () => {
       }),
       buyIns: [buyIn({ userId: 'a' }), buyIn({ userId: 'b' })],
     });
-    expect(night.seats.find((s) => s.userId === 'a')).toMatchObject({
-      state: 'cashedOut',
-      confirmedCashOut: 4000,
-    });
-    // They left the seat list but the night still settles them.
+    expect(night.seats.map((s) => s.userId)).toEqual(['b']);
+    expect(night.room).toMatchObject([{ userId: 'a', state: 'cashedOut', confirmedCashOut: 4000 }]);
+    // Off the felt, still part of the night the app has to settle.
     expect(night.playersAtTable).toBe(1);
     expect(night.settlementUids.sort()).toEqual(['a', 'b']);
+  });
+
+  it('keeps somebody who is only WAITING on a count at the table', () => {
+    // The distinction the split turns on: standing up is a request, and a
+    // request must not move anybody. Only agreement frees the seat.
+    const night = derive({
+      session: session({
+        activePlayerUids: ['a', 'b'],
+        cashOuts: [{ userId: 'a', amount: 4000, status: 'pending', requestedAt: ago(1) }],
+      }),
+      buyIns: [buyIn({ userId: 'a' }), buyIn({ userId: 'b' })],
+    });
+    expect(night.seats.map((s) => s.userId)).toEqual(['a', 'b']);
+    expect(night.room).toEqual([]);
   });
 });
 
@@ -196,11 +211,13 @@ describe('seat order is fixed for the night', () => {
     expect(night.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
   });
 
-  it('does not move anyone when a player is counted out', () => {
-    // The rule the felt has to keep. Confirming a cash-out removes a player
-    // from activePlayerUids, so deriving order from the live lists would send
-    // them to the end and shift every seat after them — the whole table
-    // rearranging during the ten minutes when people are leaving.
+  it('closes the gap when a player leaves, without reshuffling the rest', () => {
+    // The rule the felt has to keep. The chair goes back — an empty seat held
+    // for somebody who has gone is the scarcest thing on screen at eighteen
+    // players — but the people who remain keep their sequence. Deriving order
+    // from the live lists instead would send a cashed-out player to the end and
+    // shift every seat after them, rearranging the whole table during the ten
+    // minutes when everyone is leaving at once.
     const buyIns = [
       buyIn({ userId: 'a', createdAt: ago(90) }),
       buyIn({ userId: 'b', createdAt: ago(60) }),
@@ -219,8 +236,8 @@ describe('seat order is fixed for the night', () => {
     });
 
     expect(before.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
-    expect(after.seats.map((s) => s.userId)).toEqual(['a', 'b', 'c']);
-    expect(after.seats[1].state).toBe('cashedOut');
+    expect(after.seats.map((s) => s.userId)).toEqual(['a', 'c']);
+    expect(after.room.map((s) => s.userId)).toEqual(['b']);
   });
 
   it('is deterministic for players with no bank yet', () => {

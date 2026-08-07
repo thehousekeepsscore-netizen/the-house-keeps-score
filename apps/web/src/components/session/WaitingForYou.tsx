@@ -1,5 +1,5 @@
 import React from 'react';
-import { QueuedRequest } from '../../lib/night-state';
+import { QueuedRequest, REQUEST_TTL_MS } from '../../lib/night-state';
 import { PlayerAvatar } from './PlayerAvatar';
 import { Button } from '../ui/Button';
 
@@ -45,8 +45,8 @@ export interface WaitingRow extends QueuedRequest {
   pending?: boolean;
 }
 
-/** One card, and the region shows exactly two of them. Keep in step with the CSS. */
-const CARD_H = 88;
+/** One row, and the region shows exactly two of them. Keep in step with the CSS. */
+const CARD_H = 76;
 const VISIBLE_CARDS = 2;
 
 /** A tag, not a sentence. Same row in the database, different person to talk to. */
@@ -56,11 +56,27 @@ function tagOf(row: WaitingRow): string {
   return row.joining ? 'Join table' : 'More chips';
 }
 
-/** mm:ss. "4 min" asks the reader to do arithmetic against a deadline. */
-function countdown(ms: number | null): string | null {
-  if (ms === null) return null;
-  const total = Math.ceil(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+/**
+ * How long they have been waiting — and, at the end, how long is left.
+ *
+ * Age is the right thing to show for almost the whole life of a request: it is
+ * the social fact ("Arjun asked two minutes ago"), and a ticking deadline on
+ * every row would make an ordinary queue look like an emergency.
+ *
+ * The last minute is different. The server auto-rejects at five minutes and the
+ * request simply disappears, so for that final stretch the honest reading is
+ * the one that says it is about to.
+ */
+function waited(row: WaitingRow): { text: string; urgent: boolean } | null {
+  if (row.msRemaining === null) return null;
+
+  if (row.msRemaining <= 60_000) {
+    return { text: `expires in ${Math.max(0, Math.ceil(row.msRemaining / 1000))}s`, urgent: true };
+  }
+
+  const ageMs = Math.max(0, REQUEST_TTL_MS - row.msRemaining);
+  const mins = Math.floor(ageMs / 60_000);
+  return { text: mins < 1 ? 'just now' : `${mins}m`, urgent: false };
 }
 
 export const WaitingForYou: React.FC<{
@@ -90,68 +106,71 @@ export const WaitingForYou: React.FC<{
         className={scrolls ? 'overflow-y-auto overscroll-contain' : undefined}
       >
         {rows.map((row) => {
-          const left = countdown(row.msRemaining);
-          const urgent = row.msRemaining !== null && row.msRemaining <= 60_000;
+          const age = waited(row);
 
           return (
             <li
               key={row.id}
               style={{ height: CARD_H }}
-              className="px-3 flex flex-col justify-center gap-1 border-t border-line/30 first:border-t-0"
+              className="px-3 flex items-center gap-2.5 border-t border-line/30 first:border-t-0"
             >
-              <div className="flex items-center gap-2.5">
-                <PlayerAvatar userId={row.userId} name={row.name} photoUrl={row.avatarUrl} size={30} />
-                <p className="flex-1 min-w-0 text-[15px] font-semibold text-text truncate">
-                  {row.name}
+              <PlayerAvatar userId={row.userId} name={row.name} photoUrl={row.avatarUrl} size={30} />
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <p className="min-w-0 flex-1 text-[15px] font-semibold text-text truncate leading-tight">
+                    {row.name}
+                  </p>
+                  {row.amount !== undefined && (
+                    <p className="text-[15px] text-accent tabular-nums shrink-0 leading-tight">
+                      {formatAmount(row.amount)}
+                    </p>
+                  )}
+                </div>
+
+                <p className="mt-0.5 text-xs text-text-muted truncate leading-tight">
+                  {tagOf(row)}
+                  {age && (
+                    <>
+                      {' • '}
+                      <span className={age.urgent ? 'text-warning tabular-nums' : 'tabular-nums'}>
+                        {age.text}
+                      </span>
+                    </>
+                  )}
                 </p>
-                {row.amount !== undefined && (
-                  <p className="text-[15px] text-accent tabular-nums shrink-0">
-                    {formatAmount(row.amount)}
-                  </p>
-                )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <p className="text-xs text-text-muted shrink-0">{tagOf(row)}</p>
-
-                {/* The five-minute window, as time LEFT rather than time waited.
-                    The server auto-rejects at zero and the request simply
-                    vanishes, so this is the only warning anyone gets. */}
-                {left && (
-                  <p className={`text-xs tabular-nums shrink-0 ${urgent ? 'text-warning' : 'text-text-faint'}`}>
-                    {left}
-                  </p>
-                )}
-
-                {row.blockedReason ? (
-                  <p className="ml-auto text-xs text-warning truncate">{row.blockedReason}</p>
-                ) : (
-                  /* Approve is affirmative and expected, so it leads and carries
-                     the material. Dismissing is quieter and never the same
-                     weight — a mis-tap there is socially expensive at a real
-                     table, and the fix is hierarchy rather than an extra step. */
-                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={row.pending}
-                      onClick={row.onDismiss}
-                      className="whitespace-nowrap"
-                    >
-                      Not now
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      loading={row.pending}
-                      onClick={row.onApprove}
-                      className="whitespace-nowrap"
-                    >
-                      Approve
-                    </Button>
-                  </div>
-                )}
-              </div>
+              {row.blockedReason ? (
+                <p className="w-[104px] shrink-0 text-right text-xs text-warning leading-tight">
+                  {row.blockedReason}
+                </p>
+              ) : (
+                /* Approve is affirmative and expected, so it leads and carries
+                   the material. Dismissing is quieter and never the same
+                   weight — a mis-tap there is socially expensive at a real
+                   table, and the fix is hierarchy rather than an extra step. */
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={row.pending}
+                    onClick={row.onDismiss}
+                    className="whitespace-nowrap"
+                  >
+                    Later
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={row.pending}
+                    onClick={row.onApprove}
+                    className="whitespace-nowrap"
+                  >
+                    Approve
+                  </Button>
+                </div>
+              )}
             </li>
           );
         })}

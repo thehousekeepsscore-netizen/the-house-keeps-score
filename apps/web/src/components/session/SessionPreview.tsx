@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LiveSession } from './LiveSession';
 import { PlayerSheet } from './PlayerSheet';
+import { AddPlayerSheet } from './AddPlayerSheet';
 import { WaitingRow } from './WaitingForYou';
 import { deriveNight } from '../../lib/night-state';
 import { Club, PokerSession, BuyInRequest } from '../../types';
@@ -44,13 +45,26 @@ export const SessionPreview: React.FC = () => {
   // Same idea for standing up: the request the API would have created, applied
   // locally, so the seat state and the admin's confirmation are both walkable.
   const [cashOut, setCashOut] = useState<{ userId: string; amount: number } | null>(null);
+  // ?room=N seats N people who have already finished, so the room under the
+  // table can be judged with the felt still full.
+  const [confirmed, setConfirmed] = useState<{ userId: string; amount: number }[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
   // ?me=out starts the viewer outside the game, which is the only way to see
   // the arrival journey — everything else assumes you are already seated.
   const outside = params.get('me') === 'out';
 
   const uids = Array.from({ length: count }, (_, i) => `u${i}`);
+  // Every club member, not just the ones seated — Add Player lists the people
+  // who are NOT in the night, and they need names too.
+  // Every club member AND every seat — Add Player lists the people who are not
+  // in the night, and a table of eighteen needs eighteen names of realistic
+  // width, not nine names and nine "Player"s.
   const users: Record<string, { displayName?: string }> = Object.fromEntries(
-    uids.map((uid, i) => [uid, { displayName: NAMES[i % NAMES.length] }])
+    Array.from(new Set([...club.memberUids, ...Array.from({ length: count }, (_, i) => `u${i}`)]))
+      .map((uid) => {
+        const i = Number(uid.slice(1));
+        return [uid, { displayName: i >= NAMES.length ? `${NAMES[i % NAMES.length]} ${Math.floor(i / NAMES.length) + 1}` : NAMES[i] }];
+      })
   );
   const me = outside ? 'me' : 'u0';
   if (outside) users.me = { displayName: 'You' };
@@ -60,12 +74,28 @@ export const SessionPreview: React.FC = () => {
   const seated = uids.slice(0, count - 1);
   const arriving = uids[count - 1];
 
+  // The last few seats start the night already finished, so the felt and the
+  // room are both populated without walking a cash-out for each of them.
+  const roomCount = Math.max(0, Math.min(count - 2, Number(params.get('room')) || 0));
+  // slice(-0) is slice(0), which is the whole array — so with no room asked for
+  // this quietly moved every seated player into the room and the table read
+  // "everyone has left".
+  const roomUids = roomCount === 0 ? [] : seated.slice(-roomCount);
+  const roomSeed = roomUids.map((uid, i) => ({ userId: uid, amount: 4000 + i * 900 }));
+
   const session: PokerSession = {
     id: 's1', clubId: 'c1', sessionName: 'Fri 8 Aug', status: 'active',
-    activePlayerUids: seated, pendingSitInUids: [], sitInRequestedAt: {},
-    cashOuts: cashOut
-      ? [{ userId: cashOut.userId, amount: cashOut.amount, status: 'pending' as const, requestedAt: at(0) }]
-      : [],
+    // A confirmed cash-out frees the seat on the server, so the harness has to
+    // do the same or the winding-down figures count people who have gone.
+    activePlayerUids: seated.filter((uid) => !roomUids.includes(uid)),
+    pendingSitInUids: [], sitInRequestedAt: {},
+    cashOuts: [
+      ...roomSeed.map((c) => ({ ...c, status: 'confirmed' as const, requestedAt: at(20) })),
+      ...confirmed.map((c) => ({ ...c, status: 'confirmed' as const, requestedAt: at(1) })),
+      ...(cashOut
+        ? [{ userId: cashOut.userId, amount: cashOut.amount, status: 'pending' as const, requestedAt: at(0) }]
+        : []),
+    ],
     startedBy: 'u0', createdAt: at(196),
   };
 
@@ -132,6 +162,16 @@ export const SessionPreview: React.FC = () => {
         onSelectPlayer={setPicked}
         ceiling={ceiling}
         onSettleNight={() => {}}
+        onAddPlayer={() => setAddOpen(true)}
+      />
+
+      <AddPlayerSheet
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        candidates={club.memberUids
+          .filter((uid) => ![...night.seats, ...night.room].some((s) => s.userId === uid))
+          .map((uid) => ({ userId: uid, name: users[uid]?.displayName ?? 'Player' }))}
+        onSelect={(uid) => { setAddOpen(false); setPicked(uid); }}
       />
 
       {picked && (
@@ -140,7 +180,7 @@ export const SessionPreview: React.FC = () => {
           onClose={() => setPicked(null)}
           name={picked === me ? 'You' : users[picked]?.displayName ?? 'Player'}
           userId={picked}
-          seat={night.seats.find((s) => s.userId === picked) ?? null}
+          seat={[...night.seats, ...night.room].find((s) => s.userId === picked) ?? null}
           isSelf={picked === me}
           isAdmin
           formatAmount={(n) => n.toLocaleString()}
@@ -152,7 +192,8 @@ export const SessionPreview: React.FC = () => {
             if (picked) setCashOut({ userId: picked, amount });
             setPicked(null);
           }}
-          onConfirmCount={() => {
+          onConfirmCount={(amount) => {
+            if (cashOut) setConfirmed((c) => [...c, { userId: cashOut.userId, amount }]);
             setCashOut(null);
             setPicked(null);
           }}
