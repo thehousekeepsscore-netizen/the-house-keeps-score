@@ -57,6 +57,11 @@ export const SessionPreview: React.FC = () => {
   // ?admin=0 is the majority case — roughly four opens in five are a player,
   // and the two roles get different controls on the same felt.
   const isAdmin = params.get('admin') !== '0';
+  // ?lobby=1 opens the table without starting the night — the stretch where
+  // people are gathering and nobody is playing.
+  const inLobby = params.get('lobby') === '1';
+  // ?mins=N sets a length, so the clock and the time-up prompt are walkable.
+  const durationMinutes = Number(params.get('mins')) || undefined;
 
   const uids = Array.from({ length: count }, (_, i) => `u${i}`);
   // Every club member, not just the ones seated — Add Player lists the people
@@ -102,6 +107,9 @@ export const SessionPreview: React.FC = () => {
         : []),
     ],
     startedBy: 'u0', createdAt: at(196),
+    startedPlayingAt: inLobby ? null : at(196),
+    durationMinutes,
+    remindAtEnd: true,
   };
 
   const buyIns: BuyInRequest[] = [
@@ -168,6 +176,7 @@ export const SessionPreview: React.FC = () => {
         onSelectPlayer={(uid) => { setAsksChips(false); setPicked(uid); }}
         ceiling={ceiling}
         onSettleNight={() => {}}
+        onStartPlaying={() => { window.location.href = window.location.href.replace('lobby=1', 'lobby=0'); }}
         onAddPlayer={() => setAddOpen(true)}
         onAskForChips={() => { setAsksChips(true); setPicked(me); }}
         feed={feed}

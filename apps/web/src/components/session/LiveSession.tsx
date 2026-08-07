@@ -3,10 +3,11 @@ import { Night } from '../../lib/night-state';
 import { Club, PokerSession } from '../../types';
 import { Button } from '../ui/Button';
 import { PokerTable } from './PokerTable';
-import { seatSentence } from '../../lib/seat-vocabulary';
 import { WaitingForYou, WaitingRow } from './WaitingForYou';
 import { TheRoom } from './TheRoom';
 import { LiveFeed } from './LiveFeed';
+import { Lobby } from './Lobby';
+import { NightClock } from './NightClock';
 import { FeedEvent } from '../../lib/night-feed';
 
 /**
@@ -76,6 +77,11 @@ export interface LiveSessionProps {
    * night-feed.ts — so it is complete the moment the screen opens.
    */
   feed: FeedEvent[];
+  /** Admins only, in the lobby: "alright, let's start". */
+  onStartPlaying?: () => void;
+  starting?: boolean;
+  /** Fired once when a timed night reaches its end. It never ends the night. */
+  onTimeUp?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -150,6 +156,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onAddPlayer,
   onAskForChips,
   feed,
+  onStartPlaying,
+  starting,
+  onTimeUp,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const live = night.phase !== 'dark' && night.phase !== 'closed';
@@ -178,6 +187,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         ceiling={ceiling}
         formatAmount={formatAmount}
         live={live}
+        onTimeUp={onTimeUp}
       />
 
       {/* Lead with what needs a decision. This sits above the stage in every
@@ -204,6 +214,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onAddPlayer={onAddPlayer}
           onAskForChips={onAskForChips}
           feed={feed}
+          onStartPlaying={onStartPlaying}
+          starting={starting}
         />
       </div>
 
@@ -215,7 +227,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         onSelectPlayer={onSelectPlayer}
       />
 
-      <SettleFooter isAdmin={isAdmin} live={live} onSettleNight={onSettleNight} />
+      <SettleFooter
+        isAdmin={isAdmin}
+        live={live && night.startedPlayingAt !== null}
+        onSettleNight={onSettleNight}
+      />
     </div>
   );
 };
@@ -276,18 +292,35 @@ const Header: React.FC<{
   ceiling: number | null;
   formatAmount: (n: number) => string;
   live: boolean;
-}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live }) => (
+  onTimeUp?: () => void;
+}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, onTimeUp }) => (
   <header className="px-5 pt-4 pb-3 shrink-0">
     <div className="flex items-baseline gap-2 min-w-0">
       {session && (
         <h1 className="text-base font-semibold text-text truncate">{session.sessionName}</h1>
       )}
-      {elapsed && (
+      {/* No clock in the lobby: nothing has started, so an elapsed time would
+          be counting how long people have been standing around. */}
+      {night.phase !== 'lobby' && elapsed && (
         <span className="ml-auto text-xs text-text-muted tabular-nums shrink-0">{elapsed}</span>
       )}
     </div>
 
+    {night.phase === 'lobby' && (
+      <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-text-faint">
+        Preparing table
+      </p>
+    )}
+
     {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
+
+    {/* Only when the host set a length. A night with no end has nothing to
+        count towards, so it is shown no clock at all. */}
+    <NightClock
+      startedPlayingAt={night.startedPlayingAt}
+      durationMinutes={session?.durationMinutes}
+      onTimeUp={onTimeUp}
+    />
 
     {connection !== 'live' && (
       <p role="status" className="mt-1.5 text-xs text-warning">
@@ -385,9 +418,11 @@ const Stage: React.FC<{
   onAddPlayer?: () => void;
   onAskForChips?: () => void;
   feed: FeedEvent[];
+  onStartPlaying?: () => void;
+  starting?: boolean;
 }> = ({
   night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount,
-  onAddPlayer, onAskForChips, feed,
+  onAddPlayer, onAskForChips, feed, onStartPlaying, starting,
 }) => {
   // The feed speaks in the second person wherever it is about the viewer, which
   // is what makes it their view of the night rather than a system log.
@@ -395,9 +430,12 @@ const Stage: React.FC<{
   switch (night.phase) {
     case 'dark':
       return <Dark isAdmin={isAdmin} />;
-    case 'opening':
+    case 'lobby':
+      // Not the table. Nobody is playing, so there is no felt, no chips in the
+      // middle, no clock and no story — drawing any of them would be the same
+      // lie the old screen told, in a prettier font.
       return (
-        <Opening
+        <Lobby
           club={club}
           night={night}
           users={users}
@@ -405,6 +443,8 @@ const Stage: React.FC<{
           isAdmin={isAdmin}
           onSelectPlayer={onSelectPlayer}
           formatAmount={formatAmount}
+          onStartPlaying={onStartPlaying}
+          starting={starting}
         />
       );
     case 'ready':
@@ -474,59 +514,6 @@ const Dark: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => (
   </section>
 );
 
-/**
- * The arrival phase, which the old screen had no concept of — it showed the
- * same scoreboard whether the night had four hours of history or none, so the
- * first fifteen minutes were a table of zeros.
- *
- * The list is every club member, because in this phase the only thing you do
- * to a name is bank them.
- */
-const Opening: React.FC<{
-  club: Club;
-  night: Night;
-  users: LiveSessionProps['users'];
-  currentUserId: string;
-  isAdmin: boolean;
-  onSelectPlayer: (userId: string) => void;
-  formatAmount: (n: number) => string;
-}> = ({ club, night, users, currentUserId, isAdmin, onSelectPlayer, formatAmount }) => {
-  // Seats, not a boolean. Requests arrive during the arrival phase too — a
-  // player opens the app and asks for chips while the host is still banking
-  // people — and "at the table" would hide the fact that someone is waiting.
-  // One sentence per person, in the vocabulary of their state, in every phase.
-  const seatOf = new Map(night.seats.map((s) => [s.userId, s]));
-  const roster = club.memberUids ?? [];
-
-  return (
-    <section className="flex-1 min-h-0 overflow-y-auto px-5 pb-4">
-      <h2 className="text-sm font-semibold text-text-muted mb-3">Who's playing?</h2>
-      <ul className="divide-y divide-line">
-        {roster.map((uid) => {
-          const seat = seatOf.get(uid);
-          return (
-            <li key={uid}>
-              <button
-                type="button"
-                onClick={() => onSelectPlayer(uid)}
-                disabled={!isAdmin && uid !== currentUserId}
-                className="w-full min-h-[56px] flex items-center gap-3 py-3 text-left disabled:opacity-45"
-              >
-                <span className="w-9 h-9 rounded-full bg-surface-alt border border-line shrink-0" />
-                <span className="flex-1 text-base text-text truncate">
-                  {nameOf(users, uid, currentUserId)}
-                </span>
-                <span className="text-sm text-text-muted shrink-0">
-                  {seat ? seatSentence(seat, formatAmount) : 'not yet'}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-};
 
 const Ready: React.FC<{ night: Night }> = ({ night }) => (
   <section className="px-5 py-12 text-center">

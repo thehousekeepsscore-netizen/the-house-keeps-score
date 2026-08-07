@@ -26,6 +26,9 @@ export interface ApiOfflineSession {
   maxBuyIn?: number;
   maxPlayers?: number;
   skipBlindLimit?: number;
+  startedPlayingAt?: string | null;
+  durationMinutes?: number;
+  remindAtEnd?: boolean;
 }
 
 export function toPokerSession(s: ApiOfflineSession): PokerSession {
@@ -52,6 +55,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     maxBuyIn: s.maxBuyIn,
     maxPlayers: s.maxPlayers,
     skipBlindLimit: s.skipBlindLimit,
+    startedPlayingAt: s.startedPlayingAt,
+    durationMinutes: s.durationMinutes,
+    remindAtEnd: s.remindAtEnd,
   };
 }
 
@@ -101,10 +107,21 @@ export interface StartSessionInput {
   maxBuyIn?: number;
   maxPlayers?: number;
   skipBlindLimit?: number;
+  /** Minutes the host set aside. Omitted means no limit. */
+  durationMinutes?: number;
+  /** Whether to say anything when the clock runs out. It never ends the night. */
+  remindAtEnd?: boolean;
 }
 
 export async function startSession(clubId: string, input: StartSessionInput): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(`/clubs/${clubId}/offline-sessions`, { method: 'POST', body: input });
+  return toPokerSession(s);
+}
+
+/** "Alright, let's start." Admins only, and only with two players holding chips. */
+export async function startPlaying(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/start-playing`, { method: 'POST' });
   return toPokerSession(s);
 }
 

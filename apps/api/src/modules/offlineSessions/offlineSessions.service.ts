@@ -11,6 +11,30 @@ import { AUDIT_SCHEMA_VERSION } from '../clubRecords/auditMeta.js';
 // version used for both types) so engineState only ever needs a handful of
 // config fields plus the running list of who's bought into the table.
 interface OfflineEngineState {
+  /**
+   * When the host said "alright, let's start" — and null while the table is
+   * open but the night has not begun.
+   *
+   * A poker night does not start when the table is created; it starts when
+   * everyone is seated, has chips, and the first hand is dealt. Before this,
+   * the session exists and people are gathering: that is the lobby.
+   *
+   * The ABSENCE of this key is what marks a session created before any of this
+   * existed. Those are already being played, so they are read as started —
+   * without that distinction, every live game in flight would have snapped back
+   * to "Preparing table" the moment this shipped.
+   */
+  startedPlayingAt?: string | null;
+  /** Minutes the host set aside for the night. Absent means no limit. */
+  durationMinutes?: number;
+  /**
+   * Whether to say anything when the clock runs out.
+   *
+   * The clock never ends a night by itself — poker nights run over, and a timer
+   * that settled the game would be dictating rather than informing. This only
+   * decides whether the host is told.
+   */
+  remindAtEnd?: boolean;
   activePlayerUids: string[];
   // Members who asked to sit in but haven't been waved through by an admin
   // yet. Kept here rather than in its own table since it's transient state
@@ -218,6 +242,10 @@ export async function expireStaleRequests(now = Date.now()) {
 export interface StartSessionInput {
   sessionType: 'OFFLINE' | 'LAZY_DEALER';
   sessionName: string;
+  /** Minutes the host set aside. Absent means no limit. */
+  durationMinutes?: number;
+  /** Whether to say anything when the clock runs out. It never ends the night. */
+  remindAtEnd?: boolean;
   assignedDealerUid?: string;
   assignedDealerName?: string;
   smallBlind?: number;
@@ -244,6 +272,14 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
   if (existing) throw new HttpError(409, 'This club already has an active session');
 
   const engineState: OfflineEngineState = {
+    // Explicitly null rather than omitted: the key's presence is what tells a
+    // new session apart from one that predates the lobby.
+    startedPlayingAt: null,
+    durationMinutes: input.durationMinutes,
+    remindAtEnd: input.remindAtEnd,
+    // The host is in the room from the moment they open the table — but with no
+    // chips, so the lobby reads them as waiting for a buy-in like everyone else.
+    // Opening a table is not sitting down at it.
     activePlayerUids: [requesterId],
     assignedDealerUid: input.assignedDealerUid,
     assignedDealerName: input.assignedDealerName,
@@ -419,6 +455,56 @@ async function assertWithinBuyInCeiling(sessionId: string, clubId: string, amoun
 // A player leaving before the night ends: they count their chips, an admin
 // confirms, and the figure is locked in for settlement. Kept on engineState
 // rather than its own table since it dies with the session.
+/**
+ * "Alright, let's start."
+ *
+ * The one moment the app cannot infer. Everything else about a night is
+ * derivable from its buy-ins and cash-outs, but whether the first hand has been
+ * dealt is a fact about the room — so the host says it, once, and it is written
+ * down.
+ *
+ * Two ready players is the only gate. Not everyone, deliberately: somebody is
+ * always still parking, and a night that cannot begin until the last arrival
+ * has bought in is a night the app is holding up.
+ */
+export async function startPlaying(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new HttpError(404, 'Session not found');
+  if (session.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+
+  const state = session.engineState as unknown as OfflineEngineState;
+  if (state.startedPlayingAt) throw new HttpError(409, 'This night has already started');
+
+  // Ready means seated AND holding chips. Somebody with an approved buy-in is
+  // ready whatever else is outstanding; somebody still waiting on approval is
+  // not, which is exactly what the lobby shows them as.
+  const approved = await prisma.buyInRequest.findMany({
+    where: { sessionId, status: 'approved' },
+    select: { userId: true },
+  });
+  const seated = new Set(state.activePlayerUids || []);
+  const ready = new Set(approved.map((r) => r.userId).filter((u) => seated.has(u)));
+  if (ready.size < 2) {
+    throw new HttpError(409, 'A night needs at least two players with chips before it can start');
+  }
+
+  const startedPlayingAt = new Date().toISOString();
+  const row = await prisma.pokerSession.update({
+    where: { id: sessionId },
+    data: { engineState: { ...state, startedPlayingAt } as any },
+  });
+
+  emitToClub(clubId, 'club:session-started-playing', {
+    sessionId, startedPlayingAt, session: serialize(row as unknown as SessionRow),
+  });
+  return serialize(row as unknown as SessionRow);
+}
+
 export async function requestCashOut(sessionId: string, clubId: string, userId: string, amount: number) {
   const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new HttpError(404, 'Session not found');

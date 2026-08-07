@@ -81,6 +81,19 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
   const limit = input.limit ?? DEFAULT_LIMIT;
   if (!session) return [];
 
+  /*
+   * The lobby is silent.
+   *
+   * Nothing has happened yet — people are arriving and buying in, which is
+   * preparation rather than story, and a feed narrating it ("Priya bought in
+   * for 5,000") would be telling you about a night that has not started. The
+   * story begins when the host does.
+   *
+   * Undefined, as everywhere else, means a session older than the lobby: those
+   * are being played, so they have a story.
+   */
+  if (session.startedPlayingAt === null) return [];
+
   const events: FeedEvent[] = [];
 
   // Chronological on the way in, because two of these are cumulative: whether a

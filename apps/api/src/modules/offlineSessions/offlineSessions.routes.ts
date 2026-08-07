@@ -10,6 +10,7 @@ offlineSessionsRouter.use(authenticate);
 offlineSessionsRouter.get('/active', asyncHandler(offlineSessionsController.getActive));
 offlineSessionsRouter.post('/', asyncHandler(offlineSessionsController.startSession));
 offlineSessionsRouter.post('/:sessionId/join', asyncHandler(offlineSessionsController.joinSession));
+offlineSessionsRouter.post('/:sessionId/start-playing', asyncHandler(offlineSessionsController.startPlaying));
 offlineSessionsRouter.post('/:sessionId/sit-in-requests', asyncHandler(offlineSessionsController.requestSitIn));
 offlineSessionsRouter.post(
   '/:sessionId/sit-in-requests/:decision(approve|reject)',

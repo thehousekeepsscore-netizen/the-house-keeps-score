@@ -8,6 +8,7 @@ import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { type WaitingRow } from './session/WaitingForYou';
 import { PlayerSheet } from './session/PlayerSheet';
 import { AddPlayerSheet } from './session/AddPlayerSheet';
+import { OpenTableSheet } from './session/OpenTableSheet';
 import { deriveFeed } from '../lib/night-feed';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
@@ -1016,7 +1017,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   });
 
   // Start a New Poker Session
-  const handleStartSession = async () => {
+  const handleStartSession = async (options: { durationMinutes?: number; remindAtEnd: boolean } = { remindAtEnd: false }) => {
     if (!isAdmin) {
       pushToast('Not allowed', 'Only a Club Admin can do this.', 'warning');
       return;
@@ -1033,11 +1034,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       const started = await offlineSessionsApi.startSession(club.id, {
         sessionType: 'OFFLINE',
         sessionName,
+        durationMinutes: options.durationMinutes,
+        remindAtEnd: options.remindAtEnd,
       });
       // A new session starts with no buy-ins, so the previous night's are
       // cleared rather than carried across.
       cache.update<SessionResource>(`${clubKey}:active-session`, () => ({ session: started, buyIns: [] }));
-      pushToast('Session started', `${sessionName} is live. Players can sit in and buy chips.`, 'success');
+      // "Open", not "started". The table is open for people to gather; the
+      // night itself has not begun and will not until the host says so.
+      pushToast('Table open', `${sessionName}. People can join and buy in — start the game when you're ready.`, 'success');
     } catch (err) {
       console.error('Failed to start session:', err);
       alert(err instanceof Error ? err.message : 'Failed to start session.');
@@ -1956,6 +1961,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // Set only by the stud on the felt, which already means chips — so the sheet
   // opens on the amount rather than on a menu offering to ask the same thing.
   const [sheetAsksForChips, setSheetAsksForChips] = useState(false);
+  const [openTableOpen, setOpenTableOpen] = useState(false);
+  const [startingPlay, setStartingPlay] = useState(false);
+  const [timeUpOpen, setTimeUpOpen] = useState(false);
+
+  /** "Alright, let's start" — the one moment the app cannot infer for itself. */
+  const startPlaying = async () => {
+    if (!activeSession || startingPlay) return;
+    setStartingPlay(true);
+    try {
+      applySession(await offlineSessionsApi.startPlaying(club.id, activeSession.id));
+    } catch (err) {
+      pushToast('Could not start', err instanceof Error ? err.message : 'Please try again.', 'warning');
+    } finally {
+      setStartingPlay(false);
+    }
+  };
 
   /**
    * The night's story, recovered from what the client already holds.
@@ -2351,7 +2372,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 isAdmin={isAdmin}
                 users={allUsers}
                 connection={connection}
-                onStartSession={handleStartSession}
+                onStartSession={() => setOpenTableOpen(true)}
+                onStartPlaying={startPlaying}
+                starting={startingPlay}
+                onTimeUp={() => { if (activeSession?.remindAtEnd) setTimeUpOpen(true); }}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
                 onSelectPlayer={(uid) => { setSheetAsksForChips(false); setSheetUid(uid); }}
@@ -2405,6 +2429,44 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onConfirmCount={confirmCount}
               />
             )}
+
+            {/* Opening the table is not starting the game — see OpenTableSheet. */}
+            <OpenTableSheet
+              open={openTableOpen}
+              onClose={() => setOpenTableOpen(false)}
+              busy={startSessionAction.pending}
+              onOpenTable={(options) => {
+                setOpenTableOpen(false);
+                startSessionAction.run(options);
+              }}
+            />
+
+            {/*
+              The clock informs; it never dictates. Poker nights run over, and
+              an app that settled the game because a dropdown said two hours
+              would be running the evening rather than helping with it.
+            */}
+            <Sheet
+              open={timeUpOpen}
+              onClose={() => setTimeUpOpen(false)}
+              title="Time's up"
+              description="The night has reached the length you set. Nothing has been settled."
+              footer={
+                <>
+                  <Button variant="secondary" size="lg" fullWidth onClick={() => setTimeUpOpen(false)}>
+                    Keep playing
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    onClick={() => { setTimeUpOpen(false); setSettlePlaceholderOpen(true); }}
+                  >
+                    End session
+                  </Button>
+                </>
+              }
+            />
 
             {/* The footer's destination, until the settlement flow lands. It
                 exists so "Settle night" is already in the place it will always

@@ -14,12 +14,23 @@ const startSchema = z.object({
   maxBuyIn: z.number().int().positive().optional(),
   maxPlayers: z.number().int().positive().optional(),
   skipBlindLimit: z.number().int().min(0).max(2).optional(),
+  // The night's length, and whether to say anything when it runs out. Capped at
+  // a day because the field is minutes and a typo should not create a week.
+  durationMinutes: z.number().int().positive().max(24 * 60).optional(),
+  remindAtEnd: z.boolean().optional(),
 });
 
 export async function startSession(req: Request, res: Response) {
   const input = startSchema.parse(req.body);
   const session = await offlineSessionsService.startSession(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, input);
   return res.status(201).json(session);
+}
+
+/** The host saying "alright, let's start" — the one moment nothing can infer. */
+export async function startPlaying(req: Request, res: Response) {
+  const session = await offlineSessionsService.startPlaying(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
 }
 
 /**

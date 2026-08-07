@@ -18,7 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
-const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut } =
+const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession } =
   await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -68,6 +68,8 @@ async function seed() {
       sessionType: 'OFFLINE',
       startedById: owner.id,
       engineState: {
+        // Already under way, so the money tests are not also lobby tests.
+        startedPlayingAt: new Date().toISOString(),
         activePlayerUids: [ownerId, adminId, playerId],
         pendingSitInUids: [],
         cashOuts: [],
@@ -190,5 +192,83 @@ describe('a cash-out is money too', () => {
     const state = (await prisma.pokerSession.findUnique({ where: { id: sessionId } }))!
       .engineState as any;
     expect(state.cashOuts[0]).toMatchObject({ userId: ownerId, status: 'confirmed' });
+  });
+});
+
+/**
+ * Opening a table is not starting the game.
+ *
+ * A poker night begins when everyone is seated, has chips, and the first hand
+ * is dealt — not when somebody creates a row in a database. The one moment the
+ * app cannot infer is therefore written down explicitly, and these guard both
+ * the gate on it and the migration that keeps every night already in progress
+ * from snapping back to a lobby.
+ */
+describe('the night begins when the host says so', () => {
+  async function openTable(over: Record<string, unknown> = {}) {
+    // One admin, so the host can approve the buy-ins that make people ready
+    // without the second-pair-of-eyes rule (correctly) getting in the way.
+    await demoteTheOtherAdmin();
+    await prisma.pokerSession.deleteMany({ where: { clubId } });
+    return startSession(clubId, ownerId, false, {
+      sessionType: 'OFFLINE', sessionName: 'Lobby Night', ...over,
+    } as any);
+  }
+
+  it('opens a table that is not yet being played', async () => {
+    const s: any = await openTable();
+    expect(s.startedPlayingAt).toBeNull();
+  });
+
+  it('carries the length the host set, and whether to mention it', async () => {
+    const s: any = await openTable({ durationMinutes: 120, remindAtEnd: true });
+    expect(s.durationMinutes).toBe(120);
+    expect(s.remindAtEnd).toBe(true);
+  });
+
+  it('refuses to start a night on fewer than two players with chips', async () => {
+    const s: any = await openTable();
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: { engineState: { ...(s as any), startedPlayingAt: null, activePlayerUids: [ownerId, playerId] } as any },
+    });
+    const req = await requestBuyIn(s.id, clubId, ownerId, 5_000);
+    await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+
+    await expect(startPlaying(s.id, clubId, ownerId, false)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('starts on two, not on everybody — somebody is always still parking', async () => {
+    const s: any = await openTable();
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: { engineState: { startedPlayingAt: null, activePlayerUids: [ownerId, playerId, adminId], pendingSitInUids: [], cashOuts: [] } as any },
+    });
+    for (const uid of [ownerId, playerId]) {
+      const req = await requestBuyIn(s.id, clubId, uid, 5_000);
+      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+    }
+
+    const started: any = await startPlaying(s.id, clubId, ownerId, false);
+    expect(started.startedPlayingAt).toBeTruthy();
+  });
+
+  it('cannot be started twice', async () => {
+    const s: any = await openTable();
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: { engineState: { startedPlayingAt: null, activePlayerUids: [ownerId, playerId], pendingSitInUids: [], cashOuts: [] } as any },
+    });
+    for (const uid of [ownerId, playerId]) {
+      const req = await requestBuyIn(s.id, clubId, uid, 5_000);
+      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+    }
+    await startPlaying(s.id, clubId, ownerId, false);
+    await expect(startPlaying(s.id, clubId, ownerId, false)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('is not a thing a player can do', async () => {
+    const s: any = await openTable();
+    await expect(startPlaying(s.id, clubId, playerId, false)).rejects.toMatchObject({ status: 403 });
   });
 });

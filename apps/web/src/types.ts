@@ -137,6 +137,18 @@ export interface PokerSession {
    */
   sitInRequestedAt?: Record<string, string>;
   cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
+  /**
+   * When the host said "alright, let's start", or null while the table is open
+   * and people are still gathering.
+   *
+   * UNDEFINED means a session created before the lobby existed. Those are being
+   * played right now, so they are read as started — see deriveNight.
+   */
+  startedPlayingAt?: string | null;
+  /** Minutes the host set aside for the night. Absent means no limit. */
+  durationMinutes?: number;
+  /** Whether to say anything when the clock runs out. It never ends the night. */
+  remindAtEnd?: boolean;
   startedBy: string;
   createdAt: string;
   endedAt?: string;

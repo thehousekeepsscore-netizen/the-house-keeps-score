@@ -61,10 +61,69 @@ describe('phases', () => {
     expect(derive({ session: null }).phase).toBe('dark');
   });
 
-  it('is opening while nobody has chips yet', () => {
-    // The arrival phase the old screen had no concept of: everyone is walking
-    // in, nobody is banked, and a scoreboard of zeros is the wrong answer.
-    expect(derive({ session: session({ activePlayerUids: ['a', 'b'] }) }).phase).toBe('opening');
+  /**
+   * Whether the night has begun is the one fact nothing can infer.
+   *
+   * Everything else here is derived from buy-ins and cash-outs; whether the
+   * first hand has been dealt is a thing that happened in the room. So the host
+   * says it once and the server writes it down — and the three-way check below
+   * is what keeps that from breaking every game already in progress.
+   */
+  it('is a lobby while the table is open and the host has not started', () => {
+    const night = derive({
+      session: session({ activePlayerUids: ['a', 'b'], startedPlayingAt: null }),
+      buyIns: [buyIn({ userId: 'a' }), buyIn({ userId: 'b' })],
+    });
+    expect(night.phase).toBe('lobby');
+    expect(night.startedPlayingAt).toBeNull();
+  });
+
+  it('is running once the host says so, whatever the buy-ins look like', () => {
+    const night = derive({
+      session: session({ activePlayerUids: ['a', 'b'], startedPlayingAt: ago(5) }),
+      buyIns: [],
+    });
+    expect(night.phase).toBe('running');
+  });
+
+  it('reads a session older than the lobby as already being played', () => {
+    // THE MIGRATION. `undefined` means the key predates all of this, and those
+    // nights are being played right now — treating a missing key as "not yet"
+    // would have snapped every live game back to "Preparing table" on deploy.
+    const night = derive({
+      session: session({ activePlayerUids: ['a', 'b'] }),
+      buyIns: [buyIn({ userId: 'a' })],
+    });
+    expect(night.phase).toBe('running');
+    expect(night.startedPlayingAt).not.toBeNull();
+  });
+
+  it('counts who is ready, and gates the start on two of them', () => {
+    // Two, not everybody: somebody is always still parking, and a night that
+    // cannot begin until the last arrival has bought in is one the app is
+    // holding up.
+    const one = derive({
+      session: session({ activePlayerUids: ['a', 'b'], startedPlayingAt: null }),
+      buyIns: [buyIn({ userId: 'a' })],
+    });
+    expect(one.readyCount).toBe(1);
+    expect(one.lobbyCount).toBe(2);
+    expect(one.canStartPlaying).toBe(false);
+
+    const two = derive({
+      session: session({ activePlayerUids: ['a', 'b'], startedPlayingAt: null }),
+      buyIns: [buyIn({ userId: 'a' }), buyIn({ userId: 'b' })],
+    });
+    expect(two.readyCount).toBe(2);
+    expect(two.canStartPlaying).toBe(true);
+  });
+
+  it('offers no start once the night is already under way', () => {
+    const night = derive({
+      session: session({ activePlayerUids: ['a', 'b'], startedPlayingAt: ago(5) }),
+      buyIns: [buyIn({ userId: 'a' }), buyIn({ userId: 'b' })],
+    });
+    expect(night.canStartPlaying).toBe(false);
   });
 
   it('is running once a buy-in is approved', () => {

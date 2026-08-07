@@ -117,10 +117,81 @@ describe('phases', () => {
     expect(screen.getByText(/no session running/i)).toBeInTheDocument();
   });
 
-  it('opens on the guest list, not a scoreboard of zeros', () => {
-    renderScreen({ session: session({ activePlayerUids: ['host'] }) });
-    expect(screen.getByText(/who's playing/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /priya/i })).toBeInTheDocument();
+  /**
+   * Opening the table is not starting the game.
+   *
+   * The screen this replaces went from one tap straight to a live felt with
+   * chips in the middle, which was a lie about the room: nobody had joined,
+   * nobody had bought in, nobody had agreed to begin.
+   */
+  it('is a lobby, not a table, until the host starts the night', () => {
+    renderScreen({ session: session({ activePlayerUids: ['host'], startedPlayingAt: null }) });
+    expect(screen.getByText(/preparing table/i)).toBeInTheDocument();
+    // No felt, no chips in the middle, no clock and no story.
+    expect(screen.queryByText(/in play/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /tonight, as it happens/i })).not.toBeInTheDocument();
+  });
+
+  it('lists everybody and how ready each of them is', () => {
+    renderScreen(
+      { session: session({ activePlayerUids: ['host', 'priya'], startedPlayingAt: null }) },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(9),
+        },
+      ]
+    );
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /priya, ready/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /waiting for buy-in/i })).toBeInTheDocument();
+  });
+
+  it('will not start a night on one player, and says why', () => {
+    renderScreen(
+      { session: session({ activePlayerUids: ['host'], startedPlayingAt: null }) },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'host', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'host', createdAt: ago(9),
+        },
+      ]
+    );
+    expect(screen.queryByRole('button', { name: /start playing/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/two players need chips/i)).toBeInTheDocument();
+  });
+
+  it('starts on two ready players, not on everybody', () => {
+    // Somebody is always still parking. A night that cannot begin until the
+    // last arrival has bought in is a night the app is holding up.
+    const onStartPlaying = vi.fn();
+    renderScreen(
+      {
+        session: session({ activePlayerUids: ['host', 'priya', 'arjun'], startedPlayingAt: null }),
+        onStartPlaying,
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'host', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'host', createdAt: ago(9),
+        },
+        {
+          id: 'b2', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(8),
+        },
+      ]
+    );
+    return userEvent.click(screen.getByRole('button', { name: /start playing/i })).then(() => {
+      expect(onStartPlaying).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('offers no way to start a night to a player', () => {
+    renderScreen({
+      session: session({ activePlayerUids: ['host'], startedPlayingAt: null }),
+      isAdmin: false,
+    });
+    expect(screen.queryByRole('button', { name: /start playing/i })).not.toBeInTheDocument();
   });
 
   it('says everyone has left', () => {
@@ -251,13 +322,20 @@ describe('seat vocabulary', () => {
       { session: session({ activePlayerUids: ['arjun'] }) },
       [
         {
+          id: 'b0', sessionId: 's1', clubId: 'c1', userId: 'arjun', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'arjun', createdAt: ago(40),
+        },
+        {
           id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'arjun', userDisplayName: '',
           amount: 3000, status: 'pending', requestedBy: 'arjun', createdAt: ago(1),
         },
       ]
     );
-    // Arjun is already at the table, so this is a top-up, not an arrival.
-    expect(screen.getByText(/wants 3,000 more/i)).toBeInTheDocument();
+    // Arjun is already at the table, so this is a top-up, not an arrival. The
+    // felt carries the short form and the accessible name the sentence — two
+    // renderings of one vocabulary, so they cannot drift apart.
+    const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
+    expect(labels.join(' | ')).toMatch(/wants 3,000 more/i);
     expect(screen.queryByText(/^in 0$/i)).not.toBeInTheDocument();
   });
 
@@ -406,7 +484,15 @@ describe('the stud on the felt', () => {
 describe('every player is the way in', () => {
   it('selects a player rather than exposing a generic control', () => {
     const onSelectPlayer = vi.fn();
-    renderScreen({ session: session({ activePlayerUids: ['host'] }), onSelectPlayer });
+    renderScreen(
+      { session: session({ activePlayerUids: ['host', 'priya'] }), onSelectPlayer },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(9),
+        },
+      ]
+    );
     return userEvent.click(screen.getByRole('button', { name: /priya/i })).then(() => {
       expect(onSelectPlayer).toHaveBeenCalledWith('priya');
     });

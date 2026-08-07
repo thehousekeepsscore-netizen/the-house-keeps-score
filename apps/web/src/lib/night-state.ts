@@ -29,8 +29,15 @@ import { PokerSession, BuyInRequest } from '../types';
 export type NightPhase =
   /** No session running. */
   | 'dark'
-  /** Running, but nobody has chips yet — the arrival phase. */
-  | 'opening'
+  /**
+   * The table is open and people are gathering. Nobody is playing.
+   *
+   * A poker night does not begin when the table is created — it begins when
+   * everyone is seated, has chips, and the first hand is dealt. This is the
+   * stretch in between, and it ends when the host says so rather than when the
+   * data happens to look a certain way.
+   */
+  | 'lobby'
   /** The long middle: people are playing. */
   | 'running'
   /** At least one player has been counted out, others are still in. */
@@ -109,6 +116,14 @@ export interface Seat {
 
 export interface Night {
   phase: NightPhase;
+  /** When the host started the night, if they have. Null in the lobby. */
+  startedPlayingAt: string | null;
+  /** Seated AND holding chips — the count the lobby gates "Start playing" on. */
+  readyCount: number;
+  /** Everyone in the room, ready or not. The denominator of "3 of 7 ready". */
+  lobbyCount: number;
+  /** Two people with chips. Not everybody: somebody is always still parking. */
+  canStartPlaying: boolean;
   /**
    * Everyone around the table — which is everyone still in the game, including
    * the two states that are waiting on somebody: pulling up a chair, and
@@ -165,6 +180,10 @@ export function deriveNight(input: NightInput): Night {
   if (!session) {
     return {
       phase: 'dark',
+      startedPlayingAt: null,
+      readyCount: 0,
+      lobbyCount: 0,
+      canStartPlaying: false,
       seats: [],
       room: [],
       queue: [],
@@ -333,16 +352,49 @@ export function deriveNight(input: NightInput): Night {
     return ta - tb;
   });
 
+  /*
+   * Has the night begun?
+   *
+   * The one fact about a table that cannot be inferred. Everything else here is
+   * derived from buy-ins and cash-outs, but whether the first hand has been
+   * dealt is a thing that happened in the room — so the host says it once and
+   * the server writes it down.
+   *
+   * The three-way check is deliberate, and the middle branch is the migration:
+   *
+   *   a timestamp        the host has started it
+   *   null               the table is open, people are gathering
+   *   UNDEFINED          a session created before any of this existed
+   *
+   * Undefined has to read as started. Those nights are being played right now,
+   * and treating a missing key as "not yet" would have snapped every live game
+   * in the world back to "Preparing table" the moment this shipped.
+   */
+  const startedPlayingAt =
+    session.startedPlayingAt === undefined
+      ? session.createdAt
+      : session.startedPlayingAt;
+
+  // Ready is seated AND holding chips. Somebody still waiting on approval is
+  // not ready, which is exactly what the lobby shows them as.
+  const readyUids = activeUids.filter((uid) => (bankByUid.get(uid) ?? 0) > 0);
+  // Everyone in the room: seated, plus anyone who has asked to be.
+  const lobbyUids = new Set([
+    ...activeUids,
+    ...pendingSitInUids,
+    ...pendingBuyIns.map((r) => r.userId),
+  ]);
+
   const phase: NightPhase =
     session.status === 'settled'
       ? 'closed'
-      : activeUids.length === 0 && settlementUids.length > 0
-        ? 'ready'
-        : confirmedCashOuts.length > 0
-          ? 'windingDown'
-          : approved.length > 0
-            ? 'running'
-            : 'opening';
+      : startedPlayingAt === null
+        ? 'lobby'
+        : activeUids.length === 0 && settlementUids.length > 0
+          ? 'ready'
+          : confirmedCashOuts.length > 0
+            ? 'windingDown'
+            : 'running';
 
   // Mirrors offlineSessions.service.ts, which rejects a one-player night. The
   // old screen only discovered this on submit, after the admin had entered
@@ -354,6 +406,13 @@ export function deriveNight(input: NightInput): Night {
 
   return {
     phase,
+    startedPlayingAt,
+    readyCount: readyUids.length,
+    lobbyCount: lobbyUids.size,
+    // Two, not everybody. Somebody is always still parking, and a night that
+    // cannot begin until the last arrival has bought in is a night the app is
+    // holding up.
+    canStartPlaying: phase === 'lobby' && readyUids.length >= 2,
     seats,
     room,
     queue,
