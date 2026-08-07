@@ -21,7 +21,7 @@ export interface OpenTableSheetProps {
   open: boolean;
   onClose: () => void;
   /** Duration in minutes, or undefined for a night with no end. */
-  onOpenTable: (options: { durationMinutes?: number; remindAtEnd: boolean }) => void;
+  onOpenTable: (options: { durationMinutes?: number }) => void;
   busy?: boolean;
 }
 
@@ -40,7 +40,6 @@ export const OpenTableSheet: React.FC<OpenTableSheetProps> = ({
 }) => {
   const [timed, setTimed] = useState(false);
   const [minutes, setMinutes] = useState<number>(120);
-  const [remind, setRemind] = useState(true);
 
   const choice = (selected: boolean) =>
     `w-full min-h-[52px] px-4 flex items-center gap-3 rounded-[var(--radius-sm)] border text-left transition-colors duration-[var(--motion-fast)] ${
@@ -63,10 +62,7 @@ export const OpenTableSheet: React.FC<OpenTableSheetProps> = ({
           fullWidth
           loading={busy}
           onClick={() =>
-            onOpenTable({
-              durationMinutes: timed ? minutes : undefined,
-              remindAtEnd: timed && remind,
-            })
+            onOpenTable({ durationMinutes: timed ? minutes : undefined })
           }
         >
           Open table
@@ -114,28 +110,9 @@ export const OpenTableSheet: React.FC<OpenTableSheetProps> = ({
               ))}
             </div>
 
-            {/*
-              Not "auto-end". The clock never ends a night — poker nights run
-              over, and a timer that settled the game would be dictating the
-              evening. All this decides is whether anybody is told.
-            */}
-            <button
-              type="button"
-              role="checkbox"
-              aria-checked={remind}
-              onClick={() => setRemind((r) => !r)}
-              className="w-full min-h-[48px] px-4 flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-bg text-left"
-            >
-              <span
-                aria-hidden="true"
-                className={`w-4 h-4 rounded-[4px] border-2 shrink-0 ${
-                  remind ? 'border-accent bg-accent' : 'border-line-strong'
-                }`}
-              />
-              <span className="text-sm text-text">Tell me when time is up</span>
-            </button>
             <p className="text-xs text-text-faint text-center leading-relaxed">
-              The clock never ends the night. You decide whether to carry on.
+              The clock never ends the night. When it runs out you get five
+              minutes to add more time, or to carry on without a limit.
             </p>
           </div>
         )}

@@ -26,6 +26,27 @@ export async function startSession(req: Request, res: Response) {
   return res.status(201).json(session);
 }
 
+const extendSchema = z.object({
+  // Same ceiling as the original duration: the field is minutes, and a typo
+  // should not buy the night a week.
+  minutes: z.number().int().positive().max(24 * 60),
+});
+
+/** More time on the clock. Additive, unlimited, admins only. */
+export async function extendSession(req: Request, res: Response) {
+  const { minutes } = extendSchema.parse(req.body);
+  const session = await offlineSessionsService.extendSession(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, minutes);
+  return res.json(session);
+}
+
+/** Carry on with no limit for the rest of the night. One-way, admins only. */
+export async function liftTimeLimit(req: Request, res: Response) {
+  const session = await offlineSessionsService.liftTimeLimit(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
 /** The host saying "alright, let's start" — the one moment nothing can infer. */
 export async function startPlaying(req: Request, res: Response) {
   const session = await offlineSessionsService.startPlaying(

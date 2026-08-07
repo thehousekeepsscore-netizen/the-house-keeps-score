@@ -7,7 +7,7 @@ import { WaitingForYou, WaitingRow } from './WaitingForYou';
 import { TheRoom } from './TheRoom';
 import { LiveFeed } from './LiveFeed';
 import { Lobby } from './Lobby';
-import { NightClock } from './NightClock';
+import { NightClockLine, NightClockBanner, useClock } from './NightClock';
 import { FeedEvent } from '../../lib/night-feed';
 
 /**
@@ -80,8 +80,10 @@ export interface LiveSessionProps {
   /** Admins only, in the lobby: "alright, let's start". */
   onStartPlaying?: () => void;
   starting?: boolean;
-  /** Fired once when a timed night reaches its end. It never ends the night. */
-  onTimeUp?: () => void;
+  /** Admins only: more time on the clock, additive and unlimited. */
+  onExtendSession?: () => void;
+  /** Admins only: carry on with no limit for the rest of the night. One-way. */
+  onKeepPlaying?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -158,9 +160,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   feed,
   onStartPlaying,
   starting,
-  onTimeUp,
+  onExtendSession,
+  onKeepPlaying,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
+  const clock = useClock(session);
   const live = night.phase !== 'dark' && night.phase !== 'closed';
 
   /*
@@ -187,8 +191,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         ceiling={ceiling}
         formatAmount={formatAmount}
         live={live}
-        onTimeUp={onTimeUp}
+        clock={clock}
       />
+
+      {/* The scheduled game running out is a conversation, not an ending. A band
+          above the felt rather than a dialog over it: at ten past eleven the
+          host is dealing with the room, and an app that demands to be dealt
+          with first has its priorities backwards. */}
+      {live && night.startedPlayingAt !== null && (
+        <NightClockBanner
+          clock={clock}
+          isAdmin={isAdmin}
+          onExtend={onExtendSession}
+          onKeepPlaying={onKeepPlaying}
+          onSettle={onSettleNight}
+        />
+      )}
 
       {/* Lead with what needs a decision. This sits above the stage in every
           running phase, not just one, because a request does not care which
@@ -227,9 +245,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         onSelectPlayer={onSelectPlayer}
       />
 
+      {/* The permanent home for settling — except in the one moment the band
+          above is already asking the same question. Two "Settle night" buttons
+          a few pixels apart is the on-screen-twice defect PRODUCT-BRIEF §14
+          names, and the band is the one carrying the context. */}
       <SettleFooter
         isAdmin={isAdmin}
-        live={live && night.startedPlayingAt !== null}
+        live={live && night.startedPlayingAt !== null && clock.phase !== 'complete'}
         onSettleNight={onSettleNight}
       />
     </div>
@@ -292,8 +314,8 @@ const Header: React.FC<{
   ceiling: number | null;
   formatAmount: (n: number) => string;
   live: boolean;
-  onTimeUp?: () => void;
-}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, onTimeUp }) => (
+  clock: ReturnType<typeof useClock>;
+}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, clock }) => (
   <header className="px-5 pt-4 pb-3 shrink-0">
     <div className="flex items-baseline gap-2 min-w-0">
       {session && (
@@ -316,11 +338,7 @@ const Header: React.FC<{
 
     {/* Only when the host set a length. A night with no end has nothing to
         count towards, so it is shown no clock at all. */}
-    <NightClock
-      startedPlayingAt={night.startedPlayingAt}
-      durationMinutes={session?.durationMinutes}
-      onTimeUp={onTimeUp}
-    />
+    <NightClockLine clock={clock} />
 
     {connection !== 'live' && (
       <p role="status" className="mt-1.5 text-xs text-warning">

@@ -1,4 +1,5 @@
 import { PokerSession, BuyInRequest } from '../types';
+import { durationPhrase } from './night-clock';
 
 /**
  * The story of the night, told from what already happened.
@@ -40,6 +41,14 @@ export type FeedKind =
   | 'left'
   /** The table maximum moved, which under MATCH_HIGHEST it does all night. */
   | 'ceiling'
+  /** The host started a timed night. */
+  | 'timer-started'
+  /** More time on the clock. */
+  | 'timer-extended'
+  /** The scheduled time ran out — which ends nothing. */
+  | 'timer-reached'
+  /** The host chose to carry on with no limit. */
+  | 'timer-lifted'
   /** The night is over. */
   | 'settled';
 
@@ -61,6 +70,8 @@ export interface FeedInput {
   clubMaxBuyIn?: number;
   /** Older events fall off the end; nobody scrolls to the start of the evening. */
   limit?: number;
+  /** Injectable so "has the scheduled time passed yet" is testable. */
+  now?: number;
 }
 
 const DEFAULT_LIMIT = 30;
@@ -165,6 +176,45 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
     });
   }
 
+  /*
+   * The clock, as things that happened.
+   *
+   * A timer changing under you is confusing unless the feed says why: the
+   * scheduled hour ran out, somebody added thirty minutes, the host decided to
+   * carry on. These are the events that explain a number nobody touched.
+   */
+  if (session.startedPlayingAt && session.durationMinutes) {
+    events.push({
+      id: 'timer:started',
+      kind: 'timer-started',
+      at: session.startedPlayingAt,
+      amount: session.durationMinutes,
+    });
+
+    for (const [i, ext] of (session.timeExtensions ?? []).entries()) {
+      events.push({
+        id: `timer:ext:${i}`,
+        kind: 'timer-extended',
+        at: ext.at,
+        amount: ext.minutes,
+      });
+    }
+
+    // Derived rather than stored: the scheduled end is arithmetic, and it is
+    // only worth saying once it has actually passed.
+    const total =
+      session.durationMinutes +
+      (session.timeExtensions ?? []).reduce((sum, e) => sum + e.minutes, 0);
+    const endsAt = Date.parse(session.startedPlayingAt) + total * 60_000;
+    if (Number.isFinite(endsAt) && endsAt <= (input.now ?? Date.now())) {
+      events.push({ id: 'timer:reached', kind: 'timer-reached', at: new Date(endsAt).toISOString() });
+    }
+  }
+
+  if (session.timeLimitLiftedAt) {
+    events.push({ id: 'timer:lifted', kind: 'timer-lifted', at: session.timeLimitLiftedAt });
+  }
+
   if (session.status === 'settled' && session.endedAt) {
     events.push({ id: 'settled', kind: 'settled', at: session.endedAt });
   }
@@ -185,6 +235,10 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
 /** One glyph per kind. The only place in the app that uses emoji, and it earns
  *  them: a feed is scanned down the left edge, and a shape is faster than a word. */
 const ICON: Record<FeedKind, string> = {
+  'timer-started': '⏱',
+  'timer-extended': '⏱',
+  'timer-reached': '🏁',
+  'timer-lifted': '▶',
   joined: '👤',
   'bought-in': '🟢',
   'topped-up': '💰',
@@ -227,9 +281,24 @@ export function feedLine(
       return { icon, text: you ? `You left the table with ${amount(n)}` : `${who} left the table with ${amount(n)}` };
     case 'ceiling':
       return { icon, text: `Max buy-in is now ${amount(n)}` };
+    case 'timer-started':
+      return { icon, text: `Session started (${durationPhrase(n)} timer)` };
+    case 'timer-extended':
+      return { icon, text: `Session extended by ${minutesPhrase(n)}` };
+    case 'timer-reached':
+      return { icon, text: 'Scheduled time reached' };
+    case 'timer-lifted':
+      return { icon, text: 'Session continued without a time limit' };
     case 'settled':
       return { icon, text: 'Settlement started' };
   }
+}
+
+/** "30 minutes", "1 hour" — how an extension reads in a sentence. */
+function minutesPhrase(minutes: number): string {
+  if (minutes % 60 !== 0) return `${minutes} minutes`;
+  const h = minutes / 60;
+  return h === 1 ? '1 hour' : `${h} hours`;
 }
 
 /** "2 sec ago" — coarse on purpose, because the feed is glanced at, not read. */

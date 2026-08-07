@@ -1,81 +1,156 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { PokerSession } from '../../types';
+import { Button } from '../ui/Button';
+import {
+  ClockPhase,
+  NightClockState,
+  coarseLabel,
+  nightClock,
+  preciseLabel,
+} from '../../lib/night-clock';
 
 /**
- * How long is left, when the host set a length.
+ * The scheduled game, which is not the same thing as the poker night.
  *
- * The clock INFORMS. It never ends a night: poker nights run over, that is what
- * poker nights do, and an app that settled the game at ten past eleven because
- * a dropdown said two hours would be dictating the evening rather than helping
- * with it. When it reaches zero it says so once, and the host decides.
+ * The duration a host picks is a plan. Poker nights run over — that is what
+ * poker nights do — so the clock reaching zero starts a conversation rather
+ * than ending anything. Through the grace period and past it, players buy in,
+ * stand up and are approved exactly as before; the clock's only power is to say
+ * what time it is.
  *
- * Absent entirely when no limit was set, which is the common case. A night with
- * no end time should not be shown a clock at all — there is nothing for it to
- * count towards.
+ * Nothing here is a modal. A dialog over the table at ten past eleven demands
+ * that somebody deal with the app before they can deal with the room, which is
+ * precisely backwards. Everything is a band that sits above the felt and can be
+ * ignored.
  */
 
-/** Whole seconds left, or null when this night has no end. */
-export function msUntilEnd(
-  startedPlayingAt: string | null,
-  durationMinutes: number | undefined,
-  now: number
-): number | null {
-  if (!startedPlayingAt || !durationMinutes) return null;
-  const started = Date.parse(startedPlayingAt);
-  if (!Number.isFinite(started)) return null;
-  return started + durationMinutes * 60_000 - now;
-}
-
-/** mm:ss under an hour, h:mm:ss over it. Never a phrase — this is read at a glance. */
-export function clockLabel(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const sec = total % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
-}
-
-export const NightClock: React.FC<{
-  startedPlayingAt: string | null;
-  durationMinutes?: number;
-  /** Fired once, when the clock first reaches zero. */
-  onTimeUp?: () => void;
-}> = ({ startedPlayingAt, durationMinutes, onTimeUp }) => {
+/** Ticks once a second only while a night actually has an end to count towards. */
+function useClock(session: PokerSession | null): NightClockState {
   const [now, setNow] = useState(() => Date.now());
+  const live = Boolean(session?.startedPlayingAt && session?.durationMinutes && !session?.timeLimitLiftedAt);
 
-  // A real second, because this one counts down and a coarser tick would visibly
-  // skip. It is the only per-second timer in the app, and it exists only while a
-  // night actually has an end to count towards.
   useEffect(() => {
-    if (!startedPlayingAt || !durationMinutes) return;
+    if (!live) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [startedPlayingAt, durationMinutes]);
+  }, [live]);
 
-  const left = msUntilEnd(startedPlayingAt, durationMinutes, now);
+  return nightClock(session, now);
+}
 
-  // Announced once, on the crossing. Firing while `left <= 0` would reopen the
-  // prompt every second of a night that carried on past its hour.
-  const firedRef = React.useRef(false);
-  useEffect(() => {
-    if (left === null || left > 0 || firedRef.current) return;
-    firedRef.current = true;
-    onTimeUp?.();
-  }, [left, onTimeUp]);
+/**
+ * The line in the header. Always visible once a night is timed.
+ *
+ * Coarse while there is time, because at an hour out the seconds are noise and
+ * nobody is reading them. Amber inside the last fifteen minutes: a change of
+ * colour is enough to notice without being told.
+ */
+export const NightClockLine: React.FC<{ clock: NightClockState }> = ({ clock }) => {
+  // Only while it is counting. Once the plan has run out the band directly
+  // below says the same words and more, and saying them twice a centimetre
+  // apart is the on-screen-twice defect PRODUCT-BRIEF §14 exists to remove.
+  if (clock.phase !== 'running') return null;
 
-  if (left === null) return null;
-
-  const over = left <= 0;
   return (
     <div className="mt-1 flex items-baseline gap-2">
-      <span className="text-xs text-text-muted">{over ? 'Playing on' : 'Ends in'}</span>
+      <span className="text-xs text-text-muted">Playing</span>
       <span
         className={`ml-auto text-sm font-semibold tabular-nums ${
-          over ? 'text-text-muted' : left <= 5 * 60_000 ? 'text-warning' : 'text-text'
+          clock.ending ? 'text-warning' : 'text-text'
         }`}
       >
-        {over ? `+${clockLabel(-left)}` : clockLabel(left)}
+        {coarseLabel(clock.msRemaining ?? 0)} remaining
       </span>
     </div>
   );
 };
+
+/**
+ * The band above the table: the fifteen-minute nudge, the grace countdown, and
+ * the one decision at the end of it.
+ *
+ * Only an admin is offered a control. A player sees the same information and no
+ * buttons, because none of these are theirs to decide.
+ */
+export const NightClockBanner: React.FC<{
+  clock: NightClockState;
+  isAdmin: boolean;
+  onExtend?: () => void;
+  onKeepPlaying?: () => void;
+  onSettle?: () => void;
+  busy?: boolean;
+}> = ({ clock, isAdmin, onExtend, onKeepPlaying, onSettle, busy = false }) => {
+  // The fifteen-minute nudge is shown once and then goes away on its own.
+  // Standing there for the whole quarter of an hour would make it furniture.
+  const [nudged, setNudged] = useState(false);
+  const seenRef = useRef(false);
+  useEffect(() => {
+    if (!clock.ending || seenRef.current) return;
+    seenRef.current = true;
+    setNudged(true);
+    const id = setTimeout(() => setNudged(false), 12_000);
+    return () => clearTimeout(id);
+  }, [clock.ending]);
+
+  if (clock.phase === 'running') {
+    if (!nudged) return null;
+    return (
+      <Band>
+        <p className="text-sm text-warning">
+          {coarseLabel(clock.msRemaining ?? 0)} remaining
+        </p>
+      </Band>
+    );
+  }
+
+  if (clock.phase === 'grace') {
+    return (
+      <Band>
+        <div className="flex items-baseline gap-2">
+          <p className="text-sm text-text">Time limit reached</p>
+          <p className="ml-auto text-sm font-semibold text-warning tabular-nums">
+            {preciseLabel(clock.msOfGraceLeft ?? 0)}
+          </p>
+        </div>
+        <p className="mt-0.5 text-xs text-text-faint">
+          Grace period — nothing has stopped.
+        </p>
+        {isAdmin && onExtend && (
+          <Button variant="secondary" size="sm" fullWidth className="mt-2" onClick={onExtend}>
+            Extend session
+          </Button>
+        )}
+      </Band>
+    );
+  }
+
+  if (clock.phase === 'complete') {
+    return (
+      <Band>
+        <p className="text-sm text-text">Session complete</p>
+        <p className="mt-0.5 text-xs text-text-faint">The scheduled session has ended.</p>
+        {isAdmin && (
+          <div className="mt-2 flex items-center gap-2">
+            <Button variant="ghost" size="sm" fullWidth loading={busy} onClick={onKeepPlaying}>
+              Continue playing
+            </Button>
+            <Button variant="primary" size="sm" fullWidth onClick={onSettle}>
+              Settle night
+            </Button>
+          </div>
+        )}
+      </Band>
+    );
+  }
+
+  return null;
+};
+
+const Band: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 furniture rounded-[var(--radius-lg)]">
+    {children}
+  </div>
+);
+
+export { useClock };
+export type { ClockPhase };

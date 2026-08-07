@@ -26,8 +26,23 @@ interface OfflineEngineState {
    * to "Preparing table" the moment this shipped.
    */
   startedPlayingAt?: string | null;
-  /** Minutes the host set aside for the night. Absent means no limit. */
+  /**
+   * Minutes the host originally set aside. Absent means no limit.
+   *
+   * The PLAN, not the running total — extensions are kept beside it so the
+   * night's story can say "started with a 2-hour timer" and "extended by 30
+   * minutes" rather than silently showing a bigger number.
+   */
   durationMinutes?: number;
+  /** Every extension, in the order granted. Additive and unlimited by design. */
+  timeExtensions?: { minutes: number; at: string }[];
+  /**
+   * When the host chose to carry on with no limit.
+   *
+   * One-way for the rest of the night. It is what stops a game running three
+   * hours over from opening a grace period every five minutes.
+   */
+  timeLimitLiftedAt?: string | null;
   /**
    * Whether to say anything when the clock runs out.
    *
@@ -589,6 +604,65 @@ export async function startPlaying(
   );
 
   emitToClub(clubId, 'club:session-started-playing', { sessionId, startedPlayingAt, session });
+  return session;
+}
+
+/**
+ * More time on the clock.
+ *
+ * The scheduled duration is a plan, and extending it is the host saying the
+ * plan changed — which at a poker table it always does. Additive, and
+ * deliberately unlimited: a rule capping extensions would be the app deciding
+ * when somebody else's evening ends.
+ *
+ * Stored as a list rather than folded into durationMinutes so the night's story
+ * can name each one. The clock reads the sum.
+ */
+export async function extendSession(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean, minutes: number
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    if (!state.durationMinutes) throw new HttpError(409, 'This night has no time limit to extend');
+    if (state.timeLimitLiftedAt) {
+      throw new HttpError(409, 'This night is already running without a time limit');
+    }
+
+    const timeExtensions = [
+      ...(state.timeExtensions || []),
+      { minutes, at: new Date().toISOString() },
+    ];
+    return { state: { ...state, timeExtensions }, result: null };
+  });
+
+  emitToClub(clubId, 'club:session-extended', { sessionId, minutes, session });
+  return session;
+}
+
+/**
+ * Carry on with no limit for the rest of the night.
+ *
+ * One-way, and that is the whole value of it: without this a night that ran
+ * long would reach the end of its grace period, be extended by thirty minutes,
+ * and do the same thing again an hour later. The host says once that the plan
+ * is over, and the clock stops asking.
+ */
+export async function liftTimeLimit(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    if (state.timeLimitLiftedAt) return { state, result: null };
+    return { state: { ...state, timeLimitLiftedAt: new Date().toISOString() }, result: null };
+  });
+
+  emitToClub(clubId, 'club:session-time-limit-lifted', { sessionId, session });
   return session;
 }
 

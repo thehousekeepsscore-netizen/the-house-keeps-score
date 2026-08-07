@@ -18,7 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
-const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession, requestSitIn, decideSitIn } =
+const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession, requestSitIn, decideSitIn, extendSession, liftTimeLimit } =
   await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -352,5 +352,94 @@ describe('going south', () => {
 
     const req = await requestBuyIn(sessionId, clubId, playerId, 1_000);
     expect(req.amount).toBe(1_000);
+  });
+});
+
+/**
+ * The scheduled game is a plan. The poker night is not.
+ *
+ * The clock reaching zero starts a conversation and ends nothing. Extensions
+ * are additive and uncapped, because a limit on them would be the app deciding
+ * when somebody else's evening ends. The one irreversible move is the host
+ * saying the plan is over — which is what stops a night running three hours
+ * long from asking the same question every five minutes.
+ */
+describe('the clock is a plan, not a deadline', () => {
+  async function timedNight(minutes = 120) {
+    await demoteTheOtherAdmin();
+    await prisma.pokerSession.deleteMany({ where: { clubId } });
+    const s: any = await startSession(clubId, ownerId, false, {
+      sessionType: 'OFFLINE', sessionName: 'Timed Night', durationMinutes: minutes,
+    } as any);
+    return s;
+  }
+
+  it('records the length the host planned for', async () => {
+    const s = await timedNight(120);
+    expect(s.durationMinutes).toBe(120);
+    expect(s.timeExtensions ?? []).toEqual([]);
+    expect(s.timeLimitLiftedAt ?? null).toBeNull();
+  });
+
+  it('adds each extension rather than replacing the plan', async () => {
+    const s = await timedNight(120);
+    await extendSession(s.id, clubId, ownerId, false, 30);
+    const after: any = await extendSession(s.id, clubId, ownerId, false, 60);
+
+    // The ORIGINAL stays put so the night's story can still say what was
+    // planned; the clock reads the sum.
+    expect(after.durationMinutes).toBe(120);
+    expect(after.timeExtensions.map((e: any) => e.minutes)).toEqual([30, 60]);
+  });
+
+  it('never caps how many times a night can be extended', async () => {
+    const s = await timedNight(60);
+    for (let i = 0; i < 6; i++) await extendSession(s.id, clubId, ownerId, false, 30);
+    const after = (await prisma.pokerSession.findUnique({ where: { id: s.id } }))!.engineState as any;
+    expect(after.timeExtensions).toHaveLength(6);
+  });
+
+  it('lets the host end the plan without ending the night', async () => {
+    const s = await timedNight(120);
+    const after: any = await liftTimeLimit(s.id, clubId, ownerId, false);
+    expect(after.timeLimitLiftedAt).toBeTruthy();
+  });
+
+  it('refuses to extend a night that has already stopped counting', async () => {
+    // Otherwise a stale screen could put a clock back on a night the host has
+    // already decided to run without one.
+    const s = await timedNight(120);
+    await liftTimeLimit(s.id, clubId, ownerId, false);
+    await expect(extendSession(s.id, clubId, ownerId, false, 30)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('refuses to extend a night that never had a limit', async () => {
+    await demoteTheOtherAdmin();
+    await prisma.pokerSession.deleteMany({ where: { clubId } });
+    const s: any = await startSession(clubId, ownerId, false, {
+      sessionType: 'OFFLINE', sessionName: 'Open Night',
+    } as any);
+    await expect(extendSession(s.id, clubId, ownerId, false, 30)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('is not a thing a player can do', async () => {
+    const s = await timedNight(120);
+    await expect(extendSession(s.id, clubId, playerId, false, 30)).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(liftTimeLimit(s.id, clubId, playerId, false)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('is idempotent about continuing, so a double tap changes nothing', async () => {
+    const s = await timedNight(120);
+    const first: any = await liftTimeLimit(s.id, clubId, ownerId, false);
+    const second: any = await liftTimeLimit(s.id, clubId, ownerId, false);
+    expect(second.timeLimitLiftedAt).toBe(first.timeLimitLiftedAt);
   });
 });

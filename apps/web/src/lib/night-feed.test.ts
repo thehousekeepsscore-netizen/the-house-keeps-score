@@ -20,6 +20,7 @@ function session(over: Partial<PokerSession> = {}): PokerSession {
     id: 's1', clubId: 'c1', sessionName: 'Fri 8 Aug', status: 'active',
     activePlayerUids: [], pendingSitInUids: [], sitInRequestedAt: {}, cashOuts: [],
     startedBy: 'host', createdAt: ago(300),
+    startedPlayingAt: ago(250),
     ...over,
   };
 }
@@ -276,5 +277,70 @@ describe('how long ago', () => {
 
   it('says nothing rather than NaN when a timestamp is unusable', () => {
     expect(agoLabel('not a date', NOW)).toBe('');
+  });
+});
+
+/**
+ * The clock, as things that happened.
+ *
+ * A timer changing under you is confusing unless the feed says why: the
+ * scheduled hour ran out, somebody added thirty minutes, the host decided to
+ * carry on. These are the events that explain a number nobody touched.
+ */
+describe('why the timer changed', () => {
+  it('says nothing at all about a night with no limit', () => {
+    const feed = deriveFeed({ session: session(), buyIns: [], now: NOW });
+    expect(lines(feed).some((l) => /timer|session/i.test(l))).toBe(false);
+  });
+
+  it('names the length a timed night started with', () => {
+    const feed = deriveFeed({
+      session: session({ startedPlayingAt: ago(30), durationMinutes: 120 }),
+      buyIns: [],
+      now: NOW,
+    });
+    expect(lines(feed)).toContain('Session started (2-hour timer)');
+  });
+
+  it('names each extension, rather than silently showing a bigger number', () => {
+    const feed = deriveFeed({
+      session: session({
+        startedPlayingAt: ago(130),
+        durationMinutes: 120,
+        timeExtensions: [{ minutes: 30, at: ago(5) }],
+      }),
+      buyIns: [],
+      now: NOW,
+    });
+    expect(lines(feed)).toContain('Session extended by 30 minutes');
+  });
+
+  it('marks the scheduled end only once it has actually passed', () => {
+    const early = deriveFeed({
+      session: session({ startedPlayingAt: ago(30), durationMinutes: 120 }),
+      buyIns: [],
+      now: NOW,
+    });
+    expect(lines(early)).not.toContain('Scheduled time reached');
+
+    const late = deriveFeed({
+      session: session({ startedPlayingAt: ago(130), durationMinutes: 120 }),
+      buyIns: [],
+      now: NOW,
+    });
+    expect(lines(late)).toContain('Scheduled time reached');
+  });
+
+  it('records the moment the host decided the plan was over', () => {
+    const feed = deriveFeed({
+      session: session({
+        startedPlayingAt: ago(130),
+        durationMinutes: 120,
+        timeLimitLiftedAt: ago(2),
+      }),
+      buyIns: [],
+      now: NOW,
+    });
+    expect(lines(feed)[0]).toBe('Session continued without a time limit');
   });
 });

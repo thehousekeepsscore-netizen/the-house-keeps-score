@@ -145,9 +145,25 @@ export interface PokerSession {
    * played right now, so they are read as started — see deriveNight.
    */
   startedPlayingAt?: string | null;
-  /** Minutes the host set aside for the night. Absent means no limit. */
+  /**
+   * Minutes the host originally set aside. Absent means no limit.
+   *
+   * The PLAN, not the current total — extensions live beside it so the feed can
+   * say "started with a 2-hour timer" and "extended by 30 minutes" rather than
+   * silently showing a bigger number. See scheduledMinutes in night-clock.ts.
+   */
   durationMinutes?: number;
-  /** Whether to say anything when the clock runs out. It never ends the night. */
+  /** Every extension, in the order they were granted. Additive and unlimited. */
+  timeExtensions?: { minutes: number; at: string }[];
+  /**
+   * When the host chose to carry on with no limit.
+   *
+   * One-way for the rest of the night, and that is the point: it is what stops
+   * a night running three hours over from showing a grace period every five
+   * minutes for the last two of them.
+   */
+  timeLimitLiftedAt?: string | null;
+  /** Superseded by the grace period, which is a banner rather than an alert. */
   remindAtEnd?: boolean;
   startedBy: string;
   createdAt: string;

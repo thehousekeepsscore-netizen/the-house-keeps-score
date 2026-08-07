@@ -33,7 +33,7 @@ describe('it opens a table rather than starting a game', () => {
   it('opens with no time limit, because that is what most nights are', () => {
     const { onOpenTable } = show();
     return userEvent.click(screen.getByRole('button', { name: /open table/i })).then(() => {
-      expect(onOpenTable).toHaveBeenCalledWith({ durationMinutes: undefined, remindAtEnd: false });
+      expect(onOpenTable).toHaveBeenCalledWith({ durationMinutes: undefined });
     });
   });
 
@@ -49,30 +49,28 @@ describe('it opens a table rather than starting a game', () => {
     await userEvent.click(screen.getByRole('radio', { name: /timed game/i }));
     await userEvent.click(screen.getByRole('button', { name: '1 hour' }));
     await userEvent.click(screen.getByRole('button', { name: /open table/i }));
-    expect(onOpenTable).toHaveBeenCalledWith({ durationMinutes: 60, remindAtEnd: true });
+    expect(onOpenTable).toHaveBeenCalledWith({ durationMinutes: 60 });
   });
 });
 
+/**
+ * The clock informs; it never dictates.
+ *
+ * The old "tell me when time is up" toggle is gone — the grace period is a
+ * better answer to the same question, and it is a band above the table rather
+ * than anything that has to be dismissed.
+ */
 describe('the clock informs, it never dictates', () => {
-  it('offers to TELL the host, not to end the night for them', () => {
-    // Deliberately not "auto-end". Poker nights run over, and a timer that
-    // settled the game would be running the evening rather than helping.
+  it('offers no way to make a night end itself', () => {
     show();
     expect(screen.queryByText(/auto.?end/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
-  it('says outright that nothing ends by itself', async () => {
+  it('says up front what happens when the time runs out', async () => {
     show();
     await userEvent.click(screen.getByRole('radio', { name: /timed game/i }));
-    expect(screen.getByRole('checkbox', { name: /tell me when time is up/i })).toBeInTheDocument();
     expect(screen.getByText(/never ends the night/i)).toBeInTheDocument();
-  });
-
-  it('lets the host decline being told, and still keeps the length', async () => {
-    const { onOpenTable } = show();
-    await userEvent.click(screen.getByRole('radio', { name: /timed game/i }));
-    await userEvent.click(screen.getByRole('checkbox', { name: /tell me when time is up/i }));
-    await userEvent.click(screen.getByRole('button', { name: /open table/i }));
-    expect(onOpenTable).toHaveBeenCalledWith({ durationMinutes: 120, remindAtEnd: false });
+    expect(screen.getByText(/five\s+minutes to add more time/i)).toBeInTheDocument();
   });
 });

@@ -28,6 +28,8 @@ export interface ApiOfflineSession {
   skipBlindLimit?: number;
   startedPlayingAt?: string | null;
   durationMinutes?: number;
+  timeExtensions?: { minutes: number; at: string }[];
+  timeLimitLiftedAt?: string | null;
   remindAtEnd?: boolean;
 }
 
@@ -57,6 +59,8 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     skipBlindLimit: s.skipBlindLimit,
     startedPlayingAt: s.startedPlayingAt,
     durationMinutes: s.durationMinutes,
+    timeExtensions: s.timeExtensions ?? [],
+    timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
     remindAtEnd: s.remindAtEnd,
   };
 }
@@ -115,6 +119,27 @@ export interface StartSessionInput {
 
 export async function startSession(clubId: string, input: StartSessionInput): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(`/clubs/${clubId}/offline-sessions`, { method: 'POST', body: input });
+  return toPokerSession(s);
+}
+
+/**
+ * More time on the clock. Additive, unlimited, admins only.
+ *
+ * The scheduled duration is a plan; extending it is the host saying the plan
+ * changed, which at a poker table it always does.
+ */
+export async function extendSession(
+  clubId: string, sessionId: string, minutes: number
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/extend`, { method: 'POST', body: { minutes } });
+  return toPokerSession(s);
+}
+
+/** Carry on with no limit for the rest of the night. One-way, admins only. */
+export async function liftTimeLimit(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/lift-time-limit`, { method: 'POST' });
   return toPokerSession(s);
 }
 

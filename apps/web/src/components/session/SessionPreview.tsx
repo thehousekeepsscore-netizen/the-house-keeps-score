@@ -62,6 +62,8 @@ export const SessionPreview: React.FC = () => {
   const inLobby = params.get('lobby') === '1';
   // ?mins=N sets a length, so the clock and the time-up prompt are walkable.
   const durationMinutes = Number(params.get('mins')) || undefined;
+  // ?started=N minutes ago, so running / grace / complete are all reachable.
+  const startedAgo = Number(params.get('started')) || 196;
 
   const uids = Array.from({ length: count }, (_, i) => `u${i}`);
   // Every club member, not just the ones seated — Add Player lists the people
@@ -107,9 +109,10 @@ export const SessionPreview: React.FC = () => {
         : []),
     ],
     startedBy: 'u0', createdAt: at(196),
-    startedPlayingAt: inLobby ? null : at(196),
+    startedPlayingAt: inLobby ? null : at(startedAgo),
     durationMinutes,
-    remindAtEnd: true,
+    timeExtensions: [],
+    timeLimitLiftedAt: null,
   };
 
   const buyIns: BuyInRequest[] = [
@@ -177,6 +180,8 @@ export const SessionPreview: React.FC = () => {
         ceiling={ceiling}
         onSettleNight={() => {}}
         onStartPlaying={() => { window.location.href = window.location.href.replace('lobby=1', 'lobby=0'); }}
+        onExtendSession={() => {}}
+        onKeepPlaying={() => {}}
         onAddPlayer={() => setAddOpen(true)}
         onAskForChips={() => { setAsksChips(true); setPicked(me); }}
         feed={feed}
