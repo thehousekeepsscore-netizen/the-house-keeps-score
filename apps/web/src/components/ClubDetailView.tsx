@@ -1924,16 +1924,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   ]);
 
   /**
-   * Part 4: the sheet's actions, connected. No UX decisions here — every
-   * question about wording, ordering and which control exists was settled in
-   * PlayerSheet; this only performs what it asks for.
+   * The sheet's actions, connected.
    *
-   * The admin path composes the two existing calls rather than adding an
-   * endpoint (BUY-IN-FLOWS.md §2): composition inherits the ceiling check, the
-   * one-pending-per-player rule, the self-approval rule, seating, the socket
-   * events and the notification, and cannot drift from them. If the second
-   * call fails, the request simply stays in the queue — which is the other
-   * valid flow, not an error state.
+   * THE INVARIANT: nobody can give themselves chips, and no buy-in skips the
+   * queue. Whoever creates it — the player, the host, another admin — it lands
+   * as pending and somebody else approves it.
+   *
+   * An earlier version auto-approved when an admin banked another player, on
+   * the reasoning that the admin was already the approving authority. That is
+   * true about the RECIPIENT check and false about oversight: with two admins
+   * seated it let either of them create chips for a friend with nobody
+   * watching. Every buy-in now enters the queue, and the server's existing
+   * rule does the rest — the creator cannot approve their own request while
+   * another admin is present, and may when they are the only one, so a
+   * one-admin game is never blocked.
    */
   const [sheetUid, setSheetUid] = useState<string | null>(null);
   const [sheetBusy, setSheetBusy] = useState(false);
@@ -1968,15 +1972,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
       const forSelf = sheetUid === currentUser.uid;
-      const req = await offlineSessionsApi.requestBuyIn(
+      await offlineSessionsApi.requestBuyIn(
         club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
       );
-      // An admin banking someone else is the approving authority already, so
-      // asking them to confirm their own action would be asking the same human
-      // the same question twice.
-      if (!forSelf && isAdmin) {
-        await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, req.id, true);
-      }
       await refreshActiveSession();
     }, 'Please try again.');
 

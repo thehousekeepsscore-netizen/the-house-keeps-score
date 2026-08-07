@@ -163,7 +163,8 @@ describe('a seat says what it is doing', () => {
     // ask about the player; neither counts chips they do not have.
     // Seated already, so this is more chips rather than an arrival.
     expect(seatNames()[0]).toMatch(/wants 3,000 more/i);
-    expect(screen.getByText(/wants 3,000/i)).toBeInTheDocument();
+    // A delta, not a demand: "+3,000" needs no verb and no reading.
+    expect(screen.getByText('+3,000')).toBeInTheDocument();
     expect(seatNames()[0]).not.toMatch(/\bin 0\b/i);
   });
 

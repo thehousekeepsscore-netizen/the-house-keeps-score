@@ -51,9 +51,16 @@ export function seatSentence(seat: Seat, amount: (n: number) => string): string 
 
 /** Short form. The felt, where a seat has about 90px and a face above it. */
 export function seatCaption(seat: Seat, amount: (n: number) => string): string {
+  // Somebody arriving is described by their arrival, not by the figure — the
+  // figure is what they are bringing, and the interesting fact is that they
+  // are about to sit down.
+  if (seat.state === 'waitingToSit') return 'pulling up a chair';
+
   switch (subject(seat)) {
     case 'pendingBuyIn':
-      return `wants ${amount(seat.pendingBuyIn ?? 0)}`;
+      // "+5,000" rather than "WANTS 5,000". A delta needs no verb and no
+      // reading: everyone at a table understands chips being added.
+      return `+${amount(seat.pendingBuyIn ?? 0)}`;
     case 'waitingToSit':
       return 'pulling up a chair';
     case 'countingOut':
