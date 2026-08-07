@@ -124,6 +124,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         isAdmin={isAdmin}
         currentUserId={currentUserId}
         onStartSession={onStartSession}
+        onSelectPlayer={onSelectPlayer}
       />
     </div>
   );
@@ -360,7 +361,8 @@ const NextAction: React.FC<{
   isAdmin: boolean;
   currentUserId: string;
   onStartSession: () => void;
-}> = ({ night, isAdmin, onStartSession }) => {
+  onSelectPlayer: (userId: string) => void;
+}> = ({ night, isAdmin, currentUserId, onStartSession, onSelectPlayer }) => {
   if (night.phase === 'dark' && isAdmin) {
     return (
       <Bar>
@@ -371,11 +373,27 @@ const NextAction: React.FC<{
     );
   }
 
+  // Settling outranks joining. Once everyone has left, the host has no seat
+  // either — so ordering these the other way round offered the person closing
+  // the night a chair at a table nobody is sitting at.
   if (night.phase === 'ready' && isAdmin && night.canSettle) {
     return (
       <Bar>
         <Button variant="primary" size="lg" fullWidth onClick={() => {}}>
           Review &amp; settle
+        </Button>
+      </Bar>
+    );
+  }
+
+  // Somebody who is not at the table has no seat to tap, so this is the one
+  // situation where the bar carries the way in. Still the next thing to do
+  // rather than a permanent control: the moment they are seated, it goes.
+  if (!night.mySeat && night.phase !== 'dark' && night.phase !== 'closed') {
+    return (
+      <Bar>
+        <Button variant="primary" size="lg" fullWidth onClick={() => onSelectPlayer(currentUserId)}>
+          Join table
         </Button>
       </Bar>
     );

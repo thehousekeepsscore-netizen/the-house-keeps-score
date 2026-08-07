@@ -148,6 +148,39 @@ describe('phases', () => {
 });
 
 describe('zone C — the next action', () => {
+  it('offers the way in to someone with no seat, since they have nothing to tap', () => {
+    const onSelectPlayer = vi.fn();
+    renderScreen(
+      { session: session({ activePlayerUids: ['priya'] }), currentUserId: 'host', onSelectPlayer },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(60),
+        },
+      ]
+    );
+    return userEvent.click(screen.getByRole('button', { name: /join table/i })).then(() => {
+      // The bar opens their own sheet — every action still originates there.
+      expect(onSelectPlayer).toHaveBeenCalledWith('host');
+    });
+  });
+
+  it('settles rather than offering a chair once everyone has left', () => {
+    // The host has no seat either at that point, so ordering these the other
+    // way round offered the person closing the night a place at an empty table.
+    renderScreen({
+      session: session({
+        activePlayerUids: [],
+        cashOuts: [
+          { userId: 'priya', amount: 8200, status: 'confirmed', requestedAt: ago(9) },
+          { userId: 'arjun', amount: 4100, status: 'confirmed', requestedAt: ago(5) },
+        ],
+      }),
+    });
+    expect(screen.getByRole('button', { name: /review & settle/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /join table/i })).not.toBeInTheDocument();
+  });
+
   it('is absent while a night is simply being played', () => {
     // The honest answer to "what should I do next?" is nothing, so the bar
     // does not exist and the table keeps those pixels.

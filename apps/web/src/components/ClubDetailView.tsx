@@ -6,6 +6,7 @@ import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { type WaitingRow } from './session/WaitingForYou';
+import { PlayerSheet } from './session/PlayerSheet';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { useAction } from '../lib/use-action';
@@ -1922,6 +1923,83 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
   ]);
 
+  /**
+   * Part 4: the sheet's actions, connected. No UX decisions here — every
+   * question about wording, ordering and which control exists was settled in
+   * PlayerSheet; this only performs what it asks for.
+   *
+   * The admin path composes the two existing calls rather than adding an
+   * endpoint (BUY-IN-FLOWS.md §2): composition inherits the ceiling check, the
+   * one-pending-per-player rule, the self-approval rule, seating, the socket
+   * events and the notification, and cannot drift from them. If the second
+   * call fails, the request simply stays in the queue — which is the other
+   * valid flow, not an error state.
+   */
+  const [sheetUid, setSheetUid] = useState<string | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+
+  const sheetSeat = useMemo(
+    () => night.seats.find((s) => s.userId === sheetUid) ?? null,
+    [night.seats, sheetUid]
+  );
+
+  // The club's own figures. The ceiling is passed separately and shown as a
+  // limit — never as a button, because under MATCH_HIGHEST it climbs all night.
+  const bankOptions = useMemo(() => {
+    const min = club.minBuyIn ?? 1000;
+    const max = club.maxBuyIn ?? DEFAULT_MAX_BUY_IN;
+    return Array.from(new Set([min, Math.round((min + max) / 2), max])).sort((a, b) => a - b);
+  }, [club.minBuyIn, club.maxBuyIn]);
+
+  const runSheet = async (fn: () => Promise<unknown>, failure: string) => {
+    if (sheetBusy) return;
+    setSheetBusy(true);
+    try {
+      await fn();
+      setSheetUid(null);
+    } catch (err) {
+      pushToast('Could not do that', err instanceof Error ? err.message : failure, 'warning');
+    } finally {
+      setSheetBusy(false);
+    }
+  };
+
+  const takeBank = (amount: number) =>
+    runSheet(async () => {
+      if (!activeSession || !sheetUid) return;
+      const forSelf = sheetUid === currentUser.uid;
+      const req = await offlineSessionsApi.requestBuyIn(
+        club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
+      );
+      // An admin banking someone else is the approving authority already, so
+      // asking them to confirm their own action would be asking the same human
+      // the same question twice.
+      if (!forSelf && isAdmin) {
+        await offlineSessionsApi.decideBuyInRequest(club.id, activeSession.id, req.id, true);
+      }
+      await refreshActiveSession();
+    }, 'Please try again.');
+
+  const standUp = (amount: number) =>
+    runSheet(async () => {
+      if (!activeSession || !sheetUid) return;
+      const forSelf = sheetUid === currentUser.uid;
+      applySession(
+        await offlineSessionsApi.requestCashOut(
+          club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
+        )
+      );
+      if (!forSelf && isAdmin) {
+        applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, sheetUid, true));
+      }
+    }, 'Please try again.');
+
+  const confirmCount = () =>
+    runSheet(async () => {
+      if (!activeSession || !sheetUid) return;
+      applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, sheetUid, true));
+    }, 'Please try again.');
+
   const approveChangeAction = useAction(handleApproveChangeRequest);
   const rejectChangeAction = useAction(handleRejectChangeRequest);
   const restoreSessionAction = useAction(handleRestoreSession);
@@ -2172,9 +2250,31 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onStartSession={handleStartSession}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
-                onSelectPlayer={() => {
-                  /* the player sheet lands in the next milestone */
-                }}
+                onSelectPlayer={setSheetUid}
+              />
+            )}
+
+            {/* The sheet is where every action originates. Mounted beside the
+                screen rather than inside it, so the felt never has to know
+                what a request is. */}
+            {showNextLiveSession && sheetUid && (
+              <PlayerSheet
+                open
+                onClose={() => setSheetUid(null)}
+                name={sheetUid === currentUser.uid ? 'You' : allUsers[sheetUid]?.displayName || 'Player'}
+                userId={sheetUid}
+                avatarUrl={allUsers[sheetUid]?.avatarUrl}
+                seat={sheetSeat}
+                isSelf={sheetUid === currentUser.uid}
+                isAdmin={isAdmin}
+                formatAmount={formatUnit}
+                bankOptions={bankOptions}
+                ceiling={buyInCeiling}
+                busy={sheetBusy}
+                onJoin={takeBank}
+                onBuyMore={takeBank}
+                onStandUp={standUp}
+                onConfirmCount={confirmCount}
               />
             )}
 

@@ -119,7 +119,7 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
         {mode === 'bank' && (
           <div className="w-full space-y-2">
             <p className="text-xs text-text-muted text-center">
-              {state ? 'How many chips?' : 'Choose your bank'}
+              {state ? 'How many chips?' : 'Choose your starting bank'}
             </p>
             <div className="grid grid-cols-3 gap-2">
               {bankOptions.map((n) => (
