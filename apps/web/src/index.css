@@ -343,6 +343,21 @@
     0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
+/*
+ * An arriving seat is UNFINISHED, not disabled.
+ *
+ * A dashed brass collar rather than a solid one — the same metal, not yet
+ * closed. Greying it out would say "this person cannot be here"; this says
+ * "this person is here and not in yet", which is what is actually true.
+ */
+.seat-collar-arriving {
+  position: absolute;
+  inset: -1px;
+  border-radius: 9999px;
+  border: 1.5px dashed var(--brass-mid);
+  pointer-events: none;
+}
+
 /* The brass collar around the seat. Thin, worn, never a glow. */
 .seat-collar {
   position: absolute;

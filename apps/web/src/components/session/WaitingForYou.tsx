@@ -39,37 +39,29 @@ export interface WaitingRow extends QueuedRequest {
 }
 
 /**
- * The subject is sometimes the reader.
+ * A tag, not a sentence.
  *
- * An admin's own request appears in their own queue, and "You needs more
- * chips" is the kind of sentence that tells everyone the words were assembled
- * rather than written. Second person takes the plural verb.
+ * "Priya wants to join" reads well once and is read fifteen times a night. A
+ * label scans: the eye takes the name, the figure and the kind in one pass and
+ * never parses grammar. It also sidesteps conjugation entirely — an admin's own
+ * request lands in their own queue, and "You needs more chips" is how a
+ * sentence announces that it was assembled rather than written.
  */
-const conjugate = (isYou: boolean, third: string, second: string) => (isYou ? second : third);
-
 function phrasing(row: WaitingRow, amount: (n: number) => string) {
-  const you = row.name === 'You';
   if (row.kind === 'cash-out') {
     return {
-      what: conjugate(you, 'is ready to leave', 'are ready to leave'),
+      tag: 'Standing up',
       detail: row.amount !== undefined ? amount(row.amount) : null,
       approve: 'Count chips',
       dismiss: 'Not yet',
     };
   }
   if (row.kind === 'sit-in') {
-    return {
-      what: conjugate(you, 'wants to join', 'want to join'),
-      detail: null,
-      approve: 'Seat them',
-      dismiss: 'Not now',
-    };
+    return { tag: 'Join table', detail: null, approve: 'Seat them', dismiss: 'Not now' };
   }
   // Same row in the database, two entirely different people to talk to.
   return {
-    what: row.joining
-      ? conjugate(you, 'wants to join', 'want to join')
-      : conjugate(you, 'needs more chips', 'need more chips'),
+    tag: row.joining ? 'Join table' : 'More chips',
     detail: row.amount !== undefined ? amount(row.amount) : null,
     approve: 'Approve',
     dismiss: 'Not now',
@@ -103,7 +95,7 @@ export const WaitingForYou: React.FC<{
 
       <ul>
         {rows.map((row) => {
-          const { what, detail, approve, dismiss } = phrasing(row, formatAmount);
+          const { tag, detail, approve, dismiss } = phrasing(row, formatAmount);
           const left = countdown(row.msRemaining);
           const urgent = row.msRemaining !== null && row.msRemaining <= 60_000;
 
@@ -113,26 +105,24 @@ export const WaitingForYou: React.FC<{
                 <PlayerAvatar userId={row.userId} name={row.name} photoUrl={row.avatarUrl} size={38} />
 
                 <div className="min-w-0 flex-1">
-                  <p className="text-[15px] text-text leading-snug truncate">
-                    <span className="font-semibold">{row.name}</span>{' '}
-                    <span className="text-text-muted">{what}</span>
+                  <p className="text-[15px] font-semibold text-text leading-snug truncate">
+                    {row.name}
                   </p>
                   {detail && <p className="text-sm text-accent tabular-nums leading-snug">{detail}</p>}
                 </div>
 
-                {/* The five-minute window, as time LEFT rather than time waited.
-                    The server auto-rejects at zero and the request simply
-                    vanishes, so this countdown is the only warning anyone gets
-                    that it is about to. */}
-                {left && (
-                  <span
-                    className={`shrink-0 text-xs tabular-nums ${
-                      urgent ? 'text-warning' : 'text-text-faint'
-                    }`}
-                  >
-                    {left}
-                  </span>
-                )}
+                <div className="shrink-0 text-right">
+                  <p className="text-xs text-text-muted leading-snug">{tag}</p>
+                  {/* The five-minute window, as time LEFT rather than time
+                      waited. The server auto-rejects at zero and the request
+                      simply vanishes, so this countdown is the only warning
+                      anyone gets that it is about to. */}
+                  {left && (
+                    <p className={`text-xs tabular-nums leading-snug ${urgent ? 'text-warning' : 'text-text-faint'}`}>
+                      {left}
+                    </p>
+                  )}
+                </div>
               </div>
 
               {row.blockedReason ? (

@@ -300,8 +300,14 @@ export const PokerTable: React.FC<PokerTableProps> = ({
         const realName = users[seat.userId]?.displayName || 'Player';
         const isMe = seat.userId === currentUserId;
         const name = isMe ? 'You' : realName;
-        const dim =
-          seat.state === 'cashedOut' ? 'gone' : seat.state === 'countingOut' ? 'leaving' : 'here';
+        const arriving = seat.state === 'waitingToSit';
+        const dim = seat.state === 'cashedOut'
+          ? 'gone'
+          : seat.state === 'countingOut'
+            ? 'leaving'
+            : arriving
+              ? 'arriving'
+              : 'here';
 
         return (
           <button

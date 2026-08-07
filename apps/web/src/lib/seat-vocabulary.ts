@@ -28,11 +28,14 @@ export function seatSentence(seat: Seat, amount: (n: number) => string): string 
     case 'pendingBuyIn':
       // Arriving reads differently from topping up, and the seat already knows
       // which one this is: a player not yet at the table is `waitingToSit`.
+      // Somebody arriving is pulling up a chair, not entering a pending state.
+      // They are here — they are just not in yet, and that is a thing everyone
+      // at a real table understands without being told.
       return seat.state === 'waitingToSit'
-        ? `wants to join with ${amount(seat.pendingBuyIn ?? 0)}`
+        ? `pulling up a chair with ${amount(seat.pendingBuyIn ?? 0)}`
         : `wants ${amount(seat.pendingBuyIn ?? 0)} more`;
     case 'waitingToSit':
-      return 'wants to join';
+      return 'pulling up a chair';
     case 'countingOut':
       return `counting ${amount(seat.pendingCashOut ?? 0)}`;
     case 'cashedOut':
@@ -52,7 +55,7 @@ export function seatCaption(seat: Seat, amount: (n: number) => string): string {
     case 'pendingBuyIn':
       return `wants ${amount(seat.pendingBuyIn ?? 0)}`;
     case 'waitingToSit':
-      return 'joining';
+      return 'pulling up a chair';
     case 'countingOut':
       return 'counting up';
     case 'cashedOut':

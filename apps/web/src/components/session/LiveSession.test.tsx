@@ -202,7 +202,7 @@ describe('seat vocabulary', () => {
     // and its accessible name carries the sentence — two renderings of one
     // vocabulary (lib/seat-vocabulary.ts), so they cannot drift apart.
     const seats = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
-    expect(seats.join(' | ')).toMatch(/wants to join/i);
+    expect(seats.join(' | ')).toMatch(/pulling up a chair/i);
     expect(seats.join(' | ')).toMatch(/in 5,000/i);
     expect(seats.join(' | ')).toMatch(/stood up with 4,100/i);
   });

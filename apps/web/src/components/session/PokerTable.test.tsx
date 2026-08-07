@@ -174,7 +174,7 @@ describe('a seat says what it is doing', () => {
 
   it('wants to join, having asked for a seat', () => {
     table({ pendingSitInUids: ['p1'], sitInRequestedAt: { p1: ago(1) } }, []);
-    expect(seatNames()[0]).toMatch(/wants to join/i);
+    expect(seatNames()[0]).toMatch(/pulling up a chair/i);
   });
 
   it('counting out', () => {

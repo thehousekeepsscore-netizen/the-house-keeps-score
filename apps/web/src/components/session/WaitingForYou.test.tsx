@@ -32,23 +32,24 @@ function row(over: Partial<WaitingRow> = {}): WaitingRow {
 }
 
 describe('every row is a person', () => {
-  it('says someone wants to join, not that a buy-in is pending', () => {
+  it('is scannable — a name, a figure and a tag, never a sentence', () => {
     render(<WaitingForYou rows={[row()]} formatAmount={fmt} />);
     expect(screen.getByText('Priya')).toBeInTheDocument();
-    expect(screen.getByText(/wants to join/i)).toBeInTheDocument();
     expect(screen.getByText('5,000')).toBeInTheDocument();
-    expect(screen.queryByText(/request/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Join table')).toBeInTheDocument();
+    // Nothing to parse, and nothing that reads as a database operation.
+    expect(screen.queryByText(/wants to|request|pending/i)).not.toBeInTheDocument();
   });
 
   it('tells arriving apart from topping up, though the server cannot', () => {
     // Identical rows in the database; completely different people to talk to.
     const { unmount } = render(<WaitingForYou rows={[row({ joining: true })]} formatAmount={fmt} />);
-    expect(screen.getByText(/wants to join/i)).toBeInTheDocument();
+    expect(screen.getByText('Join table')).toBeInTheDocument();
     unmount();
 
     render(<WaitingForYou rows={[row({ joining: false, amount: 3000 })]} formatAmount={fmt} />);
-    expect(screen.getByText(/needs more chips/i)).toBeInTheDocument();
-    expect(screen.queryByText(/wants to join/i)).not.toBeInTheDocument();
+    expect(screen.getByText('More chips')).toBeInTheDocument();
+    expect(screen.queryByText('Join table')).not.toBeInTheDocument();
   });
 
   it('names the physical act for someone leaving, not the transition', () => {
@@ -58,7 +59,7 @@ describe('every row is a person', () => {
         formatAmount={fmt}
       />
     );
-    expect(screen.getByText(/is ready to leave/i)).toBeInTheDocument();
+    expect(screen.getByText('Standing up')).toBeInTheDocument();
     // "Count chips" is what the host does at the table. "Confirm cash-out" is
     // what the database does, and nobody at a table says it.
     expect(screen.getByRole('button', { name: /count chips/i })).toBeInTheDocument();
@@ -67,12 +68,12 @@ describe('every row is a person', () => {
 });
 
 describe('when the person is the reader', () => {
-  it('conjugates for second person', () => {
-    // An admin's own request lands in their own queue, and "You needs more
-    // chips" is how a sentence announces that it was assembled, not written.
+  it('needs no conjugation, because there is no verb', () => {
+    // An admin's own request lands in their own queue. A sentence would have
+    // to say "You needs more chips"; a tag simply does not have the problem.
     render(<WaitingForYou rows={[row({ name: 'You', joining: false })]} formatAmount={fmt} />);
-    expect(screen.getByText(/need more chips/i)).toBeInTheDocument();
-    expect(screen.queryByText(/needs more chips/i)).not.toBeInTheDocument();
+    expect(screen.getByText('You')).toBeInTheDocument();
+    expect(screen.getByText('More chips')).toBeInTheDocument();
   });
 });
 

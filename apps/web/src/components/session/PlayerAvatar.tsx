@@ -45,10 +45,16 @@ export const PlayerAvatar: React.FC<{
    * A progression rather than three unrelated treatments, so the table tells
    * the story of the night emptying instead of listing states.
    */
-  dim?: 'here' | 'leaving' | 'gone';
+  dim?: 'arriving' | 'here' | 'leaving' | 'gone';
 }> = ({ userId, name, photoUrl, size, dim = 'here' }) => {
+  // `arriving` is barely held back — they are at the table, just not in yet.
+  // The step to full opacity on approval is the whole satisfaction of the
+  // moment, and it only reads if the starting point was close to arrived.
   const muted =
-    dim === 'gone' ? 'opacity-40 grayscale' : dim === 'leaving' ? 'opacity-70' : '';
+    dim === 'gone' ? 'opacity-40 grayscale'
+      : dim === 'leaving' ? 'opacity-70'
+        : dim === 'arriving' ? 'opacity-80'
+          : '';
 
   const Suit = SUITS[hashOf(userId) % SUITS.length];
   const hue = hashOf(userId) % 360;
