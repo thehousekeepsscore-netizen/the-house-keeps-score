@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { emitToClub } from '../../realtime/socket.js';
@@ -86,6 +87,56 @@ function serialize(row: SessionRow) {
 }
 
 /**
+ * The only safe way to rewrite engineState.
+ *
+ * engineState is one JSON column holding the whole table — who is seated, who
+ * has asked for a chair, who has counted their chips. Every writer reads the
+ * blob, changes one field and writes the whole thing back, which is a lost
+ * update waiting for two people to press a button at once. It does not need a
+ * busy club to happen: a host and a co-host looking at the same queue on their
+ * own phones, both tapping Approve within a quarter of a second, is a Friday.
+ *
+ * What that cost, measured rather than imagined: Rahul approved, charged for
+ * his chips, told he was in — and holding no seat, because the write that
+ * seated Priya was built from a snapshot taken before his landed and put back a
+ * list he had never been in. Nothing surfaces. Both admins see the row vanish,
+ * both believe they did it, and the table is quietly missing a player.
+ *
+ * So every mutation takes a row lock on the session first and reads the state
+ * fresh inside it. Concurrent callers queue rather than race, which is the same
+ * shape settleSession already uses for the same reason.
+ *
+ * Side effects belong OUTSIDE: this returns what to emit rather than emitting,
+ * because a socket event sent from inside a transaction is a lie until it
+ * commits, and a rollback cannot take it back.
+ */
+async function mutateSessionState<T>(
+  sessionId: string,
+  mutate: (
+    state: OfflineEngineState,
+    tx: Prisma.TransactionClient,
+    row: SessionRow
+  ) => Promise<{ state: OfflineEngineState; result: T }>
+): Promise<{ session: ReturnType<typeof serialize>; result: T }> {
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<SessionRow[]>`
+      SELECT id, "clubId", "sessionName", "sessionType", status, "startedById",
+             "createdAt", "endedAt", "engineState"
+      FROM "PokerSession" WHERE id = ${sessionId} FOR UPDATE
+    `;
+    const row = rows[0];
+    if (!row) throw new HttpError(404, 'Session not found');
+
+    const { state, result } = await mutate(row.engineState, tx, row);
+    const updated = await tx.pokerSession.update({
+      where: { id: sessionId },
+      data: { engineState: state as any },
+    });
+    return { session: serialize(updated as unknown as SessionRow), result };
+  });
+}
+
+/**
  * Is there anybody else here who could approve this?
  *
  * The owner counts. They are an admin everywhere else in the codebase
@@ -129,16 +180,6 @@ function clearCashOutFor(state: OfflineEngineState, userId: string): OfflineEngi
 // would otherwise reject every one of them.
 export const REQUEST_TTL_MS = 5 * 60 * 1000;
 
-// Removes a pending sit-in and its timestamp without seating the player.
-async function dropSitIn(sessionId: string, state: OfflineEngineState, userId: string) {
-  const pendingSitInUids = (state.pendingSitInUids || []).filter((u) => u !== userId);
-  const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
-  delete sitInRequestedAt[userId];
-  return prisma.pokerSession.update({
-    where: { id: sessionId },
-    data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt } as any },
-  });
-}
 
 export function isRequestExpired(requestedAt: Date | string | undefined, now = Date.now()): boolean {
   if (!requestedAt) return false; // no timestamp recorded — never expire it
@@ -213,14 +254,36 @@ export async function expireStaleRequests(now = Date.now()) {
     const deadCashOutUids = new Set(deadCashOuts.map((c) => c.userId));
     const cashOuts = (state.cashOuts || []).filter((c) => !deadCashOutUids.has(c.userId));
 
-    const swept = await prisma.pokerSession.update({
-      where: { id: session.id },
-      data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt, cashOuts } as any },
+    // Under the same lock as every other writer. The sweep runs on an interval,
+    // so without it a request expiring at the moment an admin approves it can
+    // put back a seat list taken before that approval landed — and the sweep is
+    // the one writer nobody is watching when it happens.
+    //
+    // Re-derived inside the lock rather than reusing the scan above: the scan
+    // is a snapshot, and by now somebody may have decided one of these.
+    const { session: sweptSession } = await mutateSessionState(session.id, async (fresh) => {
+      const stillDeadSitIns = (fresh.pendingSitInUids || []).filter((uid) =>
+        isRequestExpired(fresh.sitInRequestedAt?.[uid], now)
+      );
+      const stillDeadCashOuts = new Set(
+        (fresh.cashOuts || [])
+          .filter((c) => c.status === 'pending' && isRequestExpired(c.requestedAt, now))
+          .map((c) => c.userId)
+      );
+      const nextSitIns = (fresh.pendingSitInUids || []).filter((uid) => !stillDeadSitIns.includes(uid));
+      const nextRequestedAt = { ...(fresh.sitInRequestedAt || {}) };
+      stillDeadSitIns.forEach((uid) => delete nextRequestedAt[uid]);
+      return {
+        state: {
+          ...fresh,
+          pendingSitInUids: nextSitIns,
+          sitInRequestedAt: nextRequestedAt,
+          cashOuts: (fresh.cashOuts || []).filter((c) => !stillDeadCashOuts.has(c.userId)),
+        },
+        result: null,
+      };
     });
-    // One post-sweep session, shared by every event this iteration emits: the
-    // sweep may clear several requests at once, and they all describe the same
-    // resulting seat state.
-    const sweptSession = serialize(swept as unknown as SessionRow);
+    void pendingSitInUids; void sitInRequestedAt; void cashOuts;
 
     for (const uid of deadSitIns) {
       emitToClub(session.clubId, 'club:sitin-decided', {
@@ -313,41 +376,31 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
 // bank yet — mirrors the original app's plain join-table action, separate
 // from requesting/approving an actual buy-in.
 export async function joinSession(sessionId: string, userId: string) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  const state = clearCashOutFor(session.engineState as unknown as OfflineEngineState, userId);
-  const activePlayerUids = Array.from(new Set([...(state.activePlayerUids || []), userId]));
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId },
-    data: { engineState: { ...state, activePlayerUids } as any },
+  const { session } = await mutateSessionState(sessionId, async (state) => {
+    const cleared = clearCashOutFor(state, userId);
+    const activePlayerUids = Array.from(new Set([...(cleared.activePlayerUids || []), userId]));
+    return { state: { ...cleared, activePlayerUids }, result: null };
   });
-  return serialize(row as unknown as SessionRow);
+  return session;
 }
 
 // A member who isn't seated yet asks to be dealt in. Admins already at the
 // table approve it — self-seating stays available via joinSession for the
 // admin who started the session.
 export async function requestSitIn(sessionId: string, clubId: string, userId: string) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  if (session.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    if ((state.activePlayerUids || []).includes(userId)) {
+      throw new HttpError(409, 'You are already seated at this table');
+    }
 
-  const state = session.engineState as unknown as OfflineEngineState;
-  if ((state.activePlayerUids || []).includes(userId)) {
-    throw new HttpError(409, 'You are already seated at this table');
-  }
-
-  const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), userId]));
-  const sitInRequestedAt = { ...(state.sitInRequestedAt || {}), [userId]: new Date().toISOString() };
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId },
-    data: { engineState: { ...state, pendingSitInUids, sitInRequestedAt } as any },
+    const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), userId]));
+    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}), [userId]: new Date().toISOString() };
+    return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: null };
   });
 
-  emitToClub(clubId, 'club:sitin-requested', {
-    sessionId, userId, session: serialize(row as unknown as SessionRow),
-  });
-  return serialize(row as unknown as SessionRow);
+  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId, session });
+  return session;
 }
 
 export async function decideSitIn(
@@ -361,47 +414,48 @@ export async function decideSitIn(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
+  let expired = false;
 
-  const state = session.engineState as unknown as OfflineEngineState;
+  const { session } = await mutateSessionState(sessionId, async (state) => {
+    // Only ever act on someone who actually asked — otherwise an approve call
+    // could seat an arbitrary user id that never requested a seat.
+    if (!(state.pendingSitInUids || []).includes(userId)) {
+      throw new HttpError(404, 'No pending sit-in request from that player');
+    }
 
-  // Only ever act on someone who actually asked — otherwise an approve call
-  // could seat an arbitrary user id that never requested a seat.
-  if (!(state.pendingSitInUids || []).includes(userId)) {
-    throw new HttpError(404, 'No pending sit-in request from that player');
-  }
+    const pendingSitInUids = (state.pendingSitInUids || []).filter((u) => u !== userId);
+    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
+    delete sitInRequestedAt[userId];
 
-  // Checked at decision time as well as by the sweep: the sweep runs on an
-  // interval, so without this an admin could still approve a request in the
-  // gap after it expired but before it was swept.
-  if (isRequestExpired(state.sitInRequestedAt?.[userId])) {
-    const dropped = await dropSitIn(sessionId, state, userId);
+    // Checked at decision time as well as by the sweep: the sweep runs on an
+    // interval, so without this an admin could still approve a request in the
+    // gap after it expired but before it was swept.
+    if (isRequestExpired(state.sitInRequestedAt?.[userId])) {
+      expired = true;
+      return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: null };
+    }
+
+    // Only an approval seats them, so only an approval voids an earlier cash-out.
+    const nextState = approve ? clearCashOutFor(state, userId) : state;
+    const activePlayerUids = approve
+      ? Array.from(new Set([...(state.activePlayerUids || []), userId]))
+      : state.activePlayerUids || [];
+
+    return {
+      state: { ...nextState, activePlayerUids, pendingSitInUids, sitInRequestedAt },
+      result: null,
+    };
+  });
+
+  if (expired) {
     emitToClub(clubId, 'club:sitin-decided', {
-      sessionId, userId, approved: false, expired: true,
-      session: serialize(dropped as unknown as SessionRow),
+      sessionId, userId, approved: false, expired: true, session,
     });
     throw new HttpError(409, 'That sit-in request expired before it was approved');
   }
 
-  const pendingSitInUids = (state.pendingSitInUids || []).filter((u) => u !== userId);
-  const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
-  delete sitInRequestedAt[userId];
-  // Only an approval seats them, so only an approval voids an earlier cash-out.
-  const nextState = approve ? clearCashOutFor(state, userId) : state;
-  const activePlayerUids = approve
-    ? Array.from(new Set([...(state.activePlayerUids || []), userId]))
-    : state.activePlayerUids || [];
-
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId },
-    data: { engineState: { ...nextState, activePlayerUids, pendingSitInUids, sitInRequestedAt } as any },
-  });
-
-  emitToClub(clubId, 'club:sitin-decided', {
-    sessionId, userId, approved: approve, session: serialize(row as unknown as SessionRow),
-  });
-  return serialize(row as unknown as SessionRow);
+  emitToClub(clubId, 'club:sitin-decided', { sessionId, userId, approved: approve, session });
+  return session;
 }
 
 
@@ -418,14 +472,21 @@ export async function decideSitIn(
  * Returns null only for UNCAPPED clubs, which is the sole case the UI labels
  * "No limit". A MATCH_HIGHEST club always has a number.
  */
-export async function getBuyInCeiling(sessionId: string, clubId: string): Promise<number | null> {
-  const club = await prisma.club.findUnique({
+export async function getBuyInCeiling(
+  sessionId: string,
+  clubId: string,
+  // Reads inside a transaction must use that transaction's connection, or they
+  // see a snapshot from before the lock was taken — which for the ceiling means
+  // approving two big buy-ins at once can put the table over its own maximum.
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<number | null> {
+  const club = await db.club.findUnique({
     where: { id: clubId },
     select: { buyInMode: true, maxBuyIn: true },
   });
   if (!club || club.buyInMode === 'UNCAPPED') return null;
 
-  const approved = await prisma.buyInRequest.findMany({
+  const approved = await db.buyInRequest.findMany({
     where: { sessionId, status: 'approved' },
     select: { userId: true, amount: true },
   });
@@ -444,8 +505,11 @@ export async function getBuyInCeiling(sessionId: string, clubId: string): Promis
   return highest > 0 ? highest : club.maxBuyIn;
 }
 
-async function assertWithinBuyInCeiling(sessionId: string, clubId: string, amount: number) {
-  const ceiling = await getBuyInCeiling(sessionId, clubId);
+async function assertWithinBuyInCeiling(
+  sessionId: string, clubId: string, amount: number,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+) {
+  const ceiling = await getBuyInCeiling(sessionId, clubId, db);
   if (ceiling !== null && amount > ceiling) {
     throw new HttpError(400, `Buy-in of ${amount} exceeds the current table maximum of ${ceiling}`);
   }
@@ -473,63 +537,57 @@ export async function startPlaying(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  if (session.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+  const { session, result: startedPlayingAt } = await mutateSessionState(
+    sessionId,
+    async (state, tx, row) => {
+      if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+      // Under the lock, so two hosts tapping together cannot both start a night
+      // and stamp it with two different times.
+      if (state.startedPlayingAt) throw new HttpError(409, 'This night has already started');
 
-  const state = session.engineState as unknown as OfflineEngineState;
-  if (state.startedPlayingAt) throw new HttpError(409, 'This night has already started');
+      // Ready means seated AND holding chips. Somebody with an approved buy-in
+      // is ready whatever else is outstanding; somebody still waiting on
+      // approval is not, which is exactly what the lobby shows them as.
+      const approved = await tx.buyInRequest.findMany({
+        where: { sessionId, status: 'approved' },
+        select: { userId: true },
+      });
+      const seated = new Set(state.activePlayerUids || []);
+      const ready = new Set(approved.map((r) => r.userId).filter((u) => seated.has(u)));
+      if (ready.size < 2) {
+        throw new HttpError(409, 'A night needs at least two players with chips before it can start');
+      }
 
-  // Ready means seated AND holding chips. Somebody with an approved buy-in is
-  // ready whatever else is outstanding; somebody still waiting on approval is
-  // not, which is exactly what the lobby shows them as.
-  const approved = await prisma.buyInRequest.findMany({
-    where: { sessionId, status: 'approved' },
-    select: { userId: true },
-  });
-  const seated = new Set(state.activePlayerUids || []);
-  const ready = new Set(approved.map((r) => r.userId).filter((u) => seated.has(u)));
-  if (ready.size < 2) {
-    throw new HttpError(409, 'A night needs at least two players with chips before it can start');
-  }
+      const at = new Date().toISOString();
+      return { state: { ...state, startedPlayingAt: at }, result: at };
+    }
+  );
 
-  const startedPlayingAt = new Date().toISOString();
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId },
-    data: { engineState: { ...state, startedPlayingAt } as any },
-  });
-
-  emitToClub(clubId, 'club:session-started-playing', {
-    sessionId, startedPlayingAt, session: serialize(row as unknown as SessionRow),
-  });
-  return serialize(row as unknown as SessionRow);
+  emitToClub(clubId, 'club:session-started-playing', { sessionId, startedPlayingAt, session });
+  return session;
 }
 
 export async function requestCashOut(sessionId: string, clubId: string, userId: string, amount: number) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  if (session.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+  const { session, result } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    if (!(state.activePlayerUids || []).includes(userId)) {
+      throw new HttpError(409, 'That player is not seated at this table');
+    }
+    const existing = (state.cashOuts || []).find((c) => c.userId === userId);
+    if (existing) {
+      throw new HttpError(409, existing.status === 'pending'
+        ? 'A cash-out is already awaiting confirmation for that player'
+        : 'That player has already cashed out');
+    }
 
-  const state = session.engineState as unknown as OfflineEngineState;
-  if (!(state.activePlayerUids || []).includes(userId)) {
-    throw new HttpError(409, 'That player is not seated at this table');
-  }
-  const existing = (state.cashOuts || []).find((c) => c.userId === userId);
-  if (existing) {
-    throw new HttpError(409, existing.status === 'pending'
-      ? 'A cash-out is already awaiting confirmation for that player'
-      : 'That player has already cashed out');
-  }
-
-  const cashOuts = [...(state.cashOuts || []),
-    { userId, amount, status: 'pending' as const, requestedAt: new Date().toISOString() }];
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId }, data: { engineState: { ...state, cashOuts } as any } });
-
-  emitToClub(clubId, 'club:cashout-requested', {
-    sessionId, userId, amount, session: serialize(row as unknown as SessionRow),
+    const cashOuts = [...(state.cashOuts || []),
+      { userId, amount, status: 'pending' as const, requestedAt: new Date().toISOString() }];
+    return { state: { ...state, cashOuts }, result: null };
   });
-  return serialize(row as unknown as SessionRow);
+
+  void result;
+  emitToClub(clubId, 'club:cashout-requested', { sessionId, userId, amount, session });
+  return session;
 }
 
 /**
@@ -550,57 +608,54 @@ export async function decideCashOut(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
+  let expired = false;
 
-  const state = session.engineState as unknown as OfflineEngineState;
-  const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
-  if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
+  const { session } = await mutateSessionState(sessionId, async (state) => {
+    const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
+    if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
 
-  // Same reasoning as decideSitIn: close the window between expiry and sweep.
-  if (isRequestExpired(entry.requestedAt)) {
-    const cleared = await prisma.pokerSession.update({
-      where: { id: sessionId },
-      data: { engineState: clearCashOutFor(state, userId) as any },
-    });
+    // Same reasoning as decideSitIn: close the window between expiry and sweep.
+    if (isRequestExpired(entry.requestedAt)) {
+      expired = true;
+      return { state: clearCashOutFor(state, userId), result: null };
+    }
+
+    // Money moving requires a second pair of eyes, exactly as a buy-in does. A
+    // player who is also an admin standing themselves up is still the author of
+    // that request, and the last admin in the room may always approve their own
+    // so a game can never deadlock.
+    if (approve && userId === requesterId && hasOtherAdmins(club, requesterId)) {
+      throw new HttpError(403, 'Another Club Admin must confirm your own cash-out');
+    }
+
+    const finalAmount = approve && amount !== undefined ? amount : entry.amount;
+
+    // Rejecting drops the request entirely so the player can re-count and retry.
+    const cashOuts = approve
+      ? (state.cashOuts || []).map((c) =>
+          c.userId === userId
+            ? { ...c, amount: finalAmount, status: 'confirmed' as const, confirmedBy: requesterId }
+            : c)
+      : (state.cashOuts || []).filter((c) => c.userId !== userId);
+
+    // A confirmed cash-out frees the seat — they're done playing, but their
+    // figures still feed settlement.
+    const activePlayerUids = approve
+      ? (state.activePlayerUids || []).filter((u) => u !== userId)
+      : state.activePlayerUids || [];
+
+    return { state: { ...state, cashOuts, activePlayerUids }, result: null };
+  });
+
+  if (expired) {
     emitToClub(clubId, 'club:cashout-decided', {
-      sessionId, userId, approved: false, expired: true,
-      session: serialize(cleared as unknown as SessionRow),
+      sessionId, userId, approved: false, expired: true, session,
     });
     throw new HttpError(409, 'That cash-out request expired before it was confirmed — ask the player to re-count');
   }
 
-  // Money moving requires a second pair of eyes, exactly as a buy-in does. A
-  // player who is also an admin standing themselves up is still the author of
-  // that request, and the last admin in the room may always approve their own
-  // so a game can never deadlock.
-  if (approve && userId === requesterId && hasOtherAdmins(club, requesterId)) {
-    throw new HttpError(403, 'Another Club Admin must confirm your own cash-out');
-  }
-
-  const finalAmount = approve && amount !== undefined ? amount : entry.amount;
-
-  // Rejecting drops the request entirely so the player can re-count and retry.
-  const cashOuts = approve
-    ? (state.cashOuts || []).map((c) =>
-        c.userId === userId
-          ? { ...c, amount: finalAmount, status: 'confirmed' as const, confirmedBy: requesterId }
-          : c)
-    : (state.cashOuts || []).filter((c) => c.userId !== userId);
-
-  // A confirmed cash-out frees the seat — they're done playing, but their
-  // figures still feed settlement.
-  const activePlayerUids = approve
-    ? (state.activePlayerUids || []).filter((u) => u !== userId)
-    : state.activePlayerUids || [];
-
-  const row = await prisma.pokerSession.update({
-    where: { id: sessionId }, data: { engineState: { ...state, cashOuts, activePlayerUids } as any } });
-
-  emitToClub(clubId, 'club:cashout-decided', {
-    sessionId, userId, approved: approve, session: serialize(row as unknown as SessionRow),
-  });
-  return serialize(row as unknown as SessionRow);
+  emitToClub(clubId, 'club:cashout-decided', { sessionId, userId, approved: approve, session });
+  return session;
 }
 
 /**
@@ -699,66 +754,92 @@ export async function decideBuyInRequest(
   const club = await clubsService.getClubOrThrow(session.clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const req = await prisma.buyInRequest.findUnique({ where: { id: requestId } });
-  if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
-  if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');
+  let expired: { userId: string; request: unknown } | null = null;
 
-  // Same reasoning as decideSitIn: close the window between expiry and sweep.
-  if (isRequestExpired(req.createdAt)) {
-    const expiredRow = await prisma.buyInRequest.update({
-      where: { id: requestId },
-      data: { status: 'rejected', approvedBy: null },
-    });
+  /*
+   * Everything that decides the request happens inside the lock.
+   *
+   * Reading the row, checking it is still pending and then writing it was a
+   * check-then-act with a whole network round trip in the middle: two admins
+   * both read "pending", both passed the check, and both wrote. Neither was
+   * told anything, and approvedBy ended up naming whichever write landed
+   * second — the ledger crediting the admin who lost the race.
+   *
+   * The status check is now the WHERE clause of the update itself, so the
+   * database decides who won. Exactly one caller can match a pending row.
+   */
+  const { session: updatedSession, result } = await mutateSessionState(
+    sessionId,
+    async (state, tx) => {
+      const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
+      if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
+      if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');
+
+      // Same reasoning as decideSitIn: close the window between expiry and sweep.
+      if (isRequestExpired(req.createdAt)) {
+        const expiredRow = await tx.buyInRequest.update({
+          where: { id: requestId },
+          data: { status: 'rejected', approvedBy: null },
+        });
+        expired = { userId: req.userId, request: expiredRow };
+        return { state, result: { req, decided: expiredRow } };
+      }
+
+      if (approve) {
+        await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount, tx);
+        // No exception for the owner. "Nobody can give themselves chips" is the
+        // rule, and an owner who wrote the request is exactly as much its author
+        // as anyone else. A lone owner still approves their own, because then
+        // hasOtherAdmins is false — the escape hatch is being alone, not being
+        // senior.
+        if (req.requestedBy === requesterId && hasOtherAdmins(club, requesterId)) {
+          throw new HttpError(403, 'Another Club Admin must approve your own buy-in request');
+        }
+      }
+
+      // Conditional by status: the database, not this process, decides which of
+      // two simultaneous presses wins.
+      const claimed = await tx.buyInRequest.updateMany({
+        where: { id: requestId, status: 'pending' },
+        data: { status: approve ? 'approved' : 'rejected', approvedBy: requesterId },
+      });
+      if (claimed.count === 0) throw new HttpError(409, 'This request has already been decided');
+
+      const decided = await tx.buyInRequest.findUniqueOrThrow({ where: { id: requestId } });
+
+      const activePlayerUids = approve
+        ? Array.from(new Set([...(state.activePlayerUids || []), req.userId]))
+        : state.activePlayerUids || [];
+
+      return { state: { ...state, activePlayerUids }, result: { req, decided } };
+    }
+  );
+
+  // Emitted after the commit, never inside it: an event sent from within a
+  // transaction is a claim about state that may still roll back.
+  if (expired) {
     emitToClub(session.clubId, 'club:buyin-decided', {
-      sessionId, requestId, userId: req.userId, approve: false, expired: true,
-      request: expiredRow,
+      sessionId, requestId, userId: (expired as any).userId, approve: false, expired: true,
+      request: (expired as any).request,
     });
     throw new HttpError(409, 'That buy-in request expired before it was approved');
   }
 
-  if (approve) {
-    await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount);
-    // No exception for the owner. "Nobody can give themselves chips" is the
-    // rule, and an owner who wrote the request is exactly as much its author as
-    // anyone else. A lone owner still approves their own, because then
-    // hasOtherAdmins is false — the escape hatch is being alone, not being
-    // senior.
-    if (req.requestedBy === requesterId && hasOtherAdmins(club, requesterId)) {
-      throw new HttpError(403, 'Another Club Admin must approve your own buy-in request');
-    }
-  }
-
-  // The update already returns the decided row. It used to be thrown away and
-  // then fetched back by every client via refreshActiveSession -- which is why
-  // an approved request stayed on screen for a full round trip after the click.
-  const decided = await prisma.buyInRequest.update({
-    where: { id: requestId },
-    data: { status: approve ? 'approved' : 'rejected', approvedBy: requesterId },
-  });
-
-  if (approve) {
-    const state = session.engineState as unknown as OfflineEngineState;
-    const activePlayerUids = Array.from(new Set([...(state.activePlayerUids || []), req.userId]));
-    await prisma.pokerSession.update({
-      where: { id: sessionId },
-      data: { engineState: { ...state, activePlayerUids } as any },
-    });
-  }
-
   emitToClub(session.clubId, 'club:buyin-decided', {
-    sessionId, requestId, userId: req.userId, approve, request: decided,
+    sessionId, requestId, userId: result.req.userId, approve, request: result.decided,
   });
 
   // Only approvals are messaged, and never awaited — a slow or failing SMS
   // provider must not hold up (or fail) the approval that already committed.
   if (approve) {
     void notificationsService.notifyBuyInApproved({
-      userId: req.userId,
+      userId: result.req.userId,
       clubId: session.clubId,
-      amount: req.amount,
+      amount: result.req.amount,
     });
   }
 
+  void updatedSession;
   return getActiveOfflineSession(session.clubId);
 }
 
