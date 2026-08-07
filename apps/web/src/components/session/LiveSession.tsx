@@ -64,6 +64,14 @@ export interface LiveSessionProps {
   /** Admins only. Opens the pick-a-person sheet; the amount is asked for after. */
   onAddPlayer?: () => void;
   /**
+   * A player asking for chips of their own, from the stud on the felt.
+   *
+   * The same destination their own seat leads to, reached without first having
+   * to work out that their face is a button — and one tap shorter, because the
+   * stud already means chips.
+   */
+  onAskForChips?: () => void;
+  /**
    * The night's story, newest first. Derived rather than streamed — see
    * night-feed.ts — so it is complete the moment the screen opens.
    */
@@ -93,6 +101,38 @@ const nameOf = (
   currentUserId: string
 ) => (uid === currentUserId ? 'You' : users[uid]?.displayName || 'Player');
 
+/**
+ * What the brass stud does for whoever is holding the phone.
+ *
+ * One control and one meaning — chips onto this table — with two subjects. An
+ * admin has to be asked whose, because they can bank anybody. A player is the
+ * answer already, so they are taken straight to the amount.
+ *
+ * It was admin-only when it was built, which made it a host's tool sitting in
+ * the middle of everybody's table. A player's route to chips was to work out
+ * that their own face was a button, which is a thing you either know or you do
+ * not.
+ */
+function studFor(
+  isAdmin: boolean,
+  hasSeat: boolean,
+  onAddPlayer?: () => void,
+  onAskForChips?: () => void
+): { label: string; onPress: () => void } | undefined {
+  if (isAdmin && onAddPlayer) {
+    return { label: 'Add a player to the table', onPress: onAddPlayer };
+  }
+  if (onAskForChips) {
+    // The same tap and the same sheet, but not the same act: somebody with no
+    // chair is joining, and only somebody already sitting in one is topping up.
+    return {
+      label: hasSeat ? 'Ask for chips' : 'Join the table',
+      onPress: onAskForChips,
+    };
+  }
+  return undefined;
+}
+
 export const LiveSession: React.FC<LiveSessionProps> = ({
   club,
   session,
@@ -108,6 +148,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   ceiling,
   onSettleNight,
   onAddPlayer,
+  onAskForChips,
   feed,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
@@ -161,6 +202,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onSelectPlayer={onSelectPlayer}
           formatAmount={formatAmount}
           onAddPlayer={onAddPlayer}
+          onAskForChips={onAskForChips}
           feed={feed}
         />
       </div>
@@ -341,8 +383,12 @@ const Stage: React.FC<{
   onSelectPlayer: (userId: string) => void;
   formatAmount: (n: number) => string;
   onAddPlayer?: () => void;
+  onAskForChips?: () => void;
   feed: FeedEvent[];
-}> = ({ night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount, onAddPlayer, feed }) => {
+}> = ({
+  night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount,
+  onAddPlayer, onAskForChips, feed,
+}) => {
   // The feed speaks in the second person wherever it is about the viewer, which
   // is what makes it their view of the night rather than a system log.
   const feedNameOf = (uid: string) => nameOf(users, uid, currentUserId);
@@ -391,7 +437,7 @@ const Stage: React.FC<{
               users={users}
               onSelectPlayer={onSelectPlayer}
               formatAmount={formatAmount}
-              onAddPlayer={isAdmin ? onAddPlayer : undefined}
+              stud={studFor(isAdmin, night.mySeat !== null, onAddPlayer, onAskForChips)}
             />
 
             {night.mySeat && night.mySeat.state !== 'cashedOut' && (

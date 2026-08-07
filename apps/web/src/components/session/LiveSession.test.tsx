@@ -335,9 +335,17 @@ describe('the room under the table', () => {
   });
 });
 
-describe('bringing someone to the table', () => {
-  // The control lives on the felt, so the night has to have reached it — the
-  // arrival phase is a guest list, and every name on it is already tappable.
+/**
+ * The brass stud: one control, one meaning — chips onto this table.
+ *
+ * Two subjects, though. An admin can bank anybody, so they are asked whose; a
+ * player is the answer already. It was admin-only when it was built, which put
+ * a host's tool in the middle of everybody's table and left a player's only
+ * route to chips as working out that their own face was a button.
+ */
+describe('the stud on the felt', () => {
+  // It lives on the felt, so the night has to have reached it — the arrival
+  // phase is a guest list, and every name on it is already tappable.
   const running = (over: Partial<LiveSessionProps> = {}) =>
     renderScreen(
       { session: session({ activePlayerUids: ['host', 'priya'] }), ...over },
@@ -349,14 +357,49 @@ describe('bringing someone to the table', () => {
       ]
     );
 
-  it('gives an admin one control on the felt itself', () => {
-    running();
-    expect(screen.getByRole('button', { name: /add a player/i })).toBeInTheDocument();
+  it('asks an admin who the chips are for', async () => {
+    const onAddPlayer = vi.fn();
+    running({ onAddPlayer });
+    await userEvent.click(screen.getByRole('button', { name: /add a player/i }));
+    expect(onAddPlayer).toHaveBeenCalledTimes(1);
   });
 
-  it('offers it to nobody else, absent rather than disabled', () => {
-    running({ isAdmin: false });
-    expect(screen.queryByRole('button', { name: /add a player/i })).not.toBeInTheDocument();
+  it('takes a player straight to the amount, since they are the answer', async () => {
+    const onAskForChips = vi.fn();
+    const onAddPlayer = vi.fn();
+    running({ isAdmin: false, onAskForChips, onAddPlayer });
+
+    await userEvent.click(screen.getByRole('button', { name: /ask for chips/i }));
+    expect(onAskForChips).toHaveBeenCalledTimes(1);
+    // A player is never offered the pick-a-person step, even if the handler is
+    // threaded down to them.
+    expect(onAddPlayer).not.toHaveBeenCalled();
+  });
+
+  it('names the act, which is not the same act at every seat', () => {
+    // Same tap, same sheet, different thing happening: somebody with no chair
+    // is joining, and only somebody already in one is topping up.
+    running({ isAdmin: false, currentUserId: 'host', onAskForChips: vi.fn() });
+    expect(screen.getByRole('button', { name: /ask for chips/i })).toBeInTheDocument();
+    cleanup();
+
+    renderScreen(
+      { session: session({ activePlayerUids: ['priya'] }), currentUserId: 'host', isAdmin: false, onAskForChips: vi.fn() },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(60),
+        },
+      ]
+    );
+    expect(screen.getByRole('button', { name: /join the table/i })).toBeInTheDocument();
+  });
+
+  it('never asks an admin to pick when there is nobody to pick', () => {
+    // Absent rather than dead. A stud that opened an empty list would be a
+    // control that lies about having something behind it.
+    running({ onAddPlayer: undefined, onAskForChips: undefined });
+    expect(screen.queryByRole('button', { name: /add a player|ask for chips/i })).not.toBeInTheDocument();
   });
 });
 

@@ -47,6 +47,14 @@ export interface PlayerSheetProps {
   onStandUp: (amount: number) => void;
   /** The confirmed figure, which an admin may correct from what was submitted. */
   onConfirmCount: (amount: number) => void;
+  /**
+   * Skip the menu and open on the bank chooser.
+   *
+   * Set by the brass stud on the felt, which already means "chips": a seated
+   * player who taps it has said what they want, and showing them a sheet with
+   * "Buy more chips" on it asks the question twice.
+   */
+  askForChips?: boolean;
   busy?: boolean;
 }
 
@@ -84,13 +92,14 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
   onBuyMore,
   onStandUp,
   onConfirmCount,
+  askForChips = false,
   busy = false,
 }) => {
   const state = seat?.state ?? null;
 
   // Somebody with no seat has exactly one thing to decide, so the sheet opens on
   // it rather than on a button that leads to it.
-  const [mode, setMode] = useState<Mode>(() => (seat ? 'idle' : 'bank'));
+  const [mode, setMode] = useState<Mode>(() => (seat && !askForChips ? 'idle' : 'bank'));
   const [choice, setChoice] = useState<number | null>(null);
   const [custom, setCustom] = useState('');
   // The count an admin is confirming starts at what the player submitted, so
@@ -100,12 +109,12 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
   // Keyed on the person, not on the seat: a seat appearing means they just
   // joined, and resetting on that would throw away what they are looking at.
   useEffect(() => {
-    setMode(seat ? 'idle' : 'bank');
+    setMode(seat && !askForChips ? 'idle' : 'bank');
     setChoice(null);
     setCustom('');
     setCount(seat?.pendingCashOut != null ? String(seat.pendingCashOut) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, askForChips]);
 
   const close = () => {
     onClose();

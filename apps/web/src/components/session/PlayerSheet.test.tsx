@@ -121,6 +121,34 @@ describe('what they have put in', () => {
   });
 });
 
+/**
+ * Arriving from the brass stud, which already means chips.
+ *
+ * Tapping your own seat is a general-purpose question — chips, or standing up?
+ * Tapping the stud is not: you have already said what you want, and a sheet
+ * offering "Buy more chips" would be asking it twice.
+ */
+describe('when the stud is the way in', () => {
+  it('opens a seated player straight on the amount', () => {
+    show({ seat: seat(), isSelf: true, isAdmin: false, askForChips: true });
+    expect(screen.getByText(/how many chips/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /buy more chips/i })).not.toBeInTheDocument();
+  });
+
+  it('still offers the menu when the seat was the way in', () => {
+    show({ seat: seat(), isSelf: true, isAdmin: false });
+    expect(screen.getByRole('button', { name: /buy more chips/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /stand up/i })).toBeInTheDocument();
+  });
+
+  it('changes nothing for somebody who has no seat yet', () => {
+    // They were already opening on the bank chooser — the stud is just a
+    // second door into the same room.
+    show({ seat: null, isSelf: true, askForChips: true });
+    expect(screen.getByText(/choose your starting bank/i)).toBeInTheDocument();
+  });
+});
+
 describe('choosing a bank', () => {
   it('states the ceiling as a limit and refuses the options above it', () => {
     show({ seat: null, isSelf: true, ceiling: 3000 });

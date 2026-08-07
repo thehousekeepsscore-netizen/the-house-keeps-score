@@ -37,8 +37,15 @@ export interface PokerTableProps {
   onSelectPlayer: (userId: string) => void;
   /** The club's own formatter — respects the chips/₹ toggle and devaluation. */
   formatAmount: (n: number) => string;
-  /** Admins only. Absent rather than disabled for everyone else. */
-  onAddPlayer?: () => void;
+  /**
+   * The brass stud on the felt, and what it does for THIS viewer.
+   *
+   * One control, one meaning — chips onto this table — and two subjects. An
+   * admin is asked whose; a player is the answer already. Passed as a label
+   * with its action rather than as a boolean, because the accessible name has
+   * to say which of the two it is.
+   */
+  stud?: { label: string; onPress: () => void };
 }
 
 /**
@@ -204,7 +211,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
   users,
   onSelectPlayer,
   formatAmount,
-  onAddPlayer,
+  stud,
 }) => {
   const seats = night.seats;
   const count = Math.max(seats.length, 1);
@@ -344,18 +351,20 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                 happens to hover over content; this is a brass stud set into the
                 cloth. It is the only control that lives on the felt, and it
                 earns that by being the one thing a host does that is not about
-                a person already seated.
+                a person already seated — and, for a player, the shortest way
+                to say "I want chips" without first having to work out that
+                their own face is a button.
 
                 In the centre column rather than at the felt's bottom edge,
                 which is where it started: down there it sat underneath the
                 bottom-centre seat — always the viewer's own — and the two
                 overlapped at every player count.
               */}
-              {onAddPlayer && (
+              {stud && (
                 <button
                   type="button"
-                  onClick={onAddPlayer}
-                  aria-label="Add a player to the table"
+                  onClick={stud.onPress}
+                  aria-label={stud.label}
                   className="table-stud mt-3"
                 >
                   <span aria-hidden="true">+</span>

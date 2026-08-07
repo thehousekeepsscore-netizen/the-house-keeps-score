@@ -50,9 +50,13 @@ export const SessionPreview: React.FC = () => {
   // table can be judged with the felt still full.
   const [confirmed, setConfirmed] = useState<{ userId: string; amount: number }[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [asksChips, setAsksChips] = useState(false);
   // ?me=out starts the viewer outside the game, which is the only way to see
   // the arrival journey — everything else assumes you are already seated.
   const outside = params.get('me') === 'out';
+  // ?admin=0 is the majority case — roughly four opens in five are a player,
+  // and the two roles get different controls on the same felt.
+  const isAdmin = params.get('admin') !== '0';
 
   const uids = Array.from({ length: count }, (_, i) => `u${i}`);
   // Every club member, not just the ones seated — Add Player lists the people
@@ -122,7 +126,7 @@ export const SessionPreview: React.FC = () => {
       : []),
   ];
 
-  const night = deriveNight({ session, buyIns, currentUserId: me, isAdmin: true });
+  const night = deriveNight({ session, buyIns, currentUserId: me, isAdmin });
   const feed = deriveFeed({ session, buyIns, buyInMode: 'MATCH_HIGHEST', clubMaxBuyIn: club.maxBuyIn ?? 5000 });
 
   /*
@@ -155,16 +159,17 @@ export const SessionPreview: React.FC = () => {
         session={session}
         night={night}
         currentUserId={me}
-        isAdmin
+        isAdmin={isAdmin}
         users={users}
         connection="live"
         waiting={waiting}
         formatAmount={(n) => n.toLocaleString()}
         onStartSession={() => {}}
-        onSelectPlayer={setPicked}
+        onSelectPlayer={(uid) => { setAsksChips(false); setPicked(uid); }}
         ceiling={ceiling}
         onSettleNight={() => {}}
         onAddPlayer={() => setAddOpen(true)}
+        onAskForChips={() => { setAsksChips(true); setPicked(me); }}
         feed={feed}
       />
 
@@ -180,12 +185,13 @@ export const SessionPreview: React.FC = () => {
       {picked && (
         <PlayerSheet
           open
-          onClose={() => setPicked(null)}
+          onClose={() => { setAsksChips(false); setPicked(null); }}
           name={picked === me ? 'You' : users[picked]?.displayName ?? 'Player'}
           userId={picked}
           seat={[...night.seats, ...night.room].find((s) => s.userId === picked) ?? null}
           isSelf={picked === me}
-          isAdmin
+          isAdmin={isAdmin}
+          askForChips={asksChips}
           formatAmount={(n) => n.toLocaleString()}
           bankOptions={[club.minBuyIn ?? 1000, 3000, club.maxBuyIn ?? 5000]}
           ceiling={ceiling}

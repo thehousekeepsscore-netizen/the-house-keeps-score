@@ -1953,6 +1953,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [sheetBusy, setSheetBusy] = useState(false);
   const [settlePlaceholderOpen, setSettlePlaceholderOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
+  // Set only by the stud on the felt, which already means chips — so the sheet
+  // opens on the amount rather than on a menu offering to ask the same thing.
+  const [sheetAsksForChips, setSheetAsksForChips] = useState(false);
 
   /**
    * The night's story, recovered from what the client already holds.
@@ -2351,10 +2354,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onStartSession={handleStartSession}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
-                onSelectPlayer={setSheetUid}
+                onSelectPlayer={(uid) => { setSheetAsksForChips(false); setSheetUid(uid); }}
                 ceiling={buyInCeiling}
                 onSettleNight={() => setSettlePlaceholderOpen(true)}
                 onAddPlayer={() => setAddPlayerOpen(true)}
+                onAskForChips={() => {
+                  setSheetAsksForChips(true);
+                  setSheetUid(currentUser.uid);
+                }}
                 feed={nightFeed}
               />
             )}
@@ -2369,6 +2376,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               candidates={addablePlayers}
               onSelect={(uid) => {
                 setAddPlayerOpen(false);
+                setSheetAsksForChips(false);
                 setSheetUid(uid);
               }}
             />
@@ -2379,7 +2387,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {showNextLiveSession && sheetUid && (
               <PlayerSheet
                 open
-                onClose={() => setSheetUid(null)}
+                onClose={() => { setSheetAsksForChips(false); setSheetUid(null); }}
                 name={sheetUid === currentUser.uid ? 'You' : allUsers[sheetUid]?.displayName || 'Player'}
                 userId={sheetUid}
                 avatarUrl={allUsers[sheetUid]?.avatarUrl}
@@ -2390,6 +2398,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 bankOptions={bankOptions}
                 ceiling={buyInCeiling}
                 busy={sheetBusy}
+                askForChips={sheetAsksForChips}
                 onJoin={takeBank}
                 onBuyMore={takeBank}
                 onStandUp={standUp}
