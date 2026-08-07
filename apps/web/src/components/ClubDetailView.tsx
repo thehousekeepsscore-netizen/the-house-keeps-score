@@ -5,6 +5,7 @@ import { useNextLiveSession } from '../lib/feature-flags';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { ActionQueue, type QueueItem } from './session/ActionQueue';
+import { type WaitingRow } from './session/WaitingForYou';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { useAction } from '../lib/use-action';
@@ -1862,6 +1863,65 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
   ]);
 
+  /**
+   * The same three request types, as one list of people.
+   *
+   * night.queue decides what is waiting and in what order; this attaches the
+   * faces, the permission rules and the mutations. Splitting it that way keeps
+   * "who is waiting" pure and testable, and keeps the permission rules next to
+   * the other permission rules.
+   */
+  const waitingForYou = useMemo<WaitingRow[]>(() => {
+    if (!activeSession) return [];
+    const otherAdmins = (club.adminUids || []).filter(
+      (u) => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy
+    );
+
+    return night.queue.map((q) => {
+      const name = q.userId === currentUser.uid ? 'You' : allUsers[q.userId]?.displayName || 'Player';
+      const base = { ...q, name, avatarUrl: allUsers[q.userId]?.avatarUrl };
+
+      if (q.kind === 'buy-in') {
+        const req = buyInRequests.find((r) => r.id === q.id);
+        // An admin may not wave through a buy-in that credits themselves —
+        // mirrors offlineSessions.service.ts. Naming an admin who is actually
+        // here matters: a block that names someone who went home costs the
+        // host three taps to discover.
+        const blocked =
+          req && req.requestedBy === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0
+            ? 'Another admin needs to approve this one.'
+            : null;
+        return {
+          ...base,
+          blockedReason: blocked,
+          pending: req ? approveBuyInAction.isPending(req.id) || rejectBuyInAction.isPending(req.id) : false,
+          onApprove: () => req && approveBuyInAction.run(req),
+          onDismiss: () => req && rejectBuyInAction.run(req),
+        };
+      }
+
+      if (q.kind === 'sit-in') {
+        return {
+          ...base,
+          pending: decideSitInAction.isPending(q.userId),
+          onApprove: () => decideSitInAction.run(q.userId, true),
+          onDismiss: () => decideSitInAction.run(q.userId, false),
+        };
+      }
+
+      return {
+        ...base,
+        pending: decideCashOutAction.isPending(q.userId),
+        onApprove: () => decideCashOutAction.run(q.userId, true),
+        onDismiss: () => decideCashOutAction.run(q.userId, false),
+      };
+    });
+  }, [
+    activeSession, night.queue, allUsers, buyInRequests, currentUser.uid,
+    club.adminUids, club.ownerUid, club.createdBy, isOwner, isSuperUser,
+    approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
+  ]);
+
   const approveChangeAction = useAction(handleApproveChangeRequest);
   const rejectChangeAction = useAction(handleRejectChangeRequest);
   const restoreSessionAction = useAction(handleRestoreSession);
@@ -2111,6 +2171,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 connection={connection}
                 onStartSession={handleStartSession}
                 formatAmount={formatUnit}
+                waiting={waitingForYou}
                 onSelectPlayer={() => {
                   /* the player sheet lands in the next milestone */
                 }}

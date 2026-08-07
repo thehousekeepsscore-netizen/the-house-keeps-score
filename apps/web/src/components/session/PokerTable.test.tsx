@@ -161,7 +161,8 @@ describe('a seat says what it is doing', () => {
     // Two renderings of one vocabulary: the felt has ~90px per seat so it shows
     // the caption, while the accessible name carries the full sentence. Both
     // ask about the player; neither counts chips they do not have.
-    expect(seatNames()[0]).toMatch(/asked for 3,000/i);
+    // Seated already, so this is more chips rather than an arrival.
+    expect(seatNames()[0]).toMatch(/wants 3,000 more/i);
     expect(screen.getByText(/wants 3,000/i)).toBeInTheDocument();
     expect(seatNames()[0]).not.toMatch(/\bin 0\b/i);
   });
@@ -171,9 +172,9 @@ describe('a seat says what it is doing', () => {
     expect(seatNames()[0]).toMatch(/no chips yet/i);
   });
 
-  it('waiting for a seat', () => {
+  it('wants to join, having asked for a seat', () => {
     table({ pendingSitInUids: ['p1'], sitInRequestedAt: { p1: ago(1) } }, []);
-    expect(seatNames()[0]).toMatch(/wants a seat/i);
+    expect(seatNames()[0]).toMatch(/wants to join/i);
   });
 
   it('counting out', () => {
@@ -184,10 +185,10 @@ describe('a seat says what it is doing', () => {
       },
       [buyIn('p1')]
     );
-    expect(seatNames()[0]).toMatch(/counting out/i);
+    expect(seatNames()[0]).toMatch(/counting 8,200/i);
   });
 
-  it('counted out — past tense, and still at the table', () => {
+  it('stood up — past tense, and still at the table', () => {
     table(
       {
         activePlayerUids: ['p2'],
@@ -197,7 +198,7 @@ describe('a seat says what it is doing', () => {
     );
     const names = seatNames();
     expect(names).toHaveLength(2);
-    expect(names.join(' ')).toMatch(/out 8,200/i);
+    expect(names.join(' ')).toMatch(/stood up with 8,200/i);
   });
 });
 

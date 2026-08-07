@@ -71,6 +71,14 @@ export interface QueuedRequest {
   id: string;
   kind: QueueKind;
   userId: string;
+  /**
+   * Whether this is someone arriving or someone already at the table.
+   *
+   * Both are a pending buy-in to the server, and they are completely different
+   * events to a human: "Priya wants to join" and "Rahul needs more chips" are
+   * the same row in the database and never the same sentence.
+   */
+  joining: boolean;
   /** Chips. Sit-ins have no amount. */
   amount?: number;
   requestedAt?: string;
@@ -195,8 +203,21 @@ export function deriveNight(input: NightInput): Night {
     return Number.isFinite(asked) ? asked : Number.POSITIVE_INFINITY;
   };
 
+  // Someone who has asked to join is at the table the moment they ask.
+  //
+  // They have no seat on the server until an admin approves — but making them
+  // wait on a separate screen while the table carries on without them is the
+  // difference between joining a game and filing a request. Their seat appears
+  // straight away, waiting, and everyone else can see they are about to sit
+  // down. Approval then turns that seat into a playing one, rather than
+  // teleporting a new person onto the felt.
   const everyone = Array.from(
-    new Set([...activeUids, ...pendingSitInUids, ...cashOuts.map((c) => c.userId)])
+    new Set([
+      ...activeUids,
+      ...pendingSitInUids,
+      ...pendingBuyIns.map((r) => r.userId),
+      ...cashOuts.map((c) => c.userId),
+    ])
   ).sort((a, b) => joinedAt(a) - joinedAt(b) || (a < b ? -1 : a > b ? 1 : 0));
 
   const seats: Seat[] = everyone.map((userId) => {
@@ -205,18 +226,24 @@ export function deriveNight(input: NightInput): Night {
     const pendingBuyIn = pendingBuyIns.find((r) => r.userId === userId) ?? null;
     const totalBuyIn = bankByUid.get(userId) ?? 0;
 
-    // Order matters, and it is the rule that pending state never masquerades
-    // as settled state: an unresolved question about a player outranks any
-    // fact about them.
-    const state: SeatState = pendingSitInUids.includes(userId)
-      ? 'waitingToSit'
-      : pendingCashOut
-        ? 'countingOut'
-        : confirmedCashOut
-          ? 'cashedOut'
-          : totalBuyIn > 0
-            ? 'inPlay'
-            : 'seatedNoChips';
+    // Order matters, and it is the rule that pending state never masquerades as
+    // settled state: an unresolved question about a player outranks any fact
+    // about them.
+    //
+    // "Seated" is the hinge. Someone with a pending buy-in who is already at
+    // the table is buying more chips; the same request from someone who is not
+    // is them arriving. Same row on the server, different person to talk to.
+    const seated = activeUids.includes(userId);
+    const state: SeatState =
+      !seated && (pendingSitInUids.includes(userId) || pendingBuyIn)
+        ? 'waitingToSit'
+        : pendingCashOut
+          ? 'countingOut'
+          : confirmedCashOut
+            ? 'cashedOut'
+            : totalBuyIn > 0
+              ? 'inPlay'
+              : 'seatedNoChips';
 
     return {
       userId,
@@ -235,6 +262,7 @@ export function deriveNight(input: NightInput): Night {
       id: r.id,
       kind: 'buy-in' as const,
       userId: r.userId,
+      joining: !activeUids.includes(r.userId),
       amount: r.amount,
       requestedAt: r.createdAt,
       msRemaining: msRemaining(r.createdAt, now),
@@ -245,6 +273,7 @@ export function deriveNight(input: NightInput): Night {
         id: `sit-in:${userId}`,
         kind: 'sit-in' as const,
         userId,
+        joining: true,
         requestedAt,
         msRemaining: msRemaining(requestedAt, now),
       };
@@ -253,6 +282,7 @@ export function deriveNight(input: NightInput): Night {
       id: `cash-out:${c.userId}`,
       kind: 'cash-out' as const,
       userId: c.userId,
+      joining: false,
       amount: c.amount,
       requestedAt: c.requestedAt,
       msRemaining: msRemaining(c.requestedAt, now),

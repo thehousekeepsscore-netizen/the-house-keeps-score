@@ -4,6 +4,7 @@ import { Club, PokerSession } from '../../types';
 import { Button } from '../ui/Button';
 import { PokerTable } from './PokerTable';
 import { seatSentence } from '../../lib/seat-vocabulary';
+import { WaitingForYou, WaitingRow } from './WaitingForYou';
 
 /**
  * The live session, rebuilt.
@@ -38,6 +39,8 @@ export interface LiveSessionProps {
   connection: 'live' | 'reconnecting' | 'offline';
   onStartSession: () => void;
   onSelectPlayer: (userId: string) => void;
+  /** Built by the screen that owns the mutations, not by the queue. */
+  waiting: WaitingRow[];
   /**
    * The club's own formatter. Threaded in rather than written here, because
    * the club decides whether a figure is chips or rupees — a club with
@@ -81,6 +84,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onStartSession,
   onSelectPlayer,
   formatAmount,
+  waiting,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
 
@@ -95,6 +99,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       />
 
       <div className="flex-1 min-h-0">
+        {/* Lead with what needs a decision. This sits above the stage in every
+            running phase, not just one, because a request does not care which
+            phase the night is in. */}
+        {waiting.length > 0 && night.phase !== 'dark' && night.phase !== 'closed' && (
+          <div className="px-3 pb-3">
+            <WaitingForYou rows={waiting} formatAmount={formatAmount} />
+          </div>
+        )}
+
         <Stage
           night={night}
           club={club}

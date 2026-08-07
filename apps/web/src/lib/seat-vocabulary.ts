@@ -26,13 +26,19 @@ function subject(seat: Seat): Seat['state'] | 'pendingBuyIn' {
 export function seatSentence(seat: Seat, amount: (n: number) => string): string {
   switch (subject(seat)) {
     case 'pendingBuyIn':
-      return `asked for ${amount(seat.pendingBuyIn ?? 0)}`;
+      // Arriving reads differently from topping up, and the seat already knows
+      // which one this is: a player not yet at the table is `waitingToSit`.
+      return seat.state === 'waitingToSit'
+        ? `wants to join with ${amount(seat.pendingBuyIn ?? 0)}`
+        : `wants ${amount(seat.pendingBuyIn ?? 0)} more`;
     case 'waitingToSit':
-      return 'wants a seat';
+      return 'wants to join';
     case 'countingOut':
-      return `counting out ${amount(seat.pendingCashOut ?? 0)}`;
+      return `counting ${amount(seat.pendingCashOut ?? 0)}`;
     case 'cashedOut':
-      return `counted out ${amount(seat.confirmedCashOut ?? 0)}`;
+      // "Stood up", not "cashed out". One is what a person did; the other is
+      // what the ledger recorded about it.
+      return `stood up with ${amount(seat.confirmedCashOut ?? 0)}`;
     case 'seatedNoChips':
       return 'no chips yet';
     default:
@@ -46,11 +52,11 @@ export function seatCaption(seat: Seat, amount: (n: number) => string): string {
     case 'pendingBuyIn':
       return `wants ${amount(seat.pendingBuyIn ?? 0)}`;
     case 'waitingToSit':
-      return 'wants a seat';
+      return 'joining';
     case 'countingOut':
-      return 'counting out';
+      return 'counting up';
     case 'cashedOut':
-      return `out ${amount(seat.confirmedCashOut ?? 0)}`;
+      return `stood up ${amount(seat.confirmedCashOut ?? 0)}`;
     case 'seatedNoChips':
       return 'no chips yet';
     default:

@@ -63,6 +63,7 @@ function renderScreen(over: Partial<LiveSessionProps> = {}, buyIns: BuyInRequest
     users: { host: { displayName: 'Rahul' }, priya: { displayName: 'Priya' }, arjun: { displayName: 'Arjun' } },
     connection: 'live',
     formatAmount: (n: number) => n.toLocaleString(),
+    waiting: [],
     onStartSession: vi.fn(),
     onSelectPlayer: vi.fn(),
     ...over,
@@ -175,7 +176,8 @@ describe('seat vocabulary', () => {
         },
       ]
     );
-    expect(screen.getByText(/asked for 3,000/i)).toBeInTheDocument();
+    // Arjun is already at the table, so this is a top-up, not an arrival.
+    expect(screen.getByText(/wants 3,000 more/i)).toBeInTheDocument();
     expect(screen.queryByText(/^in 0$/i)).not.toBeInTheDocument();
   });
 
@@ -200,9 +202,9 @@ describe('seat vocabulary', () => {
     // and its accessible name carries the sentence — two renderings of one
     // vocabulary (lib/seat-vocabulary.ts), so they cannot drift apart.
     const seats = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? '');
-    expect(seats.join(' | ')).toMatch(/wants a seat/i);
+    expect(seats.join(' | ')).toMatch(/wants to join/i);
     expect(seats.join(' | ')).toMatch(/in 5,000/i);
-    expect(seats.join(' | ')).toMatch(/counted out 4,100/i);
+    expect(seats.join(' | ')).toMatch(/stood up with 4,100/i);
   });
 });
 
