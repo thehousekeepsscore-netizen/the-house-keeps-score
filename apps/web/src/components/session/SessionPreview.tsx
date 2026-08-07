@@ -210,6 +210,10 @@ export const SessionPreview: React.FC = () => {
             if (picked) setCashOut({ userId: picked, amount });
             setPicked(null);
           }}
+          onSitBackDown={() => {
+            if (picked) setConfirmed((c) => c.filter((x) => x.userId !== picked));
+            setPicked(null);
+          }}
           onConfirmCount={(amount) => {
             if (cashOut) setConfirmed((c) => [...c, { userId: cashOut.userId, amount }]);
             setCashOut(null);

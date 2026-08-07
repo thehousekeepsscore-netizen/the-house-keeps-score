@@ -2086,6 +2086,21 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }, 'Please try again.');
 
   /** The confirmed figure, which may differ from what the player counted. */
+  /**
+   * Back to the table with the chips they stood up with.
+   *
+   * The sit-in path, not the buy-in path, and that is the whole point: an
+   * approval here VOIDS the confirmed cash-out (see decideSitIn) and seats
+   * them, so the chips they carry back are the ones already counted. Routing
+   * this through a buy-in would add those chips to what they have put in a
+   * second time and settle them that much down.
+   */
+  const sitBackDown = () =>
+    runSheet(async () => {
+      if (!activeSession || !sheetUid) return;
+      applySession(await offlineSessionsApi.requestSitIn(club.id, activeSession.id));
+    }, 'Please try again.');
+
   const confirmCount = (amount: number) =>
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
@@ -2427,6 +2442,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onBuyMore={takeBank}
                 onStandUp={standUp}
                 onConfirmCount={confirmCount}
+                onSitBackDown={sitBackDown}
               />
             )}
 

@@ -18,7 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
-const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession } =
+const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession, requestSitIn, decideSitIn } =
   await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -270,5 +270,87 @@ describe('the night begins when the host says so', () => {
   it('is not a thing a player can do', async () => {
     const s: any = await openTable();
     await expect(startPlaying(s.id, clubId, playerId, false)).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+/**
+ * You cannot come back short of what you left with.
+ *
+ * The table-stakes rule every home game already plays by. A player who stands
+ * up with 7,200 and sits back down with 1,000 has taken 6,200 out of the night
+ * mid-game: everyone else's money is still on the felt and theirs is in their
+ * pocket. Poker calls it going south, and it is the one move that changes the
+ * economics of an evening without anybody losing a hand.
+ */
+describe('going south', () => {
+  async function standPlayerUp(amount: number) {
+    await requestCashOut(sessionId, clubId, playerId, amount);
+    await decideCashOut(sessionId, clubId, ownerId, false, playerId, true);
+  }
+
+  it('refuses a buy-in smaller than the stack they stood up with', async () => {
+    await standPlayerUp(7_200);
+    await expect(requestBuyIn(sessionId, clubId, playerId, 1_000)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('allows exactly what they left with', async () => {
+    await standPlayerUp(7_200);
+    const req = await requestBuyIn(sessionId, clubId, playerId, 7_200);
+    expect(req.amount).toBe(7_200);
+  });
+
+  it('allows more than they left with', async () => {
+    await standPlayerUp(7_200);
+    const req = await requestBuyIn(sessionId, clubId, playerId, 9_000);
+    expect(req.amount).toBe(9_000);
+  });
+
+  it('does not constrain an ordinary top-up by somebody still sitting', async () => {
+    // The floor only exists while a confirmed cash-out is standing.
+    const req = await requestBuyIn(sessionId, clubId, playerId, 500);
+    expect(req.amount).toBe(500);
+  });
+
+  it('does not constrain somebody who has only ASKED to stand up', async () => {
+    // A submitted count is a claim nobody has agreed to. They are still sitting
+    // and their chips are still on the felt, so nothing has gone south yet —
+    // the floor bites on confirmation, not on the request.
+    await requestCashOut(sessionId, clubId, playerId, 7_200);
+    const req = await requestBuyIn(sessionId, clubId, playerId, 500);
+    expect(req.amount).toBe(500);
+  });
+
+  /**
+   * The normal way back, and the reason the floor is a safety net rather than
+   * the mechanism: sitting down again VOIDS the cash-out and creates no buy-in
+   * at all, because those chips are already theirs and already counted.
+   */
+  it('carries the same chips back without counting them as new money', async () => {
+    await standPlayerUp(7_200);
+    const before = await prisma.buyInRequest.count({ where: { sessionId, userId: playerId } });
+
+    await requestSitIn(sessionId, clubId, playerId);
+    await decideSitIn(sessionId, clubId, ownerId, false, playerId, true);
+
+    const state = (await prisma.pokerSession.findUnique({ where: { id: sessionId } }))!
+      .engineState as any;
+    // Back at the table, and the locked figure is gone rather than left to
+    // override whatever they finally leave with.
+    expect(state.activePlayerUids).toContain(playerId);
+    expect(state.cashOuts).toHaveLength(0);
+    // No new buy-in: adding one would count the same chips a second time and
+    // settle them that much down.
+    expect(await prisma.buyInRequest.count({ where: { sessionId, userId: playerId } })).toBe(before);
+  });
+
+  it('frees the floor again once they are sitting, so a top-up is ordinary', async () => {
+    await standPlayerUp(7_200);
+    await requestSitIn(sessionId, clubId, playerId);
+    await decideSitIn(sessionId, clubId, ownerId, false, playerId, true);
+
+    const req = await requestBuyIn(sessionId, clubId, playerId, 1_000);
+    expect(req.amount).toBe(1_000);
   });
 });

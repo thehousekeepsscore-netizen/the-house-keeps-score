@@ -613,6 +613,29 @@ export async function decideCashOut(
  * own creation with nobody watching. The recipient is `userId`; the author is
  * `requestedBy`; they are only the same person when someone banks themselves.
  */
+/**
+ * A rejoining player must put back at least what they took off the table.
+ *
+ * Only bites while a confirmed cash-out is still standing. Sitting back down
+ * voids it (see decideSitIn), so an ordinary top-up later is unaffected.
+ */
+async function assertBringsBackTheirStack(sessionId: string, userId: string, amount: number) {
+  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new HttpError(404, 'Session not found');
+  const state = session.engineState as unknown as OfflineEngineState;
+  const stoodUpWith = (state.cashOuts || []).find(
+    (c) => c.userId === userId && c.status === 'confirmed'
+  );
+  if (!stoodUpWith) return;
+
+  if (amount < stoodUpWith.amount) {
+    throw new HttpError(
+      409,
+      `You stood up with ${stoodUpWith.amount}, so you cannot sit back down with less than that`
+    );
+  }
+}
+
 export async function requestBuyIn(
   sessionId: string, clubId: string, userId: string, amount: number,
   requestedBy: string = userId
@@ -620,6 +643,22 @@ export async function requestBuyIn(
   // Enforced here, not only in the UI — the cap was previously client-side
   // only and any direct API call sailed past it.
   await assertWithinBuyInCeiling(sessionId, clubId, amount);
+
+  /*
+   * You cannot come back short of what you left with.
+   *
+   * The table-stakes rule every home game already plays by: a player who
+   * stands up with 7,200 and sits back down with 1,000 has taken 6,200 out of
+   * the night mid-game. Everyone else's money is still on the table; theirs is
+   * in their pocket. Poker calls it going south, and it is the one move that
+   * changes the economics of an evening without anybody losing a hand.
+   *
+   * The floor is their own confirmed cash-out, so it is a rule about their
+   * money rather than a limit somebody set for them. The normal way back is to
+   * sit down again with exactly those chips, which the sit-in path does without
+   * creating a buy-in at all — this guards every other route in.
+   */
+  await assertBringsBackTheirStack(sessionId, userId, amount);
 
   // One pending buy-in per player per session, matching requestSitIn and
   // requestCashOut. This was the only request endpoint without the rule, and

@@ -48,6 +48,14 @@ export interface PlayerSheetProps {
   /** The confirmed figure, which an admin may correct from what was submitted. */
   onConfirmCount: (amount: number) => void;
   /**
+   * Sitting back down after standing up, with the same chips.
+   *
+   * Not a buy-in. They already own those chips — they carry them back to the
+   * felt, so no new money enters the night and nothing is added to what they
+   * have put in. Buying MORE is an ordinary top-up once they are seated again.
+   */
+  onSitBackDown: () => void;
+  /**
    * Skip the menu and open on the bank chooser.
    *
    * Set by the brass stud on the felt, which already means "chips": a seated
@@ -92,6 +100,7 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
   onBuyMore,
   onStandUp,
   onConfirmCount,
+  onSitBackDown,
   askForChips = false,
   busy = false,
 }) => {
@@ -331,10 +340,26 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
               </p>
             )}
 
+            {/*
+              Back to the table with the chips they left with — never fewer.
+              A player who stands up with 7,200 and sits back down with 1,000
+              has taken 6,200 out of the night while everyone else's money is
+              still on the felt; poker calls that going south.
+
+              It is deliberately not a buy-in. Those chips are already theirs
+              and already counted, so treating the return as new money would
+              add 7,200 to what they have put in and settle them 7,200 down.
+              More chips than that is an ordinary top-up, once they are sitting.
+            */}
             {state === 'cashedOut' && (
-              <Button variant="primary" size="lg" fullWidth onClick={() => setMode('bank')}>
-                Join again
-              </Button>
+              <>
+                <Button variant="primary" size="lg" fullWidth loading={busy} onClick={onSitBackDown}>
+                  Sit back down with {formatAmount(seat?.confirmedCashOut ?? 0)}
+                </Button>
+                <p className="text-xs text-text-faint text-center leading-relaxed">
+                  You take your chips back to the table. Buy more once you're sitting.
+                </p>
+              </>
             )}
           </div>
         )}

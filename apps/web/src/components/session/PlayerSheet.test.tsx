@@ -44,6 +44,7 @@ function show(over: Partial<PlayerSheetProps> = {}) {
     onBuyMore: vi.fn(),
     onStandUp: vi.fn(),
     onConfirmCount: vi.fn(),
+    onSitBackDown: vi.fn(),
     ...over,
   };
   render(<PlayerSheet {...props} />);
@@ -103,7 +104,43 @@ describe('one state, one thing to do', () => {
   it('invites someone who stood up to come back', () => {
     show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }) });
     expect(screen.getByText(/stood up with 7,200/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /join again/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sit back down with 7,200/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * You cannot come back short of what you left with.
+ *
+ * The table-stakes rule every home game already plays by. Standing up with
+ * 7,200 and sitting back down with 1,000 takes 6,200 out of the night while
+ * everyone else's money is still on the felt — poker calls it going south, and
+ * it is the one move that changes the economics of an evening without anybody
+ * losing a hand.
+ */
+describe('sitting back down', () => {
+  it('brings back exactly the stack they left with', async () => {
+    const { onSitBackDown, onBuyMore, onJoin } = show({
+      seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }),
+      isSelf: true,
+    });
+    await userEvent.click(screen.getByRole('button', { name: /sit back down with 7,200/i }));
+    expect(onSitBackDown).toHaveBeenCalledTimes(1);
+    // Not a buy-in. Those chips are already theirs and already counted, so
+    // treating the return as new money would add 7,200 to what they have put in
+    // and settle them 7,200 down.
+    expect(onBuyMore).not.toHaveBeenCalled();
+    expect(onJoin).not.toHaveBeenCalled();
+  });
+
+  it('offers no way to come back with a smaller stack', () => {
+    show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }), isSelf: true });
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/other amount/i)).not.toBeInTheDocument();
+  });
+
+  it('says that more chips come after sitting, not instead of it', () => {
+    show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }), isSelf: true });
+    expect(screen.getByText(/buy more once you're sitting/i)).toBeInTheDocument();
   });
 });
 
