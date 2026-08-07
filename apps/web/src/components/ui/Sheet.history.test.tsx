@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import React, { StrictMode, useState } from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, Outlet, RouterProvider } from 'react-router-dom';
-import { Sheet } from './Sheet';
+import { createBrowserRouter, createMemoryRouter, Outlet, RouterProvider } from 'react-router-dom';
+import { Sheet, __resetSheetHistory } from './Sheet';
 import { Button } from './Button';
+
+// The bookkeeping outlives any one render, which is the whole point of it —
+// so a test that leaves a sheet open must not be allowed to fail the next one.
+beforeEach(__resetSheetHistory);
 
 /**
  * A sheet is a history entry, so the platform's own Back closes it.
@@ -51,7 +55,7 @@ const Harness: React.FC<{ onOpenChange?: (open: boolean) => void }> = ({ onOpenC
  * real destination for Back to reach, and a leftover sheet entry is detectable
  * as Back failing to arrive there.
  */
-function renderInRouter(ui: React.ReactNode) {
+function renderInRouter(ui: React.ReactNode, { strict = false } = {}) {
   const router = createMemoryRouter(
     [
       {
@@ -70,7 +74,8 @@ function renderInRouter(ui: React.ReactNode) {
     ],
     { initialEntries: ['/elsewhere', '/'], initialIndex: 1 }
   );
-  render(<RouterProvider router={router} />);
+  const tree = <RouterProvider router={router} />;
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
   return router;
 }
 
@@ -142,5 +147,88 @@ describe('Sheet participates in history', () => {
     // refusing to render is not.
     render(<Sheet open onClose={() => {}} title="Buy in" />);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The same sheet, over a real history and under StrictMode.
+ *
+ * Everything above runs on a memory router, which applies a navigation the
+ * moment it is asked to. That is a kinder world than the browser, and it is why
+ * five passing tests missed a live bug: push-on-mount paired with pop-on-cleanup
+ * only breaks when the push has not landed yet by the time the pop is decided.
+ *
+ * Instrumenting the running app showed opening one sheet producing
+ * `push · push · go(-1) · push` — the stray pop consuming the entry for the page
+ * underneath, and the push after it truncating that page off the stack. Closing
+ * the sheet then stepped back past where it started. From a club table, the
+ * dashboard.
+ *
+ * Two conditions were missing before and are present here: StrictMode, so React
+ * runs the effect twice, and a real `window.history` underneath.
+ *
+ * Honest limit: jsdom still does not reproduce the *symptom* — landing on the
+ * dashboard — because its history settles more obligingly than Chrome's. What it
+ * does reproduce is the cause, an unbalanced stack, and the test below fails
+ * against the original implementation. The symptom itself was confirmed gone by
+ * instrumenting `history.pushState`/`go` in the running app.
+ */
+describe('Sheet participates in history — real history, StrictMode', () => {
+  function renderOverBrowserHistory() {
+    const router = createBrowserRouter([
+      {
+        path: '/',
+        element: (
+          <>
+            <Harness />
+            <Outlet />
+          </>
+        ),
+        children: [
+          { index: true, element: <p>Home</p> },
+          { path: 'club', element: <p>Club</p> },
+        ],
+      },
+    ]);
+    render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>
+    );
+    return router;
+  }
+
+  beforeEach(async () => {
+    // jsdom keeps one history for the whole file. Start every test back at the
+    // root so "the page underneath" means the same thing each time.
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('gives back exactly the entry it took, so the next Back still works', async () => {
+    const user = userEvent.setup();
+    const router = renderOverBrowserHistory();
+
+    // Stand on a second page, so losing an entry is visible rather than silent.
+    await act(async () => {
+      await router.navigate('/club');
+    });
+
+    await user.click(screen.getByRole('button', { name: /open sheet/i }));
+    await screen.findByRole('dialog');
+    // The address bar must not move when a sheet opens. A sheet is not a place.
+    expect(window.location.pathname).toBe('/club');
+
+    await user.click(screen.getByRole('button', { name: /done/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(window.location.pathname).toBe('/club'));
+
+    // One entry too many left behind swallows this press; one too few has
+    // already skipped past the root.
+    await act(async () => {
+      window.history.back();
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(window.location.pathname).toBe('/');
   });
 });
