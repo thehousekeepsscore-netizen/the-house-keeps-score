@@ -52,18 +52,49 @@ describe('every row is a person', () => {
     expect(screen.queryByText('Join table')).not.toBeInTheDocument();
   });
 
-  it('names the physical act for someone leaving, not the transition', () => {
+  it('tags someone leaving with the kind of request, and the figure they counted', () => {
     render(
       <WaitingForYou
         rows={[row({ kind: 'cash-out', joining: false, amount: 7200, name: 'Arjun' })]}
         formatAmount={fmt}
       />
     );
-    expect(screen.getByText('Standing up')).toBeInTheDocument();
-    // "Count chips" is what the host does at the table. "Confirm cash-out" is
-    // what the database does, and nobody at a table says it.
-    expect(screen.getByRole('button', { name: /count chips/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /cash.?out/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Cash out')).toBeInTheDocument();
+    expect(screen.getByText('7,200')).toBeInTheDocument();
+    // One verb across all three kinds. The host is answering the same question
+    // every time — yes or not yet — and three different words for "yes" made
+    // them read the card to find out which button they were about to press.
+    expect(screen.getByRole('button', { name: /^approve$/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The region is a fixed size, and that is a decision about the TABLE.
+ *
+ * Requests arrive while the host is looking at the felt. A queue that grows
+ * with its contents pushes the table down mid-glance, which moves seats under
+ * a thumb already travelling towards one — PRODUCT-BRIEF §2.5.
+ */
+describe('the queue never moves the table', () => {
+  const rows = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      row({ id: `r${i}`, userId: `u${i}`, name: `Player ${i}`, amount: 5000 })
+    );
+
+  it('scrolls inside itself once there are more than two', () => {
+    const { container } = render(<WaitingForYou rows={rows(5)} formatAmount={fmt} />);
+    const list = container.querySelector('ul')!;
+    expect(list.className).toMatch(/overflow-y-auto/);
+    // Two cards' worth, and no more, whatever arrives.
+    expect(list.style.maxHeight).toBe('176px');
+  });
+
+  it('does not cap itself when everything already fits', () => {
+    // A two-card window drawn around one card is a hole in the screen.
+    const { container } = render(<WaitingForYou rows={rows(2)} formatAmount={fmt} />);
+    const list = container.querySelector('ul')!;
+    expect(list.className).not.toMatch(/overflow-y-auto/);
+    expect(list.style.maxHeight).toBe('');
   });
 });
 

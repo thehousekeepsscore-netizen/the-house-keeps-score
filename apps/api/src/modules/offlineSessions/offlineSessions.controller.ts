@@ -79,13 +79,17 @@ export async function requestCashOut(req: Request, res: Response) {
   return res.status(201).json(session);
 }
 
-const cashOutDecisionSchema = z.object({ userId: z.string().min(1) });
+const cashOutDecisionSchema = z.object({
+  userId: z.string().min(1),
+  // A correction to the submitted count, not a new request — see the service.
+  amount: z.number().int().nonnegative().optional(),
+});
 
 export async function decideCashOut(req: Request, res: Response) {
-  const { userId } = cashOutDecisionSchema.parse(req.body);
+  const { userId, amount } = cashOutDecisionSchema.parse(req.body);
   const session = await offlineSessionsService.decideCashOut(
     req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin,
-    userId, req.params.decision === 'approve');
+    userId, req.params.decision === 'approve', amount);
   return res.json(session);
 }
 
@@ -94,7 +98,8 @@ const buyInSchema = z.object({ amount: z.number().int().positive(), userId: z.st
 export async function requestBuyIn(req: Request, res: Response) {
   await assertMemberOfClub(req);
   const { amount, userId } = buyInSchema.parse(req.body);
-  const request = await offlineSessionsService.requestBuyIn(req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
+  const request = await offlineSessionsService.requestBuyIn(
+    req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount, req.user!.sub);
   return res.status(201).json(request);
 }
 

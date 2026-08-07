@@ -8,10 +8,9 @@ import { Seat } from '../../lib/night-state';
 /**
  * One subject, at most one primary action.
  *
- * The load-bearing claim these tests guard is a negative one: there is no
- * "Cash out" control anywhere in the sheet, in any state, for any viewer.
- * Cashing out is not something a person does at a table — standing up is, and
- * the cash-out is its consequence.
+ * The sheet is where every action originates, so these tests are mostly about
+ * what it refuses to offer: a second primary, a control for someone else's
+ * seat, or a way to reach the money without passing through the queue.
  */
 
 const fmt = (n: number) => n.toLocaleString();
@@ -21,6 +20,7 @@ function seat(over: Partial<Seat> = {}): Seat {
     userId: 'priya',
     state: 'inPlay',
     totalBuyIn: 5000,
+    buyInCount: 1,
     pendingBuyIn: null,
     pendingCashOut: null,
     confirmedCashOut: null,
@@ -50,24 +50,40 @@ function show(over: Partial<PlayerSheetProps> = {}) {
   return props;
 }
 
-describe('there is no cash-out button, ever', () => {
+/**
+ * The entry point is "Stand up", never "Cash out".
+ *
+ * Cashing out is not something anyone does at a table — standing up is, and the
+ * cash-out is its consequence. Once someone is actually counting, the button is
+ * allowed to name what it submits, because at that point that is precisely what
+ * the person is doing.
+ */
+describe('standing up is the verb', () => {
   const states: Seat['state'][] = [
     'waitingToSit', 'seatedNoChips', 'inPlay', 'countingOut', 'cashedOut',
   ];
   for (const state of states) {
-    it(`not when ${state}`, () => {
+    it(`offers no way to start a cash-out when ${state}`, () => {
       show({ seat: seat({ state, confirmedCashOut: 7200, pendingCashOut: 7200 }) });
-      expect(screen.queryByRole('button', { name: /cash.?out/i })).not.toBeInTheDocument();
+      // "Approve cash out" is a confirmation of one already submitted, which is
+      // the admin's job and a different act entirely.
+      const starters = screen
+        .queryAllByRole('button', { name: /cash.?out/i })
+        .filter((b) => !/approve/i.test(b.textContent ?? ''));
+      expect(starters).toHaveLength(0);
       document.body.innerHTML = '';
     });
   }
 });
 
 describe('one state, one thing to do', () => {
-  it('offers joining to someone who is not in the night at all', () => {
+  it('opens straight into the bank for someone who is not in the night', () => {
+    // The sheet opening IS the "Join table" step. Making people tap a button
+    // called Join table to reach a screen headed Join table was the same word
+    // twice for one decision.
     show({ seat: null, isSelf: true });
-    expect(screen.getByText(/not at the table/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /join table/i })).toBeInTheDocument();
+    expect(screen.getByText(/choose your starting bank/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^join table$/i })).not.toBeInTheDocument();
   });
 
   it('offers nothing to someone pulling up a chair — they have already asked', () => {
@@ -84,16 +100,6 @@ describe('one state, one thing to do', () => {
     expect(screen.getByRole('button', { name: /stand up/i })).toBeInTheDocument();
   });
 
-  it('lets a host check a count, and asks a player to wait', () => {
-    const { onConfirmCount } = show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }) });
-    expect(screen.getByRole('button', { name: /count chips/i })).toBeInTheDocument();
-    document.body.innerHTML = '';
-
-    show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }), isAdmin: false, isSelf: true });
-    expect(screen.getByText(/waiting for the host to check/i)).toBeInTheDocument();
-    expect(onConfirmCount).not.toHaveBeenCalled();
-  });
-
   it('invites someone who stood up to come back', () => {
     show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }) });
     expect(screen.getByText(/stood up with 7,200/i)).toBeInTheDocument();
@@ -101,37 +107,96 @@ describe('one state, one thing to do', () => {
   });
 });
 
-describe('choosing a bank', () => {
-  it('offers the club’s own amounts and states the ceiling as a limit', () => {
-    show({ seat: null, isSelf: true, ceiling: 3000 });
-    return userEvent.click(screen.getByRole('button', { name: /join table/i })).then(() => {
-      expect(screen.getByRole('button', { name: '1,000' })).toBeEnabled();
-      // Never offered as a button — it drifts upward all night under
-      // MATCH_HIGHEST and would end up proposing an absurd default.
-      expect(screen.getByText(/table maximum 3,000/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '5,000' })).toBeDisabled();
-    });
+describe('what they have put in', () => {
+  it('says how many trips a total took, because that is the context for asking again', () => {
+    show({ seat: seat({ totalBuyIn: 8000, buyInCount: 3 }) });
+    expect(screen.getByText(/8,000/)).toBeInTheDocument();
+    expect(screen.getByText(/across 3 buy-ins/i)).toBeInTheDocument();
   });
 
-  it('joins with the amount that was tapped', async () => {
+  it('stays quiet about the count when there has only been one', () => {
+    // "across 1 buy-ins" is how a sentence announces it was assembled.
+    show({ seat: seat({ totalBuyIn: 5000, buyInCount: 1 }) });
+    expect(screen.queryByText(/across/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('choosing a bank', () => {
+  it('states the ceiling as a limit and refuses the options above it', () => {
+    show({ seat: null, isSelf: true, ceiling: 3000 });
+    expect(screen.getByRole('radio', { name: /1,000/ })).toBeEnabled();
+    // Never offered as a target — it drifts upward all night under
+    // MATCH_HIGHEST and would end up proposing an absurd default.
+    expect(screen.getByText(/table maximum 3,000/i)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /5,000/ })).toBeDisabled();
+  });
+
+  it('picks then confirms, rather than committing money on first touch', async () => {
     const { onJoin } = show({ seat: null, isSelf: true });
-    await userEvent.click(screen.getByRole('button', { name: /join table/i }));
-    await userEvent.click(screen.getByRole('button', { name: '3,000' }));
+
+    const cont = screen.getByRole('button', { name: /continue/i });
+    expect(cont).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('radio', { name: /3,000/ }));
+    expect(onJoin).not.toHaveBeenCalled();
+
+    await userEvent.click(cont);
     expect(onJoin).toHaveBeenCalledWith(3000);
+  });
+
+  it('lets a typed amount win over a tapped one', async () => {
+    const { onJoin } = show({ seat: null, isSelf: true, ceiling: null });
+    await userEvent.click(screen.getByRole('radio', { name: /3,000/ }));
+    await userEvent.type(screen.getByPlaceholderText(/other amount/i), '4500');
+    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(onJoin).toHaveBeenCalledWith(4500);
   });
 });
 
 describe('standing up', () => {
-  it('requires a typed count and reads it back before committing', async () => {
+  it('requires a typed count from the player themselves', async () => {
     // A buy-in is a round number someone chooses; a count is a figure read off
     // a stack, and it locks the settlement number. No presets, ever.
-    const { onStandUp } = show({ seat: seat(), isSelf: true });
+    const { onStandUp } = show({ seat: seat(), isSelf: true, isAdmin: false });
     await userEvent.click(screen.getByRole('button', { name: /stand up/i }));
-    expect(screen.getByRole('button', { name: /stand up with 0/i })).toBeDisabled();
+    expect(screen.getByText(/count your chips/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /submit cash out/i })).toBeDisabled();
 
     await userEvent.type(screen.getByPlaceholderText('0'), '7200');
-    await userEvent.click(screen.getByRole('button', { name: /stand up with 7,200/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit cash out/i }));
     expect(onStandUp).toHaveBeenCalledWith(7200);
+  });
+
+  it('leaves the player waiting once it is submitted', () => {
+    show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }), isAdmin: false, isSelf: true });
+    expect(screen.getByText(/standing up — pending approval/i)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for the host to confirm/i)).toBeInTheDocument();
+  });
+});
+
+describe('confirming a count', () => {
+  it('starts from what the player submitted, so agreeing is one tap', async () => {
+    const { onConfirmCount } = show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }) });
+    expect(screen.getByLabelText(/counted chips/i)).toHaveValue('7200');
+
+    await userEvent.click(screen.getByRole('button', { name: /approve cash out/i }));
+    expect(onConfirmCount).toHaveBeenCalledWith(7200);
+  });
+
+  it('lets the admin correct a miscount rather than rejecting it', async () => {
+    // Both people are standing over the same stack. Rejecting would ask the
+    // player to re-count something the admin has already counted.
+    const { onConfirmCount } = show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }) });
+    const field = screen.getByLabelText(/counted chips/i);
+    await userEvent.clear(field);
+    await userEvent.type(field, '7500');
+    await userEvent.click(screen.getByRole('button', { name: /approve cash out/i }));
+    expect(onConfirmCount).toHaveBeenCalledWith(7500);
+  });
+
+  it('is not offered to the player whose chips they are', () => {
+    show({ seat: seat({ state: 'countingOut', pendingCashOut: 7200 }), isAdmin: false, isSelf: true });
+    expect(screen.queryByLabelText(/counted chips/i)).not.toBeInTheDocument();
   });
 });
 

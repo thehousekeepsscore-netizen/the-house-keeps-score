@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LiveSession, LiveSessionProps } from './LiveSession';
 import { deriveNight } from '../../lib/night-state';
@@ -64,8 +64,10 @@ function renderScreen(over: Partial<LiveSessionProps> = {}, buyIns: BuyInRequest
     connection: 'live',
     formatAmount: (n: number) => n.toLocaleString(),
     waiting: [],
+    ceiling: 8000,
     onStartSession: vi.fn(),
     onSelectPlayer: vi.fn(),
+    onSettleNight: vi.fn(),
     ...over,
   };
   render(<LiveSession {...props} />);
@@ -119,7 +121,7 @@ describe('phases', () => {
     expect(screen.getByRole('button', { name: /priya/i })).toBeInTheDocument();
   });
 
-  it('says everyone has left, and offers exactly one action', () => {
+  it('says everyone has left', () => {
     renderScreen({
       session: session({
         activePlayerUids: [],
@@ -130,12 +132,11 @@ describe('phases', () => {
       }),
     });
     expect(screen.getByText(/everyone has left/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /review & settle/i })).toBeInTheDocument();
   });
 
-  it('replaces the settle control with the reason when a night cannot settle', () => {
-    // Not a disabled button. The server has always rejected a one-player
-    // night; the old screen discovered it on submit.
+  it('still states why a night cannot settle, rather than only refusing later', () => {
+    // The server has always rejected a one-player night; the old screen
+    // discovered it on submit, after every figure had been entered.
     renderScreen({
       session: session({
         activePlayerUids: [],
@@ -143,7 +144,49 @@ describe('phases', () => {
       }),
     });
     expect(screen.getByText(/at least two players/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /review & settle/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('the live limit', () => {
+  it('states the table maximum without anyone opening anything', () => {
+    // It used to exist only inside the join sheet, which meant the way most
+    // people discovered the limit was by asking for more and being refused.
+    renderScreen({ session: session({ activePlayerUids: ['host'] }), ceiling: 8000 });
+    expect(screen.getByText(/max buy-in/i)).toBeInTheDocument();
+    expect(screen.getByText('8,000')).toBeInTheDocument();
+  });
+
+  it('says so plainly when a club sets no ceiling at all', () => {
+    renderScreen({ session: session({ activePlayerUids: ['host'] }), ceiling: null });
+    expect(screen.getByText(/no limit/i)).toBeInTheDocument();
+  });
+
+  it('says nothing about a limit when no night is running', () => {
+    renderScreen({ session: null });
+    expect(screen.queryByText(/max buy-in/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('where settling lives', () => {
+  it('is in the same place all night, so it is never hunted for', () => {
+    // Deliberately not phase-dependent. It used to appear as "Review & settle"
+    // only once everyone had left; a control that moves by phase is a control
+    // you search for at 2am.
+    for (const uids of [['host', 'priya'], ['host']]) {
+      renderScreen({ session: session({ activePlayerUids: uids }) });
+      expect(screen.getByRole('button', { name: /settle night/i })).toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('is not offered to a player', () => {
+    renderScreen({ session: session({ activePlayerUids: ['host', 'priya'] }), isAdmin: false });
+    expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
+  });
+
+  it('is absent before a night starts, when there is nothing to settle', () => {
+    renderScreen({ session: null });
+    expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
   });
 });
 
@@ -165,9 +208,10 @@ describe('zone C — the next action', () => {
     });
   });
 
-  it('settles rather than offering a chair once everyone has left', () => {
-    // The host has no seat either at that point, so ordering these the other
-    // way round offered the person closing the night a place at an empty table.
+  it('offers no chair once everyone has left', () => {
+    // The host has no seat either at that point, so the generic "you have no
+    // seat" branch would offer the person closing the night a place at an
+    // empty table. Settling is in the footer, where it always is.
     renderScreen({
       session: session({
         activePlayerUids: [],
@@ -177,13 +221,14 @@ describe('zone C — the next action', () => {
         ],
       }),
     });
-    expect(screen.getByRole('button', { name: /review & settle/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /join table/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /settle night/i })).toBeInTheDocument();
   });
 
   it('is absent while a night is simply being played', () => {
     // The honest answer to "what should I do next?" is nothing, so the bar
-    // does not exist and the table keeps those pixels.
+    // does not exist and the table keeps those pixels. The settle footer is a
+    // deliberate exception and lives outside this zone.
     renderScreen(
       { session: session({ activePlayerUids: ['host', 'priya'] }) },
       [
@@ -193,7 +238,7 @@ describe('zone C — the next action', () => {
         },
       ]
     );
-    expect(screen.queryByRole('button', { name: /start tonight|review & settle/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start tonight|join table/i })).not.toBeInTheDocument();
   });
 });
 

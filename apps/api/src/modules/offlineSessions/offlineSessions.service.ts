@@ -61,8 +61,25 @@ function serialize(row: SessionRow) {
   };
 }
 
-function hasOtherAdmins(club: { admins: { userId: string }[] }, excludeUserId: string) {
-  return club.admins.some((a) => a.userId !== excludeUserId);
+/**
+ * Is there anybody else here who could approve this?
+ *
+ * The owner counts. They are an admin everywhere else in the codebase
+ * (`isClubAdmin` returns true for them), and leaving them out of this one
+ * question meant a club with an owner and one admin behaved as though it had a
+ * single admin: the admin could wave through their own requests with the owner
+ * sitting right there.
+ *
+ * Returning false is what permits self-approval, and it can only happen when
+ * the requester genuinely is the only admin — so a game can never deadlock.
+ */
+function hasOtherAdmins(
+  club: { ownerId: string; admins: { userId: string }[] },
+  excludeUserId: string
+) {
+  const everyAdmin = new Set([club.ownerId, ...club.admins.map((a) => a.userId)]);
+  everyAdmin.delete(excludeUserId);
+  return everyAdmin.size > 0;
 }
 
 // Seating someone who had already cashed out voids that cash-out. They never
@@ -429,9 +446,20 @@ export async function requestCashOut(sessionId: string, clubId: string, userId: 
   return serialize(row as unknown as SessionRow);
 }
 
+/**
+ * `amount` corrects the figure the player submitted.
+ *
+ * A cash-out is the one number in the night that is read off a physical stack
+ * rather than chosen, so it is the one number that is routinely wrong. The
+ * admin confirming it is standing at the table looking at the same chips; if
+ * the count is out, correcting it here is the honest move. Rejecting instead
+ * makes the player re-count something the admin has already counted.
+ *
+ * Omitted, the submitted figure stands.
+ */
 export async function decideCashOut(
   sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean,
-  userId: string, approve: boolean
+  userId: string, approve: boolean, amount?: number
 ) {
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
@@ -456,10 +484,22 @@ export async function decideCashOut(
     throw new HttpError(409, 'That cash-out request expired before it was confirmed — ask the player to re-count');
   }
 
+  // Money moving requires a second pair of eyes, exactly as a buy-in does. A
+  // player who is also an admin standing themselves up is still the author of
+  // that request, and the last admin in the room may always approve their own
+  // so a game can never deadlock.
+  if (approve && userId === requesterId && hasOtherAdmins(club, requesterId)) {
+    throw new HttpError(403, 'Another Club Admin must confirm your own cash-out');
+  }
+
+  const finalAmount = approve && amount !== undefined ? amount : entry.amount;
+
   // Rejecting drops the request entirely so the player can re-count and retry.
   const cashOuts = approve
     ? (state.cashOuts || []).map((c) =>
-        c.userId === userId ? { ...c, status: 'confirmed' as const, confirmedBy: requesterId } : c)
+        c.userId === userId
+          ? { ...c, amount: finalAmount, status: 'confirmed' as const, confirmedBy: requesterId }
+          : c)
     : (state.cashOuts || []).filter((c) => c.userId !== userId);
 
   // A confirmed cash-out frees the seat — they're done playing, but their
@@ -477,7 +517,20 @@ export async function decideCashOut(
   return serialize(row as unknown as SessionRow);
 }
 
-export async function requestBuyIn(sessionId: string, clubId: string, userId: string, amount: number) {
+/**
+ * `requestedBy` is whoever pressed the button, which is not always the person
+ * getting the chips.
+ *
+ * It used to be written as `userId` — the recipient — which quietly defeated the
+ * oversight rule below. An admin adding chips to another player's stack created
+ * a request attributed to that player, so the admin was free to approve their
+ * own creation with nobody watching. The recipient is `userId`; the author is
+ * `requestedBy`; they are only the same person when someone banks themselves.
+ */
+export async function requestBuyIn(
+  sessionId: string, clubId: string, userId: string, amount: number,
+  requestedBy: string = userId
+) {
   // Enforced here, not only in the UI — the cap was previously client-side
   // only and any direct API call sailed past it.
   await assertWithinBuyInCeiling(sessionId, clubId, amount);
@@ -499,7 +552,7 @@ export async function requestBuyIn(sessionId: string, clubId: string, userId: st
   }
 
   const request = await prisma.buyInRequest.create({
-    data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy: userId },
+    data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy },
   });
   emitToClub(clubId, 'club:buyin-requested', { sessionId, requestId: request.id, request });
   return request;
@@ -540,8 +593,12 @@ export async function decideBuyInRequest(
 
   if (approve) {
     await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount);
-    const isOwner = clubsService.isClubOwner(club, requesterId, isSuperAdmin);
-    if (req.requestedBy === requesterId && !isOwner && hasOtherAdmins(club, requesterId)) {
+    // No exception for the owner. "Nobody can give themselves chips" is the
+    // rule, and an owner who wrote the request is exactly as much its author as
+    // anyone else. A lone owner still approves their own, because then
+    // hasOtherAdmins is false — the escape hatch is being alone, not being
+    // senior.
+    if (req.requestedBy === requesterId && hasOtherAdmins(club, requesterId)) {
       throw new HttpError(403, 'Another Club Admin must approve your own buy-in request');
     }
   }

@@ -131,10 +131,13 @@ export async function requestCashOut(clubId: string, sessionId: string, amount: 
   return toPokerSession(s);
 }
 
-export async function decideCashOut(clubId: string, sessionId: string, userId: string, approve: boolean): Promise<PokerSession> {
+/** `amount` corrects the player's own count on the way through — see the service. */
+export async function decideCashOut(
+  clubId: string, sessionId: string, userId: string, approve: boolean, amount?: number
+): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/${approve ? 'approve' : 'reject'}`,
-    { method: 'POST', body: { userId } });
+    { method: 'POST', body: { userId, amount } });
   return toPokerSession(s);
 }
 

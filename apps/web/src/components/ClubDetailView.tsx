@@ -9,6 +9,7 @@ import { type WaitingRow } from './session/WaitingForYou';
 import { PlayerSheet } from './session/PlayerSheet';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
+import { Sheet } from './ui/Sheet';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
@@ -1910,8 +1911,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         };
       }
 
+      // A cash-out is the largest money movement of the night, so it carries
+      // the same rule a buy-in does: you cannot wave through your own while
+      // there is another admin here to look at it.
+      const ownCashOut =
+        q.userId === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0;
+
       return {
         ...base,
+        blockedReason: ownCashOut ? 'Another admin needs to confirm this one.' : null,
         pending: decideCashOutAction.isPending(q.userId),
         onApprove: () => decideCashOutAction.run(q.userId, true),
         onDismiss: () => decideCashOutAction.run(q.userId, false),
@@ -1941,6 +1949,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const [sheetUid, setSheetUid] = useState<string | null>(null);
   const [sheetBusy, setSheetBusy] = useState(false);
+  const [settlePlaceholderOpen, setSettlePlaceholderOpen] = useState(false);
+
+  /**
+   * The one screen that is a frame rather than a document.
+   *
+   * The felt is the hero, so it takes whatever height is left after the fixed
+   * regions above and below it. That only works if every container between
+   * <main> and the table is flex — one block container in the chain and the
+   * table quietly collapses back to its own content height, which is what it
+   * did on the club screen while looking correct in the debug harness.
+   */
+  const liveTableFillsScreen = showNextLiveSession && activeTab === 'activeSession';
 
   const sheetSeat = useMemo(
     () => night.seats.find((s) => s.userId === sheetUid) ?? null,
@@ -1978,6 +1998,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       await refreshActiveSession();
     }, 'Please try again.');
 
+  /*
+   * Standing up submits a count. It never confirms one.
+   *
+   * An earlier version auto-confirmed when an admin stood another player up,
+   * which made a cash-out the one money movement in the night that could skip
+   * the queue — and it is the largest one. It now behaves exactly as a buy-in
+   * does: the request is created, it appears in the queue, and somebody
+   * confirms it.
+   */
   const standUp = (amount: number) =>
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
@@ -1987,15 +2016,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
         )
       );
-      if (!forSelf && isAdmin) {
-        applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, sheetUid, true));
-      }
     }, 'Please try again.');
 
-  const confirmCount = () =>
+  /** The confirmed figure, which may differ from what the player counted. */
+  const confirmCount = (amount: number) =>
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
-      applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, sheetUid, true));
+      applySession(
+        await offlineSessionsApi.decideCashOut(club.id, activeSession.id, sheetUid, true, amount)
+      );
     }, 'Please try again.');
 
   const approveChangeAction = useAction(handleApproveChangeRequest);
@@ -2193,11 +2222,28 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       </header>
 
       {/* Main Container */}
-      {/* Clears both fixed layers stacked at the bottom on mobile: the nav
-          (~68px) and the contextual action bar above it (~52px + gap). Without
-          this the last row of the table sits under the action bar — which is
-          exactly where the newest player card lands. */}
-      <main className="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6 pb-44 md:pb-8">
+      {/*
+        Two layouts, because the live table is the one screen that is not a
+        scrolling document.
+
+        Everywhere else this is a page: content stacks, the page grows, and the
+        bottom padding clears both fixed layers on mobile — the nav (~68px) and
+        the contextual action bar above it (~52px + gap). Without it the last
+        row of the table sat under the action bar, which is exactly where the
+        newest player card lands.
+
+        On the live table it is a frame instead. The felt has to take whatever
+        height is left over after the header, the queue and the settle footer,
+        so the chain from here down has to be flex — a block container in the
+        middle silently collapses the table back to its content height. The old
+        action bar does not exist in that mode, so the padding only has to clear
+        the nav.
+      */}
+      <main
+        className={`flex-grow max-w-7xl w-full mx-auto p-4 md:p-8 space-y-6 md:pb-8 ${
+          liveTableFillsScreen ? 'flex flex-col min-h-0 pb-24' : 'pb-44'
+        }`}
+      >
 
         {/* Desktop navigation. The bottom bar below is hidden at md and up, so
             without this there is no control that can change tabs on a desktop. */}
@@ -2227,8 +2273,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           })}
         </nav>
 
-        <div className="space-y-6">
-            
+        <div className={liveTableFillsScreen ? 'flex-1 min-h-0 flex flex-col' : 'space-y-6'}>
 
             {/*
               PR #3 builds the live session as a new component tree rather than
@@ -2249,6 +2294,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
                 onSelectPlayer={setSheetUid}
+                ceiling={buyInCeiling}
+                onSettleNight={() => setSettlePlaceholderOpen(true)}
               />
             )}
 
@@ -2275,6 +2322,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onConfirmCount={confirmCount}
               />
             )}
+
+            {/* The footer's destination, until the settlement flow lands. It
+                exists so "Settle night" is already in the place it will always
+                be — moving a control people have learned costs more than
+                shipping it early pointing at a placeholder. */}
+            <Sheet
+              open={settlePlaceholderOpen}
+              onClose={() => setSettlePlaceholderOpen(false)}
+              title="Settle night"
+              description="Not yet — settlement is the next thing being built."
+              footer={
+                <Button variant="secondary" size="lg" fullWidth onClick={() => setSettlePlaceholderOpen(false)}>
+                  Back to the table
+                </Button>
+              }
+            />
 
             {/* TAB: MERGED ACTIVE SESSION & BUY-INS */}
             {activeTab === 'activeSession' && !showNextLiveSession && (

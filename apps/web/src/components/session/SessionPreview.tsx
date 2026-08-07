@@ -30,12 +30,20 @@ const club = {
 export const SessionPreview: React.FC = () => {
   const params = new URLSearchParams(window.location.search);
   const count = Math.max(1, Math.min(18, Number(params.get('n')) || 9));
-  const withQueue = params.get('queue') !== '0';
+  // ?queue=0 hides it, ?queue=N asks for N people waiting — the point of a
+  // number rather than a flag is that the region is supposed to stop growing at
+  // two, and that is only visible with more than two.
+  const queueParam = params.get('queue');
+  const withQueue = queueParam !== '0';
+  const extraWaiting = Math.max(0, Math.min(8, Number(queueParam) || 0) - 2);
 
   const [picked, setPicked] = useState<string | null>(null);
   // Locally applied so the journey is walkable end to end without a server:
   // tapping an amount adds the pending request the API would have created.
   const [myRequest, setMyRequest] = useState<number | null>(null);
+  // Same idea for standing up: the request the API would have created, applied
+  // locally, so the seat state and the admin's confirmation are both walkable.
+  const [cashOut, setCashOut] = useState<{ userId: string; amount: number } | null>(null);
   // ?me=out starts the viewer outside the game, which is the only way to see
   // the arrival journey — everything else assumes you are already seated.
   const outside = params.get('me') === 'out';
@@ -54,7 +62,10 @@ export const SessionPreview: React.FC = () => {
 
   const session: PokerSession = {
     id: 's1', clubId: 'c1', sessionName: 'Fri 8 Aug', status: 'active',
-    activePlayerUids: seated, pendingSitInUids: [], sitInRequestedAt: {}, cashOuts: [],
+    activePlayerUids: seated, pendingSitInUids: [], sitInRequestedAt: {},
+    cashOuts: cashOut
+      ? [{ userId: cashOut.userId, amount: cashOut.amount, status: 'pending' as const, requestedAt: at(0) }]
+      : [],
     startedBy: 'u0', createdAt: at(196),
   };
 
@@ -67,6 +78,13 @@ export const SessionPreview: React.FC = () => {
       amount: 5000, status: 'pending', requestedBy: arriving, createdAt: at(1) },
     { id: 'p2', sessionId: 's1', clubId: 'c1', userId: uids[1], userDisplayName: '',
       amount: 3000, status: 'pending', requestedBy: uids[1], createdAt: at(3) },
+    ...Array.from({ length: extraWaiting }, (_, i) => ({
+      id: `px${i}`, sessionId: 's1', clubId: 'c1', userId: uids[(i + 2) % count],
+      userDisplayName: '', amount: 2000 + i * 500, status: 'pending' as const,
+      // Inside the five-minute window, or the countdown reads 0:00 and the
+      // harness looks like a bug rather than a busy queue.
+      requestedBy: uids[(i + 2) % count], createdAt: at(1 + i * 0.5),
+    })),
     ...(myRequest !== null
       ? [{ id: 'pme', sessionId: 's1', clubId: 'c1', userId: 'me', userDisplayName: '',
            amount: myRequest, status: 'pending' as const, requestedBy: 'me', createdAt: at(0) }]
@@ -112,6 +130,8 @@ export const SessionPreview: React.FC = () => {
         formatAmount={(n) => n.toLocaleString()}
         onStartSession={() => {}}
         onSelectPlayer={setPicked}
+        ceiling={ceiling}
+        onSettleNight={() => {}}
       />
 
       {picked && (
@@ -128,8 +148,14 @@ export const SessionPreview: React.FC = () => {
           ceiling={ceiling}
           onJoin={(amount) => { setMyRequest(amount); setPicked(null); }}
           onBuyMore={(amount) => { setMyRequest(amount); setPicked(null); }}
-          onStandUp={() => setPicked(null)}
-          onConfirmCount={() => setPicked(null)}
+          onStandUp={(amount) => {
+            if (picked) setCashOut({ userId: picked, amount });
+            setPicked(null);
+          }}
+          onConfirmCount={() => {
+            setCashOut(null);
+            setPicked(null);
+          }}
         />
       )}
     </div>

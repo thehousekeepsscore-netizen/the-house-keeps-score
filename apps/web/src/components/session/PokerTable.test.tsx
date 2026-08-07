@@ -178,7 +178,7 @@ describe('a seat says what it is doing', () => {
     expect(seatNames()[0]).toMatch(/pulling up a chair/i);
   });
 
-  it('counting out', () => {
+  it('standing up — the figure, and that nobody has agreed to it yet', () => {
     table(
       {
         activePlayerUids: ['p1'],
@@ -186,7 +186,16 @@ describe('a seat says what it is doing', () => {
       },
       [buyIn('p1')]
     );
-    expect(seatNames()[0]).toMatch(/counting 8,200/i);
+    // "Counting 8,200" described the act and omitted the only part that
+    // mattered: the number is a claim, not a settled figure.
+    expect(seatNames()[0]).toMatch(/standing up with 8,200, pending approval/i);
+
+    // On the felt it is a question, so it takes the same brass pill a pending
+    // buy-in takes — and the pill is what stops the figure being cut. As an
+    // ordinary caption this rendered "tanding up 8,200" inside a 96px box.
+    const pill = screen.getByText('standing up 8,200');
+    expect(pill.className).not.toMatch(/truncate/);
+    expect(pill.className).toMatch(/whitespace-nowrap/);
   });
 
   it('stood up — past tense, and still at the table', () => {

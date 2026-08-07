@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Night } from '../../lib/night-state';
 import { Club, PokerSession } from '../../types';
 import { Button } from '../ui/Button';
@@ -48,6 +48,16 @@ export interface LiveSessionProps {
    * would be stating something false about money.
    */
   formatAmount: (n: number) => string;
+  /**
+   * The live buy-in ceiling. Null when the club is UNCAPPED.
+   *
+   * Shown in the header rather than only inside the join sheet: under
+   * MATCH_HIGHEST this is a moving number, and a limit you have to open a sheet
+   * to discover is a limit people find out about by being refused.
+   */
+  ceiling: number | null;
+  /** Admins only, and always available — settlement itself lands in the next PR. */
+  onSettleNight?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -85,29 +95,51 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onSelectPlayer,
   formatAmount,
   waiting,
+  ceiling,
+  onSettleNight,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
+  const live = night.phase !== 'dark' && night.phase !== 'closed';
 
+  /*
+   * Four regions, and only one of them is elastic.
+   *
+   *   header   fixed    identity, the clock, the limit
+   *   queue    fixed    two cards, and it scrolls inside itself
+   *   stage    ELASTIC  the table takes whatever is left
+   *   footer   fixed    the one thing an admin needs to find at 2am
+   *
+   * The table is the hero, so it is the region that absorbs change. Nothing
+   * else is allowed to push it: a queue that grew with its contents moved the
+   * felt every time somebody asked for chips, which is the same seat-moves-
+   * under-a-thumb failure PRODUCT-BRIEF §2.5 names.
+   */
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 flex-1">
       <Header
         club={club}
         session={session}
         elapsed={elapsed}
         connection={connection}
         night={night}
+        ceiling={ceiling}
+        formatAmount={formatAmount}
+        live={live}
       />
 
-      <div className="flex-1 min-h-0">
-        {/* Lead with what needs a decision. This sits above the stage in every
-            running phase, not just one, because a request does not care which
-            phase the night is in. */}
-        {waiting.length > 0 && night.phase !== 'dark' && night.phase !== 'closed' && (
-          <div className="px-3 pb-3">
-            <WaitingForYou rows={waiting} formatAmount={formatAmount} />
-          </div>
-        )}
+      {/* Lead with what needs a decision. This sits above the stage in every
+          running phase, not just one, because a request does not care which
+          phase the night is in. */}
+      {waiting.length > 0 && live && (
+        <div className="px-3 pb-3 shrink-0">
+          <WaitingForYou rows={waiting} formatAmount={formatAmount} />
+        </div>
+      )}
 
+      {/* The elastic region. It scrolls rather than growing, because growing is
+          how the guest list — which is every club member during the arrival
+          phase — used to push the settle footer off the bottom of the screen. */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto">
         <Stage
           night={night}
           club={club}
@@ -126,6 +158,36 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         onStartSession={onStartSession}
         onSelectPlayer={onSelectPlayer}
       />
+
+      <SettleFooter isAdmin={isAdmin} live={live} onSettleNight={onSettleNight} />
+    </div>
+  );
+};
+
+/**
+ * Where "Settle Night" lives, permanently.
+ *
+ * The one control on this screen that is pinned regardless of what the night is
+ * doing — which is a deliberate exception to the rule that zone C disappears
+ * when there is nothing to do. Settling is the one thing a host must be able to
+ * find without hunting, at the end of a long evening, and a control that moves
+ * around by phase is a control you search for.
+ *
+ * Always enabled here on purpose: validation and the settlement flow itself are
+ * the next PR, and a disabled button that will not say why is worse than one
+ * that opens something honest.
+ */
+const SettleFooter: React.FC<{
+  isAdmin: boolean;
+  live: boolean;
+  onSettleNight?: () => void;
+}> = ({ isAdmin, live, onSettleNight }) => {
+  if (!isAdmin || !live || !onSettleNight) return null;
+  return (
+    <div className="shrink-0 px-5 py-2.5 border-t border-line bg-bg/95 backdrop-blur-xl">
+      <Button variant="secondary" size="md" fullWidth onClick={onSettleNight}>
+        Settle night
+      </Button>
     </div>
   );
 };
@@ -155,7 +217,10 @@ const Header: React.FC<{
   elapsed: string | null;
   connection: LiveSessionProps['connection'];
   night: Night;
-}> = ({ session, elapsed, connection, night }) => (
+  ceiling: number | null;
+  formatAmount: (n: number) => string;
+  live: boolean;
+}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live }) => (
   <header className="px-5 pt-4 pb-3 shrink-0">
     <div className="flex items-baseline gap-2 min-w-0">
       {session && (
@@ -165,6 +230,8 @@ const Header: React.FC<{
         <span className="ml-auto text-xs text-text-muted tabular-nums shrink-0">{elapsed}</span>
       )}
     </div>
+
+    {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
     {connection !== 'live' && (
       <p role="status" className="mt-1.5 text-xs text-warning">
@@ -177,6 +244,50 @@ const Header: React.FC<{
     {night.phase === 'windingDown' && <WindingDownProgress night={night} />}
   </header>
 );
+
+/**
+ * The table maximum, on screen at all times.
+ *
+ * Under MATCH_HIGHEST this is not a setting, it is a live figure: it rises the
+ * moment anyone takes a bigger bank than has been taken. Before this it existed
+ * only inside the join sheet, which meant the way most people discovered the
+ * limit was by asking for more than it and being refused.
+ *
+ * It brightens once when it changes. A number that quietly becomes a different
+ * number is the thing worth animating, and the only thing here worth animating.
+ */
+const MaxBuyIn: React.FC<{
+  ceiling: number | null;
+  formatAmount: (n: number) => string;
+}> = ({ ceiling, formatAmount }) => {
+  const [bumped, setBumped] = useState(0);
+  const previous = useRef(ceiling);
+
+  useEffect(() => {
+    // Only a change, never the first sight of it — arriving at a table is not
+    // an event the limit should be celebrating.
+    if (previous.current !== null && ceiling !== null && ceiling !== previous.current) {
+      setBumped((n) => n + 1);
+    }
+    previous.current = ceiling;
+  }, [ceiling]);
+
+  return (
+    <div className="mt-1 flex items-baseline gap-2">
+      <span className="text-xs text-text-muted">Max buy-in</span>
+      <span
+        // Re-keyed so the animation restarts rather than being ignored as
+        // already-applied when the figure changes twice in quick succession.
+        key={bumped}
+        className={`ml-auto text-sm font-semibold text-accent tabular-nums ${
+          bumped > 0 ? 'animate-[figure-changed_var(--motion-ceremony)_ease-out]' : ''
+        }`}
+      >
+        {ceiling === null ? 'No limit' : formatAmount(ceiling)}
+      </span>
+    </div>
+  );
+};
 
 /**
  * Progress, never a difference.
@@ -238,8 +349,11 @@ const Stage: React.FC<{
     default:
       // running / windingDown — the same felt in both. It never disappears
       // because people are leaving; it quietens.
+      //
+      // flex-1 is the whole of item 9: the table is the region that grows, so
+      // everything above it can be fixed and nothing above it can push it.
       return (
-        <section className="px-1 pt-2 pb-4">
+        <section className="flex-1 min-h-0 flex flex-col justify-center px-1 py-2">
           <PokerTable
             night={night}
             currentUserId={currentUserId}
@@ -373,23 +487,17 @@ const NextAction: React.FC<{
     );
   }
 
-  // Settling outranks joining. Once everyone has left, the host has no seat
-  // either — so ordering these the other way round offered the person closing
-  // the night a chair at a table nobody is sitting at.
-  if (night.phase === 'ready' && isAdmin && night.canSettle) {
-    return (
-      <Bar>
-        <Button variant="primary" size="lg" fullWidth onClick={() => {}}>
-          Review &amp; settle
-        </Button>
-      </Bar>
-    );
-  }
+  // Settling used to appear here as "Review & settle" once everyone had left.
+  // It now lives in the footer, permanently and in one place, so this branch
+  // would be the same action offered twice a few pixels apart.
 
   // Somebody who is not at the table has no seat to tap, so this is the one
   // situation where the bar carries the way in. Still the next thing to do
   // rather than a permanent control: the moment they are seated, it goes.
-  if (!night.mySeat && night.phase !== 'dark' && night.phase !== 'closed') {
+  //
+  // Nothing is offered once everyone has left: the host has no seat either at
+  // that point, so a chair at an empty table is not the next thing to do.
+  if (!night.mySeat && night.phase !== 'dark' && night.phase !== 'closed' && night.phase !== 'ready') {
     return (
       <Bar>
         <Button variant="primary" size="lg" fullWidth onClick={() => onSelectPlayer(currentUserId)}>

@@ -91,6 +91,14 @@ export interface Seat {
   state: SeatState;
   /** Sum of approved buy-ins. Never a live stack — the app cannot know that. */
   totalBuyIn: number;
+  /**
+   * How many approved buy-ins that total is made of.
+   *
+   * "8,000" and "8,000 across 3 buy-ins" describe the same money and a
+   * different evening. Kept beside the total rather than derived at the call
+   * site so the two can never disagree.
+   */
+  buyInCount: number;
   /** Amount awaiting approval, if any. */
   pendingBuyIn: number | null;
   /** Amount awaiting confirmation, if they are counting out. */
@@ -162,7 +170,11 @@ export function deriveNight(input: NightInput): Night {
   const confirmedCashOuts = cashOuts.filter((c) => c.status === 'confirmed');
 
   const bankByUid = new Map<string, number>();
-  for (const r of approved) bankByUid.set(r.userId, (bankByUid.get(r.userId) ?? 0) + r.amount);
+  const bankCountByUid = new Map<string, number>();
+  for (const r of approved) {
+    bankByUid.set(r.userId, (bankByUid.get(r.userId) ?? 0) + r.amount);
+    bankCountByUid.set(r.userId, (bankCountByUid.get(r.userId) ?? 0) + 1);
+  }
 
   // What is on the table: everything bought in, less anything already counted
   // out. Buy-ins alone would keep counting chips that left with their owner.
@@ -249,6 +261,7 @@ export function deriveNight(input: NightInput): Night {
       userId,
       state,
       totalBuyIn,
+      buyInCount: bankCountByUid.get(userId) ?? 0,
       pendingBuyIn: pendingBuyIn?.amount ?? null,
       pendingCashOut: pendingCashOut?.amount ?? null,
       confirmedCashOut: confirmedCashOut?.amount ?? null,

@@ -120,6 +120,24 @@
   to   { opacity: 1; }
 }
 
+/*
+ * A figure that changed while you were looking at something else.
+ *
+ * Under MATCH_HIGHEST the table maximum climbs whenever someone takes a bigger
+ * bank than anyone has held — a number on screen quietly becomes a different
+ * number, with nothing to say it moved. This says it moved.
+ *
+ * Brightness and nothing else. No scale, no slide: the figure must stay exactly
+ * where it is and stay readable throughout, because the eye may arrive
+ * mid-animation. It is the same "catches the light" gesture the waiting seat
+ * uses, run once instead of forever.
+ */
+@keyframes figure-changed {
+  0%   { filter: brightness(1); }
+  30%  { filter: brightness(1.75) saturate(1.2); }
+  100% { filter: brightness(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

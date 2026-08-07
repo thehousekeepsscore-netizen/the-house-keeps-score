@@ -368,10 +368,17 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                   {name}
                 </span>
                 {detail === 'full' &&
-                  (seat.pendingBuyIn !== null || seat.state === 'waitingToSit' ? (
+                  (seat.pendingBuyIn !== null ||
+                  seat.state === 'waitingToSit' ||
+                  seat.state === 'countingOut' ? (
                     // A question gets its own weight. As a caption it read like
                     // a smaller version of a chip count, which is the confusion
                     // this whole vocabulary exists to prevent.
+                    //
+                    // A submitted count is a question too — it is a figure
+                    // nobody has agreed to yet. It also does not fit the 96px
+                    // caption, which truncated it to "tanding up 7,200"; the
+                    // pill is allowed to be wider than the seat box.
                     <span className="inline-block mt-0.5 px-1.5 py-px rounded-full bg-accent text-accent-contrast text-[9px] font-medium uppercase tracking-wide whitespace-nowrap">
                       {seatCaption(seat, formatAmount)}
                     </span>

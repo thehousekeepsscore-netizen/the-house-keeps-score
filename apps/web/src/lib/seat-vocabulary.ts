@@ -37,7 +37,10 @@ export function seatSentence(seat: Seat, amount: (n: number) => string): string 
     case 'waitingToSit':
       return 'pulling up a chair';
     case 'countingOut':
-      return `counting ${amount(seat.pendingCashOut ?? 0)}`;
+      // The figure and the fact that it is not settled yet. "Counting 7,200"
+      // described the act and left out the only part anyone needed: that the
+      // number is a claim nobody has agreed to.
+      return `standing up with ${amount(seat.pendingCashOut ?? 0)}, pending approval`;
     case 'cashedOut':
       // "Stood up", not "cashed out". One is what a person did; the other is
       // what the ledger recorded about it.
@@ -64,7 +67,10 @@ export function seatCaption(seat: Seat, amount: (n: number) => string): string {
     case 'waitingToSit':
       return 'pulling up a chair';
     case 'countingOut':
-      return 'counting up';
+      // Room for the act and the figure, not for "pending approval" as well —
+      // the pending-ness is carried on the felt by the seat still being there
+      // and by the request sitting in the queue.
+      return `standing up ${amount(seat.pendingCashOut ?? 0)}`;
     case 'cashedOut':
       return `stood up ${amount(seat.confirmedCashOut ?? 0)}`;
     case 'seatedNoChips':
