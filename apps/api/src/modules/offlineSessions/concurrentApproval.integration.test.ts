@@ -23,7 +23,7 @@ import { prisma } from '../../lib/prisma.js';
 
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
-const { requestBuyIn, decideBuyInRequest, requestSitIn, decideSitIn, requestCashOut, decideCashOut } =
+const { requestBuyIn, decideBuyInRequest, requestSitIn, decideSitIn, requestCashOut, decideCashOut, startPlaying } =
   await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -239,5 +239,76 @@ describe('approvals racing everything else that writes the table', () => {
       .engineState as any;
     expect(state.activePlayerUids).toContain(rahulId);
     expect(state.activePlayerUids).toContain(priyaId);
+  });
+});
+
+/**
+ * The owner opens the table and goes home.
+ *
+ * Nothing about a session is owner-only — starting play, approving, confirming
+ * a count and settling are all assertClubAdmin, so the admins who stayed can
+ * run the whole night. That part holds.
+ *
+ * What does not hold is the second-pair-of-eyes rule. It asks whether another
+ * ADMIN exists, and the answer is yes: the owner, asleep at home. The one admin
+ * still at the table cannot approve their own chips, nobody else is awake to do
+ * it, and the request expires in five minutes. The rule written to stop a game
+ * being blocked is what blocks it.
+ */
+describe('the owner opens the table and leaves', () => {
+  async function ownerGoesHome() {
+    // Stands up, is counted out, and is no longer at the table.
+    await requestCashOut(sessionId, clubId, ownerId, 5_000);
+    await decideCashOut(sessionId, clubId, adminId, false, ownerId, true);
+  }
+
+  it('lets the admins who stayed approve everybody else', async () => {
+    await ownerGoesHome();
+    const req = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
+    await decideBuyInRequest(sessionId, adminId, false, req.id, true);
+
+    const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
+    expect(row?.status).toBe('approved');
+    expect(row?.approvedBy).toBe(adminId);
+  });
+
+  it('lets the last admin at the table bank themselves once the owner has gone', async () => {
+    // The whole point of the escape hatch: being alone. An admin who is alone
+    // AT THE TABLE is alone, whatever the club roster says — the owner is at
+    // home and cannot approve anything.
+    await ownerGoesHome();
+    const req = await requestBuyIn(sessionId, clubId, adminId, 3_000);
+    await decideBuyInRequest(sessionId, adminId, false, req.id, true);
+
+    const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
+    expect(row?.status).toBe('approved');
+  });
+
+  it('still refuses self-approval while another admin is actually here', async () => {
+    const req = await requestBuyIn(sessionId, clubId, adminId, 3_000);
+    await expect(
+      decideBuyInRequest(sessionId, adminId, false, req.id, true)
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('lets an admin who stayed start the night the owner opened', async () => {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          startedPlayingAt: null,
+          activePlayerUids: [adminId, rahulId],
+          pendingSitInUids: [],
+          cashOuts: [],
+        } as any,
+      },
+    });
+    for (const uid of [adminId, rahulId]) {
+      const r = await requestBuyIn(sessionId, clubId, uid, 5_000);
+      await decideBuyInRequest(sessionId, ownerId, false, r.id, true);
+    }
+
+    const started: any = await startPlaying(sessionId, clubId, adminId, false);
+    expect(started.startedPlayingAt).toBeTruthy();
   });
 });

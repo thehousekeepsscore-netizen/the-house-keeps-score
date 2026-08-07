@@ -10,6 +10,7 @@ import { PlayerSheet } from './session/PlayerSheet';
 import { AddPlayerSheet } from './session/AddPlayerSheet';
 import { OpenTableSheet } from './session/OpenTableSheet';
 import { deriveFeed } from '../lib/night-feed';
+import { selfApprovalBlock, WhoIsHere } from '../lib/approval-rules';
 import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
@@ -1822,13 +1823,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   const actionQueue = useMemo<QueueItem[]>(() => {
     if (!isAdmin || !activeSession) return [];
-    const otherAdmins = (club.adminUids || []).filter(
-      (u) => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy
-    );
-
     const buyIns: QueueItem[] = visiblePendingBuyIns.map((req) => {
       const cannotSelfApprove =
-        req.requestedBy === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0;
+        !isSuperUser && selfApprovalBlock(whoIsHere, currentUser.uid, req.requestedBy, 'buy-in') !== null;
       return {
         id: `buyin-${req.id}`,
         kind: 'buy-in',
@@ -1880,11 +1877,25 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * "who is waiting" pure and testable, and keeps the permission rules next to
    * the other permission rules.
    */
+  /**
+   * Who is at this table, for the self-approval rule.
+   *
+   * Presence, not roster: an admin who has cashed out and driven home cannot be
+   * the second pair of eyes, and counting them is what deadlocks a night that
+   * the owner opened and then left. Mirrors hasAnotherAdminHere on the server.
+   */
+  const whoIsHere = useMemo<WhoIsHere>(() => ({
+    ownerUid: club.ownerUid ?? club.createdBy,
+    adminUids: club.adminUids ?? [],
+    seatedUids: activeSession?.activePlayerUids ?? [],
+    pendingSitInUids: activeSession?.pendingSitInUids ?? [],
+    cashedOutUids: (activeSession?.cashOuts ?? [])
+      .filter((c) => c.status === 'confirmed')
+      .map((c) => c.userId),
+  }), [club.ownerUid, club.createdBy, club.adminUids, activeSession]);
+
   const waitingForYou = useMemo<WaitingRow[]>(() => {
     if (!activeSession) return [];
-    const otherAdmins = (club.adminUids || []).filter(
-      (u) => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy
-    );
 
     return night.queue.map((q) => {
       const name = q.userId === currentUser.uid ? 'You' : allUsers[q.userId]?.displayName || 'Player';
@@ -1896,10 +1907,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         // mirrors offlineSessions.service.ts. Naming an admin who is actually
         // here matters: a block that names someone who went home costs the
         // host three taps to discover.
-        const blocked =
-          req && req.requestedBy === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0
-            ? 'Another admin needs to approve this one.'
-            : null;
+        // The author is whoever wrote the request, which is not always the
+        // person receiving the chips — an admin banking somebody else is its
+        // author, and may not then wave it through.
+        const blocked = req && !isSuperUser
+          ? selfApprovalBlock(whoIsHere, currentUser.uid, req.requestedBy, 'buy-in')
+          : null;
         return {
           ...base,
           blockedReason: blocked,
@@ -1921,12 +1934,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // A cash-out is the largest money movement of the night, so it carries
       // the same rule a buy-in does: you cannot wave through your own while
       // there is another admin here to look at it.
-      const ownCashOut =
-        q.userId === currentUser.uid && !isOwner && !isSuperUser && otherAdmins.length > 0;
-
       return {
         ...base,
-        blockedReason: ownCashOut ? 'Another admin needs to confirm this one.' : null,
+        blockedReason: isSuperUser
+          ? null
+          : selfApprovalBlock(whoIsHere, currentUser.uid, q.userId, 'cash-out'),
         pending: decideCashOutAction.isPending(q.userId),
         onApprove: () => decideCashOutAction.run(q.userId, true),
         onDismiss: () => decideCashOutAction.run(q.userId, false),
@@ -1934,7 +1946,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     });
   }, [
     activeSession, night.queue, allUsers, buyInRequests, currentUser.uid,
-    club.adminUids, club.ownerUid, club.createdBy, isOwner, isSuperUser,
+    whoIsHere, isSuperUser,
     approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
   ]);
 

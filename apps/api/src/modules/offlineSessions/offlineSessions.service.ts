@@ -137,24 +137,49 @@ async function mutateSessionState<T>(
 }
 
 /**
- * Is there anybody else here who could approve this?
+ * Is there anybody else HERE who could approve this?
  *
- * The owner counts. They are an admin everywhere else in the codebase
- * (`isClubAdmin` returns true for them), and leaving them out of this one
- * question meant a club with an owner and one admin behaved as though it had a
- * single admin: the admin could wave through their own requests with the owner
- * sitting right there.
+ * The rule this serves is "nobody gives themselves chips", and its escape hatch
+ * is being alone — because an admin who cannot approve their own request and
+ * has nobody to ask is an admin whose game has stopped.
  *
- * Returning false is what permits self-approval, and it can only happen when
- * the requester genuinely is the only admin — so a game can never deadlock.
+ * "Alone" has to mean alone AT THE TABLE, not alone on the club roster. Asking
+ * the roster gets the owner-goes-home case exactly backwards: the owner opens
+ * the night, plays an hour, cashes out and drives home, and the one admin still
+ * dealing cards is refused their own rebuy because an admin exists — asleep,
+ * eleven miles away, and the only person who could unblock them. The rule
+ * written to stop a night being blocked becomes the thing blocking it.
+ *
+ * So presence, from the state under the lock: seated, or waiting on a seat.
+ * Somebody whose cash-out has been confirmed is deliberately NOT counted —
+ * standing up is what leaving looks like in this app, and treating a player who
+ * has gone as an available approver is the same deadlock in a different hat.
+ *
+ * The owner has no special status here or anywhere else in a session. Every
+ * session action is assertClubAdmin; owner-only powers are club-level things
+ * like deleting the club or transferring it.
+ *
+ * Residual, and worth naming: an admin who abandons a seat without standing up
+ * still counts as present, because nothing in the data distinguishes them from
+ * somebody who has stepped outside for a cigarette. Standing up is the fix, and
+ * it is what people do when they leave.
  */
-function hasOtherAdmins(
+function hasAnotherAdminHere(
   club: { ownerId: string; admins: { userId: string }[] },
-  excludeUserId: string
+  excludeUserId: string,
+  state: OfflineEngineState
 ) {
   const everyAdmin = new Set([club.ownerId, ...club.admins.map((a) => a.userId)]);
   everyAdmin.delete(excludeUserId);
-  return everyAdmin.size > 0;
+  if (everyAdmin.size === 0) return false;
+
+  const gone = new Set(
+    (state.cashOuts || []).filter((c) => c.status === 'confirmed').map((c) => c.userId)
+  );
+  const here = [...(state.activePlayerUids || []), ...(state.pendingSitInUids || [])].filter(
+    (uid) => !gone.has(uid)
+  );
+  return here.some((uid) => everyAdmin.has(uid));
 }
 
 // Seating someone who had already cashed out voids that cash-out. They never
@@ -624,7 +649,7 @@ export async function decideCashOut(
     // player who is also an admin standing themselves up is still the author of
     // that request, and the last admin in the room may always approve their own
     // so a game can never deadlock.
-    if (approve && userId === requesterId && hasOtherAdmins(club, requesterId)) {
+    if (approve && userId === requesterId && hasAnotherAdminHere(club, requesterId, state)) {
       throw new HttpError(403, 'Another Club Admin must confirm your own cash-out');
     }
 
@@ -789,10 +814,9 @@ export async function decideBuyInRequest(
         await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount, tx);
         // No exception for the owner. "Nobody can give themselves chips" is the
         // rule, and an owner who wrote the request is exactly as much its author
-        // as anyone else. A lone owner still approves their own, because then
-        // hasOtherAdmins is false — the escape hatch is being alone, not being
-        // senior.
-        if (req.requestedBy === requesterId && hasOtherAdmins(club, requesterId)) {
+        // as anyone else. Somebody alone at the table still approves their own —
+        // the escape hatch is being alone, not being senior.
+        if (req.requestedBy === requesterId && hasAnotherAdminHere(club, requesterId, state)) {
           throw new HttpError(403, 'Another Club Admin must approve your own buy-in request');
         }
       }
