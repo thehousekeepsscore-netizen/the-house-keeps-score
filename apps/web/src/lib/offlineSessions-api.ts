@@ -293,7 +293,11 @@ export async function initSettlementRules(
 ): Promise<PokerSession> {
   const r = await apiFetch<{ session: ApiOfflineSession }>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/settlement-rules`,
-    { method: 'POST', body: JSON.stringify(input) }
+    // A plain object, NOT JSON.stringify(input) — apiFetch serialises the body
+    // itself. Stringifying here sent a JSON *string* as the whole payload, and
+    // express.json() is strict about top-level primitives, so the server saw
+    // malformed JSON and rejected it before any handler ran.
+    { method: 'POST', body: input }
   );
   return toPokerSession(r.session);
 }
