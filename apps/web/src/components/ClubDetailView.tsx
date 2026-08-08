@@ -134,6 +134,34 @@ interface ClubDetailViewProps {
 // Stable empty fallbacks. A fresh [] on every render would give every derived
 // useMemo and effect a new dependency identity, so a resource that has not
 // loaded yet would churn the component instead of sitting still.
+/**
+ * Events whose whole meaning is "the session changed, and here it is".
+ *
+ * Every one carries the new session in its payload, so every one is handled the
+ * same way: patch what is on screen. They are a LIST rather than eleven
+ * hand-written pairs because the bug this fixes was a missing subscription —
+ * PR #3 added seven emits on the server and zero listeners here, so starting a
+ * night, extending the clock, freezing the table for settlement and four other
+ * actions reached nobody else's phone until they reloaded.
+ *
+ * Registering and tearing down by iterating this list makes "every on has an
+ * off" structural instead of something to remember, and gives
+ * ClubDetailView.realtime.test.tsx something to check the server against.
+ */
+export const SESSION_PATCH_EVENTS = [
+  'club:sitin-requested',
+  'club:sitin-decided',
+  'club:cashout-requested',
+  'club:cashout-decided',
+  'club:session-started-playing',
+  'club:session-extended',
+  'club:session-time-limit-lifted',
+  'club:settling-started',
+  'club:settling-cancelled',
+  'club:cashout-amended',
+  'club:lobby-player-removed',
+] as const;
+
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
 const EMPTY_HISTORY: NormalizedSession[] = [];
 const EMPTY_LEADERBOARD: LeaderboardRow[] = [];
@@ -937,16 +965,28 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       refreshLeaderboard();
       refreshAuditTrail();
     };
-    const onSitInRequested = (p: { session?: ApiOfflineSession | null }) => patchSession(p);
-    const onSitInDecided = (p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null }) => {
-      notifyIfExpired(p, 'Sit-in request', 'Ask again when someone is at the console.');
+    /*
+     * One handler for every event that just carries the new session.
+     *
+     * The two that also have something to SAY still say it — an expired request
+     * vanishing without explanation reads as the app losing it — but the state
+     * they all produce is the same patch, so it is written once.
+     */
+    const onSessionEvent = (
+      p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null },
+      event?: string
+    ) => {
+      if (event === 'club:sitin-decided') {
+        notifyIfExpired(p, 'Sit-in request', 'Ask again when someone is at the console.');
+      }
+      if (event === 'club:cashout-decided') {
+        notifyIfExpired(p, 'Cash-out', 'Re-count your chips and send it again.');
+      }
       patchSession(p);
     };
-    const onCashOutRequested = (p: { session?: ApiOfflineSession | null }) => patchSession(p);
-    const onCashOutDecided = (p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null }) => {
-      notifyIfExpired(p, 'Cash-out', 'Re-count your chips and send it again.');
-      patchSession(p);
-    };
+    const sessionHandlers = SESSION_PATCH_EVENTS.map(
+      (event) => [event, (p: Parameters<typeof onSessionEvent>[0]) => onSessionEvent(p, event)] as const
+    );
     const onPendingRequest = () => refreshPendingChanges();
     const onPendingRequestDecided = () => {
       refreshPendingChanges();
@@ -958,10 +998,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     socket.on('club:session-started', onSessionStarted);
     socket.on('club:buyin-requested', onBuyinRequested);
     socket.on('club:buyin-decided', onBuyinDecided);
-    socket.on('club:sitin-requested', onSitInRequested);
-    socket.on('club:sitin-decided', onSitInDecided);
-    socket.on('club:cashout-requested', onCashOutRequested);
-    socket.on('club:cashout-decided', onCashOutDecided);
+    for (const [event, handler] of sessionHandlers) socket.on(event, handler);
     socket.on('club:session-settled', onSessionSettled);
     socket.on('club:history-updated', onHistoryUpdated);
     socket.on('club:pending-request', onPendingRequest);
@@ -974,10 +1011,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:session-started', onSessionStarted);
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
-      socket.off('club:sitin-requested', onSitInRequested);
-      socket.off('club:sitin-decided', onSitInDecided);
-      socket.off('club:cashout-requested', onCashOutRequested);
-      socket.off('club:cashout-decided', onCashOutDecided);
+      for (const [event, handler] of sessionHandlers) socket.off(event, handler);
       socket.off('club:session-settled', onSessionSettled);
       socket.off('club:history-updated', onHistoryUpdated);
       socket.off('club:pending-request', onPendingRequest);
