@@ -249,9 +249,10 @@ describe('the club screen mounts', () => {
     expect(errors.filter((m) => /before initialization|Cannot access/i.test(m))).toEqual([]);
   });
 
-  it('renders the same way with the new live session turned on', async () => {
-    // The crash was ABOVE the flag, so both layouts have to be covered.
-    localStorage.setItem('flag:next-session', '1');
+  it('renders with a queue, a felt and a room all on screen at once', async () => {
+    // The second case existed to cover the flagged layout while there were two.
+    // There is one now, so this covers the busiest shape of it instead: a night
+    // with somebody waiting, which is the state the original crash needed.
     const errors = await mountAndSettle();
 
     expect(crashed()).toBe(false);
