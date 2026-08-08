@@ -2580,8 +2580,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     </div>
                   </div>
                   <p className="text-xs text-warning leading-relaxed">
-                    These are locked for this session and cannot be changed later — not by another
-                    admin, and not by changing the club's settings. Everyone at the table is told.
+                    These rules apply to this session only and cannot be changed after confirmation
+                    — not by another admin, and not by changing the club's settings. Everyone at the
+                    table is told.
                   </p>
                 </div>
               ) : (

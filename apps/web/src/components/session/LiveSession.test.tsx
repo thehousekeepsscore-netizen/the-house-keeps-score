@@ -688,3 +688,61 @@ describe('every phase renders', () => {
     expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * What the house takes, after the control that set it has gone.
+ *
+ * Locking the rules removes the "Set tonight's rules" band, which would take
+ * the figures with it. They are the only numbers on this screen that decide
+ * what a player walks away with, so they stay.
+ */
+describe('the house take line', () => {
+  const rules = (over: Record<string, unknown> = {}) => ({
+    capturedAt: ago(30),
+    sessionRakeAmount: 1000, winnersCutPercent: 5,
+    rakeEnabled: true, rakeMethod: 'PERCENT_PROFIT', rakeValue: 0,
+    potEnabled: true, mismatchStrategy: 'PROPORTIONAL_WINNERS',
+    rakeOrder: 'MISMATCH_FIRST', winnerDefinition: 'PROFIT_POSITIVE',
+    winnerTopN: 1, roundingRule: 'NONE',
+    ...over,
+  });
+
+  const playing = (settlementRules?: Record<string, unknown>) =>
+    session({ activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(60), settlementRules } as never);
+
+  it('shows both figures once the night has rules', () => {
+    renderScreen({ session: playing(rules()) });
+
+    expect(screen.getByText(/house takes/i)).toBeInTheDocument();
+    expect(screen.getByText('1,000 · 5% of winnings')).toBeInTheDocument();
+  });
+
+  it('shows it to a player, not only to the host', () => {
+    // A player cannot open the settlement screen, so this is the only place
+    // they can find out what the night charges.
+    renderScreen({ session: playing(rules()), isAdmin: false, currentUserId: 'priya' });
+
+    expect(screen.getByText(/house takes/i)).toBeInTheDocument();
+  });
+
+  it('says nothing on a night that charges nothing', () => {
+    renderScreen({ session: playing(rules({ sessionRakeAmount: 0, winnersCutPercent: 0 })) });
+
+    expect(screen.queryByText(/house takes/i)).not.toBeInTheDocument();
+  });
+
+  it('names only the charge that applies', () => {
+    renderScreen({ session: playing(rules({ winnersCutPercent: 0 })) });
+
+    expect(screen.getByText('1,000')).toBeInTheDocument();
+    expect(screen.queryByText(/of winnings/i)).not.toBeInTheDocument();
+  });
+
+  it('says nothing at all on a night that has no rules yet', () => {
+    renderScreen({ session: playing(undefined) });
+
+    expect(screen.queryByText(/house takes/i)).not.toBeInTheDocument();
+    // That night gets the band asking for them instead.
+    expect(screen.getByText(/no settlement rules yet/i)).toBeInTheDocument();
+  });
+});

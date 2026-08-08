@@ -570,8 +570,12 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     await findPreview();
-    expect(screen.getByText(/House take/i)).toBeInTheDocument();
+    // Anchored: the header now carries "House takes" too, and this is about
+    // the preview's own breakdown.
+    expect(screen.getByText(/^House take$/)).toBeInTheDocument();
     // Flat 1,000 across two players, plus 5% of the winner's 3,000 profit.
-    expect(screen.getByText(/Session rake \(flat\)/i)).toBeInTheDocument();
+    // Neither line exists if the preview is reading the club, which charges 0.
+    expect(screen.getByText(/^Session rake \(flat\)$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Winners' cut \(5%\)$/)).toBeInTheDocument();
   });
 });

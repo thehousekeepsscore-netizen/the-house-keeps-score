@@ -418,6 +418,8 @@ const Header: React.FC<{
 
     {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
+    {live && <HouseTake rules={session?.settlementRules} formatAmount={formatAmount} />}
+
     {/* Only when the host set a length. A night with no end has nothing to
         count towards, so it is shown no clock at all. */}
     <NightClockLine clock={clock} />
@@ -433,6 +435,43 @@ const Header: React.FC<{
     {night.phase === 'windingDown' && <WindingDownProgress night={night} />}
   </header>
 );
+
+/**
+ * What the house takes, on screen for everybody.
+ *
+ * The control that sets these disappears once they are locked, which would
+ * otherwise take the figures with it — and they are the only numbers on this
+ * screen that decide what a player walks away with. Somebody who joined at
+ * eleven should be able to see what the night charges without asking the host
+ * or opening the settlement screen they cannot reach.
+ *
+ * Silent when the night charges nothing, which is most nights. "Rake 0 ·
+ * Winners' cut 0%" is a line that says nothing, in a header whose whole job is
+ * to hold the two or three things that matter.
+ *
+ * Reads the night's own snapshot, never the club — the club may charge
+ * something this night does not, and the figure that matters is the one this
+ * night settles by.
+ */
+const HouseTake: React.FC<{
+  rules: PokerSession['settlementRules'];
+  formatAmount: (n: number) => string;
+}> = ({ rules, formatAmount }) => {
+  if (!rules) return null;
+  const { sessionRakeAmount: rake, winnersCutPercent: cut } = rules;
+  if (rake <= 0 && cut <= 0) return null;
+
+  return (
+    <div className="mt-1 flex items-baseline gap-2">
+      <span className="text-xs text-text-muted">House takes</span>
+      <span className="ml-auto text-xs text-text tabular-nums">
+        {[rake > 0 ? formatAmount(rake) : null, cut > 0 ? `${cut}% of winnings` : null]
+          .filter(Boolean)
+          .join(' · ')}
+      </span>
+    </div>
+  );
+};
 
 /**
  * The table maximum, on screen at all times.
