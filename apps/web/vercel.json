@@ -5,8 +5,12 @@
       "destination": "https://pokerapi-production-6131.up.railway.app/api/:path*"
     },
     {
-      "source": "/socket.io/:path*",
-      "destination": "https://pokerapi-production-6131.up.railway.app/socket.io/:path*"
+      "source": "/socket.io",
+      "destination": "https://pokerapi-production-6131.up.railway.app/socket.io"
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": "https://pokerapi-production-6131.up.railway.app/socket.io/$1"
     },
     {
       "source": "/(.*)",

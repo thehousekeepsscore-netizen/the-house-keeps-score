@@ -63,6 +63,63 @@ describe('the deployed site forwards what the dev server forwards', () => {
     expect(sources.some((s) => s.startsWith(path))).toBe(true);
   });
 
+  /**
+   * The URLs the clients actually request, matched the way Vercel matches them.
+   *
+   * The first version of this file only asked whether a rewrite whose source
+   * STARTED WITH /socket.io existed. One did — `/socket.io/:path*` — and the
+   * test went green while production stayed broken, because `:path*` does not
+   * match `/socket.io/`: a trailing slash with zero segments falls straight
+   * through to the SPA catch-all. `/socket.io` and `/socket.io/abc` both
+   * matched; the one URL socket.io-client actually opens with did not.
+   *
+   * Asserting that a rule exists is not the same as asserting it fires. These
+   * are the literal paths in flight, so this cannot pass on a rule that misses
+   * them again.
+   */
+  const HANDSHAKE_PATHS = [
+    '/socket.io/', // engine.io's polling handshake — the one that was missed
+    '/socket.io', // no trailing slash
+    '/socket.io/websocket', // the upgrade probe
+    '/api/health', // REST, for the same reason
+  ];
+
+  /**
+   * Vercel source patterns, reduced to what they match.
+   *
+   * `/:path*` becomes `(?:/(.+))?` — optional, but when present it needs a
+   * slash AND at least one character after it. That last detail is the whole
+   * bug: `.+` rather than `.*` is what makes `/socket.io/` fail to match, which
+   * is exactly what production did. Modelled from observed behaviour on the
+   * deployed site, not from reading path-to-regexp:
+   *
+   *     /socket.io?EIO=4...   -> engine.io handshake   (matched)
+   *     /socket.io/abc        -> API: "Transport unknown" (matched)
+   *     /socket.io/?EIO=4...  -> text/html SPA shell   (NOT matched)
+   */
+  function matches(source: string, path: string): boolean {
+    const pattern = source
+      .replace(/\/:[A-Za-z_]+\*/g, '(?:/(.+))?')
+      .replace(/\/:[A-Za-z_]+/g, '/([^/]+)');
+    return new RegExp(`^${pattern}$`).test(path);
+  }
+
+  it.each(HANDSHAKE_PATHS)('%s reaches the API rather than the SPA shell', (path) => {
+    const hit = vercel().rewrites.find((r) => matches(r.source, path));
+
+    expect(hit, `${path} fell through to ${JSON.stringify(hit?.source)}`).toBeDefined();
+    expect(hit!.destination.startsWith('http')).toBe(true);
+  });
+
+  it('models :path* the way Vercel does, or the test above proves nothing', () => {
+    // The exact discrepancy that let the broken config pass.
+    expect(matches('/socket.io/:path*', '/socket.io')).toBe(true);
+    expect(matches('/socket.io/:path*', '/socket.io/abc')).toBe(true);
+    expect(matches('/socket.io/:path*', '/socket.io/')).toBe(false);
+    // And the replacement genuinely covers the case the old one missed.
+    expect(matches('/socket.io/(.*)', '/socket.io/')).toBe(true);
+  });
+
   it('sends every proxied path to the same API host', () => {
     const { rewrites } = vercel();
     const apiHosts = new Set(
@@ -88,14 +145,17 @@ describe('the deployed site forwards what the dev server forwards', () => {
     );
   });
 
-  it('does not let the socket rewrite drop the handshake query string', () => {
-    const socket = vercel().rewrites.find((r) => r.source.startsWith('/socket.io'));
+  it('does not let any socket rewrite drop the handshake query string', () => {
+    const socket = vercel().rewrites.filter((r) => r.source.startsWith('/socket.io'));
 
-    // engine.io carries EIO, transport and sid as query parameters. Vercel
-    // forwards the query automatically, but only when the destination does not
-    // pin one of its own — a destination with a `?` in it replaces the lot and
-    // the handshake arrives without knowing which protocol it is speaking.
-    expect(socket?.destination).not.toContain('?');
-    expect(socket?.destination).toContain('/socket.io/');
+    expect(socket.length).toBeGreaterThan(0);
+    for (const r of socket) {
+      // engine.io carries EIO, transport and sid as query parameters. Vercel
+      // forwards the query automatically, but only when the destination does
+      // not pin one of its own — a destination containing `?` replaces the lot
+      // and the handshake arrives not knowing which protocol it speaks.
+      expect(r.destination, r.source).not.toContain('?');
+      expect(r.destination, r.source).toContain('/socket.io');
+    }
   });
 });
