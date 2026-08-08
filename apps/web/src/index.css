@@ -1,139 +1,103 @@
 @import "tailwindcss";
 
 /*
- * Theme tokens — every screen in the app is built from these semantic
- * colors instead of literal Tailwind color-scale classes (bg-zinc-950,
- * text-emerald-400, etc). Switching themes at runtime just means
- * overriding these custom properties under a [data-theme="..."] selector
- * on <html> (set by lib/theme.ts) — Tailwind v4 compiles @theme colors to
- * real CSS custom properties and every generated utility (bg-surface,
- * text-accent, border-line, ...) references them via var(), so the
- * override cascades with zero per-component code changes.
+ * THE HOUSE KEEPS SCORE — one material language.
  *
- * success/danger/warning stay a consistent green/red/amber hue across
- * every theme (tuned slightly per palette) since profit/loss coloring
- * needs to read the same regardless of which decorative theme is active —
- * only `accent`/`accent-2` (the decorative brand colors) actually change
- * per theme.
+ * Not a theme. There is no theme switcher any more, and that is the point:
+ * "quiet, confident, timeless" and "pick from five colour schemes" are
+ * opposing product ideas, and the second is what makes software look like
+ * software. Nobody opens Wallet and is asked whether they would like it purple.
+ *
+ * ---------------------------------------------------------------------------
+ * THE ROOM
+ *
+ * Every screen exists inside the same private poker room, lit by warm lamps
+ * rather than by LEDs. Nothing in here glows; everything reflects. If a screen
+ * feels like it left the room, it is wrong regardless of how it looks alone.
+ *
+ * Four materials, in strict hierarchy — each one defers to the one below it:
+ *
+ *   ARCHITECTURE  the room. Page, navigation, backdrop. Almost black, warm,
+ *                 and deliberately untextured, because the room is not the
+ *                 thing you look at.
+ *   FURNITURE     everything you touch. Sheets, dialogs, cards, buttons.
+ *                 Dark leather: warm, rounded, catching light along its top.
+ *   TABLE         the hero. Exactly one exists. Everything defers to it.
+ *   METAL         brushed brass, worn by years of use. Active, focus,
+ *                 selected. Never decorative, never shiny, never yellow.
+ *
+ * One rule that keeps it honest: WHERE TWO ADJACENT SURFACES BOTH CARRY A
+ * GRADIENT, SIMPLIFY ONE. Premium interfaces read as premium because material
+ * types contrast, not because every layer is doing something.
+ * ---------------------------------------------------------------------------
  */
 @theme {
-  --color-bg: #0a150e;
-  --color-surface: #0f2116;
-  --color-surface-alt: #0c1b12;
-  --color-line: #4a3d1e;
-  --color-line-strong: #6b5726;
-  --color-text: #f5f3ea;
-  --color-text-muted: #93a296;
-  --color-text-faint: #5e6e63;
-  --color-accent: #d4af37;
-  --color-accent-contrast: #160f04;
-  --color-accent-2: #2f9e68;
-  --color-success: #34d399;
-  --color-danger: #fb7185;
-  --color-warning: #fbbf24;
+  /* ARCHITECTURE — the room. Flat by instruction. */
+  --color-bg: #070c09;
+  --color-bg-raised: #0a1210;
+
+  /* FURNITURE — dark leather, warm, never grey. */
+  --color-surface: #111a15;
+  --color-surface-alt: #16211b;
+
+  /* METAL — brushed brass. Antique, low saturation, worn. */
+  --color-accent: #b3934e;
+  --color-accent-contrast: #100b04;
+  --color-accent-2: #4a9d70;
+  --color-line: #3a3020;
+  --color-line-strong: #6a5836;
+
+  /* Warm white and warm grey. Never a cold neutral — a cold grey in a warm
+     room is the single clearest tell that something was styled, not lit. */
+  --color-text: #f2ece0;
+  --color-text-muted: #9c9683;
+  --color-text-faint: #6a6659;
+
+  /* Muted emerald, deep burgundy. Never pure. */
+  --color-success: #4f9d74;
+  --color-danger: #a4505c;
+  --color-warning: #c39a4d;
+
+  /* TABLE — the hero object's own materials, used nowhere else. */
+  --felt-lit: #123f2d;
+  --felt-mid: #0d3022;
+  --felt-edge: #061c14;
+  --rail-lit: #3a2f1f;
+  --rail-mid: #221a10;
+  --rail-dark: #0b0805;
+  --brass-dark: #5c4a1e;
+  --brass-mid: #a98d47;
+  --brass-lit: #e0cb92;
+
+  /* Elevation. Wide, soft, very transparent — objects rest, they do not
+     float. A tight dark shadow is a drop-shadow filter; this is a room. */
+  --shadow-rest: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-furniture: 0 18px 40px -16px rgba(0, 0, 0, 0.66), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-hero: 0 34px 70px -20px rgba(0, 0, 0, 0.78), 0 3px 10px rgba(0, 0, 0, 0.45);
+
+  /* Radius. Furniture is rounded because it is upholstered. */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  /* Motion, from PLAYER-SHEET-AND-MOTION.md. Mechanical, never elastic:
+     a drawer opening, a chip sliding, a chair pulled. */
+  --motion-state: 120ms;
+  --motion-exit: 200ms;
+  --motion-enter: 260ms;
+  --motion-ceremony: 400ms;
+  --ease-enter: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 /*
- * The login-page chip/card photo is shot in gold tones. Rather than needing
- * a re-shot asset per theme, `--decor-filter` hue-rotates the same source
- * image to land on each theme's accent hue (all four target rotations were
- * solved from each accent's actual HSL hue minus the source's ~46deg gold
- * hue) — one photo, five on-brand looks.
+ * The login photo is the one decorative image in the app. In a room lit by
+ * lamps it is a texture on a far wall, not a feature — so it sits far lower
+ * than it did, and it is the only place any screen carries an image at all.
  */
 :root {
   --decor-filter: none;
-  --decor-opacity: 0.16;
-}
-
-[data-theme="arctic-bluff"] {
-  --color-bg: #0f172a;
-  --color-surface: #1e293b;
-  --color-surface-alt: #172033;
-  --color-line: #334155;
-  --color-line-strong: #475569;
-  --color-text: #f8fafc;
-  --color-text-muted: #94a3b8;
-  --color-text-faint: #64748b;
-  --color-accent: #2dd4bf;
-  --color-accent-contrast: #062521;
-  --color-accent-2: #fbbf24;
-  --color-success: #34d399;
-  --color-danger: #fb7185;
-  --color-warning: #fbbf24;
-  --decor-filter: hue-rotate(127deg) saturate(0.9);
-}
-
-[data-theme="emerald-gold"] {
-  --color-bg: #0a150e;
-  --color-surface: #0f2116;
-  --color-surface-alt: #0c1b12;
-  --color-line: #4a3d1e;
-  --color-line-strong: #6b5726;
-  --color-text: #f5f3ea;
-  --color-text-muted: #93a296;
-  --color-text-faint: #5e6e63;
-  --color-accent: #d4af37;
-  --color-accent-contrast: #160f04;
-  --color-accent-2: #2f9e68;
-  --color-success: #34d399;
-  --color-danger: #f87171;
-  --color-warning: #d9a441;
-  --decor-filter: none;
-}
-
-[data-theme="royal-purple"] {
-  --color-bg: #14101f;
-  --color-surface: #241b36;
-  --color-surface-alt: #1c1529;
-  --color-line: #3b2e54;
-  --color-line-strong: #4f3d70;
-  --color-text: #f5f3fa;
-  --color-text-muted: #a79fc0;
-  --color-text-faint: #7c7398;
-  --color-accent: #8b5cf6;
-  --color-accent-contrast: #14101f;
-  --color-accent-2: #c7c9d9;
-  --color-success: #34d399;
-  --color-danger: #fb7185;
-  --color-warning: #fbbf24;
-  --decor-filter: hue-rotate(212deg) saturate(0.95);
-}
-
-[data-theme="midnight-ruby"] {
-  --color-bg: #0b0b0f;
-  --color-surface: #1a1a1f;
-  --color-surface-alt: #131317;
-  --color-line: #3a2530;
-  --color-line-strong: #52323f;
-  --color-text: #f7f5f5;
-  --color-text-muted: #a8a0a3;
-  --color-text-faint: #766f72;
-  --color-accent: #e11d48;
-  --color-accent-contrast: #fdf2f4;
-  --color-accent-2: #d9be9c;
-  --color-success: #34d399;
-  --color-danger: #fb7185;
-  --color-warning: #fbbf24;
-  --decor-filter: hue-rotate(301deg) saturate(1.05);
-}
-
-[data-theme="poker-lounge"] {
-  --color-bg: #f8fafc;
-  --color-surface: #ffffff;
-  --color-surface-alt: #eef2f7;
-  --color-line: #c9d6e3;
-  --color-line-strong: #a9bccf;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-text-faint: #94a3b8;
-  --color-accent: #2563eb;
-  --color-accent-contrast: #f8fafc;
-  --color-accent-2: #d9a441;
-  --color-success: #16a34a;
-  --color-danger: #dc2626;
-  --color-warning: #d97706;
-  --decor-filter: hue-rotate(175deg) saturate(0.85) brightness(1.4) contrast(0.85);
-  --decor-opacity: 0.09;
+  --decor-opacity: 0.06;
 }
 
 /*
@@ -156,6 +120,38 @@
   to   { opacity: 1; }
 }
 
+/*
+ * A figure that changed while you were looking at something else.
+ *
+ * Under MATCH_HIGHEST the table maximum climbs whenever someone takes a bigger
+ * bank than anyone has held — a number on screen quietly becomes a different
+ * number, with nothing to say it moved. This says it moved.
+ *
+ * Brightness and nothing else. No scale, no slide: the figure must stay exactly
+ * where it is and stay readable throughout, because the eye may arrive
+ * mid-animation. It is the same "catches the light" gesture the waiting seat
+ * uses, run once instead of forever.
+ */
+@keyframes figure-changed {
+  0%   { filter: brightness(1); }
+  30%  { filter: brightness(1.75) saturate(1.2); }
+  100% { filter: brightness(1); }
+}
+
+/*
+ * A line arriving at the top of the live feed.
+ *
+ * It slides DOWN from above rather than up from below, because it is pushing
+ * the older lines away — the motion has to agree with what actually happened to
+ * the list, or it reads as a glitch. Short, and only ever applied to one row:
+ * the feed changes while nobody is looking at it, which is exactly when several
+ * things moving at once is worst.
+ */
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -176,4 +172,423 @@
  */
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/*
+ * The only repeating animation in the application.
+ *
+ * A seat waiting on a decision — someone who has asked for chips or for a seat.
+ * It loops because it must not be missed, and it is the *only* thing that loops
+ * because motion means nothing when it is everywhere: if six seats were always
+ * moving, the one seat that needs attention could not ask for it by moving.
+ *
+ * Deliberately not a scale or a bounce. The felt is a table, not a toy, and a
+ * seat that jumps would read as urgent rather than as waiting. Opacity on the
+ * ring only, slow enough to notice without demanding.
+ *
+ * Disabled under prefers-reduced-motion by the rule above — the state is also
+ * carried by a dashed border and a word, so nothing is lost.
+ */
+@keyframes seat-wait {
+  /* The brass collar catches a little more light, then less. Not a colour
+     change and not a scale: the seat is asking, not alarming, and nothing on
+     a table made of leather and metal is springy. */
+  0%, 100% { opacity: 1; filter: brightness(1.5) saturate(1.15); }
+  50% { opacity: 0.72; filter: brightness(1); }
+}
+
+/*
+ * ===========================================================================
+ * THE TABLE — built like furniture, from the outside in
+ * ===========================================================================
+ *
+ * Not an SVG with a border. A handcrafted object, and every layer here is a
+ * real part of one:
+ *
+ *   1  cast shadow      it has weight and rests on the floor
+ *   2  leather rail     thick, padded, gently CROWNED — the light runs along
+ *                       the top of the roll and falls away on both sides
+ *   3  stitching        follows the inside perimeter, two-tone thread
+ *   4  brass ring       a hairline of brushed metal parting leather from cloth
+ *   5  recessed felt    sunk INTO the leather, with a real shadow at the join
+ *   6  felt material    matte emerald, woven, lit from above centre
+ *   7  the pot          the middle belongs to the money and nothing else
+ *
+ * The crown is the part that makes it read as padded rather than printed. A
+ * rail is a rolled cushion: brightest along the top of the roll, darker at the
+ * outer lip where it turns away, darker again at the inner lip where it falls
+ * toward the felt. Three stops, not one.
+ */
+
+.table-shadow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  /* Broad and soft. A tight shadow makes a card; this makes furniture. */
+  box-shadow:
+    0 40px 80px -28px rgba(0, 0, 0, 0.85),
+    0 12px 28px -10px rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* 2 — the rail. */
+.table-rail {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    /* the crown: light along the top of the roll, falling both ways */
+    linear-gradient(
+      180deg,
+      #3a2f1e 6%, #4a3d27 13%, #2e2617 34%,
+      #201a10 62%, #16110a 84%, #0d0a06 100%
+    );
+  box-shadow:
+    /* outer lip turning away from the lamp */
+    inset 0 2px 1px rgba(255, 233, 189, 0.13),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.6),
+    inset 3px 0 8px rgba(0, 0, 0, 0.34),
+    inset -3px 0 8px rgba(0, 0, 0, 0.34);
+}
+
+/* Hide grain. Discovered, never noticed. */
+.table-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='h'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='150' height='150' filter='url(%23h)'/%3E%3C/svg%3E");
+}
+
+/* 3 — stitching. Two threads: a lit one and its shadow, one pixel apart. On a
+   low-density screen the pair collapses into a single faint dotted line, which
+   is the correct failure — it disappears rather than dominating. */
+.table-stitch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* 4 — brushed brass, a hairline. Directional so it is never one flat colour. */
+.table-brass {
+  position: absolute;
+  background: linear-gradient(
+    104deg,
+    var(--brass-dark) 0%, var(--brass-mid) 20%, var(--brass-lit) 34%,
+    var(--brass-mid) 50%, var(--brass-dark) 68%, var(--brass-mid) 84%,
+    var(--brass-dark) 100%
+  );
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.55);
+}
+
+/* 5 + 6 — the cloth, sunk into the leather. The heavy top inset is the shadow
+   the rail casts down onto it; that shadow is the entire reason it reads as
+   recessed rather than painted on. */
+.table-felt {
+  position: absolute;
+  overflow: hidden;
+  /* Matte. The lift across the middle is deliberately shallow — a broad bright
+     centre is how satin behaves, and cloth does not. Speed cloth scatters
+     almost everything it receives, so the surface should be nearly even and
+     only the perimeter should really fall away. */
+  background:
+    radial-gradient(112% 130% at 50% 24%, var(--felt-lit) 0%, var(--felt-mid) 52%, #0a2619 80%, var(--felt-edge) 100%);
+  box-shadow:
+    inset 0 10px 18px -6px rgba(0, 0, 0, 0.72),
+    inset 0 2px 3px rgba(0, 0, 0, 0.55),
+    inset 0 -6px 14px -6px rgba(0, 0, 0, 0.5);
+}
+
+/* Woven cloth. Two cross-hatches at opposing angles — individually invisible,
+   together enough that the surface never reads as paint. */
+/*
+ * Speed cloth, not felt-tip green.
+ *
+ * Three passes, all of them nearly invisible on their own:
+ *
+ *   warp + weft   a 2px cross-hatch — real cloth is woven far finer than the
+ *                 3px lattice this replaces, which at arm's length read as a
+ *                 texture rather than as a weave
+ *   nap           fine noise, because cloth has a pile that catches light
+ *                 unevenly and a perfectly regular weave looks printed
+ *   direction     one very faint horizontal pass; speed cloth has a grain,
+ *                 and a fabric with no direction reads as a pattern
+ */
+.table-weave {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.014) 0 0.5px, transparent 0.5px 2px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.05) 0 0.5px, transparent 0.5px 2px),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.028) 0 1px, transparent 1px 4px);
+}
+
+.table-weave::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.09;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'120\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'1.1\' numOctaves=\'2\'/%3E%3C/filter%3E%3Crect width=\'120\' height=\'120\' filter=\'url(%23n)\'/%3E%3C/svg%3E");
+}
+
+.table-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(100% 100% at 50% 38%, transparent 46%, rgba(0, 0, 0, 0.26) 78%, rgba(0, 0, 0, 0.46) 100%);
+}
+
+/* A suit pressed into the cloth. Light above the stroke, shadow below — the
+   trick an embossing die plays, and the reason it does not look printed. */
+.table-mark {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.07);
+  text-shadow: 0 1.5px 0 rgba(255, 255, 255, 0.035);
+}
+
+/*
+ * A brass stud set into the cloth.
+ *
+ * The only control that lives on the felt, so it has to be made of the same
+ * things the table is made of rather than borrowed from the app's button set.
+ * It reads as hardware: a machined disc sitting slightly proud, catching light
+ * on its top edge and casting a short shadow onto the weave below it.
+ *
+ * Pressed, it seats itself — the highlight and shadow swap, so the disc appears
+ * to sink flush into the cloth. That is the whole animation, and it is the same
+ * physical logic as the seat sockets below: light does the work, nothing moves
+ * that a real object could not.
+ */
+.table-stud {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 400;
+  /* Dark, so the glyph reads as cut into the metal rather than printed on it. */
+  color: rgba(28, 20, 4, 0.82);
+  /* The same brushed brass as the table's hairline and the seat collars, run
+     round the disc instead of along an edge. Never one flat colour: a real
+     turned stud picks up the light differently at every angle. */
+  background: conic-gradient(
+    from 210deg,
+    var(--brass-dark) 0%, var(--brass-mid) 16%, var(--brass-lit) 30%,
+    var(--brass-mid) 46%, var(--brass-dark) 60%, var(--brass-mid) 78%,
+    var(--brass-lit) 88%, var(--brass-dark) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 246, 222, 0.5),
+    inset 0 -1.5px 2px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 3px 8px rgba(0, 0, 0, 0.5);
+  transition:
+    box-shadow var(--motion-state) var(--ease-exit, ease-out),
+    filter var(--motion-state) var(--ease-exit, ease-out);
+}
+
+/* Pressed, it seats itself: the highlight and the shadow swap, so the disc
+   sinks flush into the cloth. Light does the work — nothing moves that a real
+   piece of hardware could not. */
+.table-stud:active {
+  filter: brightness(0.9);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(255, 246, 222, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+/*
+ * SEATS — engineered into the rail, not pasted onto the felt.
+ *
+ * A chip holder milled into the leather: the socket is a recess, so it is dark
+ * where the light cannot reach over its top lip and catches a little along its
+ * lower edge — the exact inverse of the rail's crown. The avatar sits inside
+ * it, which is what stops the seat floating.
+ */
+.seat-socket {
+  position: relative;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #0b0906 0%, #17120b 60%, #241c11 100%);
+  box-shadow:
+    inset 0 3px 5px rgba(0, 0, 0, 0.85),
+    inset 0 -1px 0 rgba(255, 231, 183, 0.10),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/*
+ * An arriving seat is UNFINISHED, not disabled.
+ *
+ * A dashed brass collar rather than a solid one — the same metal, not yet
+ * closed. Greying it out would say "this person cannot be here"; this says
+ * "this person is here and not in yet", which is what is actually true.
+ */
+.seat-collar-arriving {
+  position: absolute;
+  inset: -1px;
+  border-radius: 9999px;
+  border: 1.5px dashed var(--brass-mid);
+  pointer-events: none;
+}
+
+/* The brass collar around the seat. Thin, worn, never a glow. */
+.seat-collar {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  padding: 1.5px;
+  background: linear-gradient(
+    118deg, var(--brass-dark) 0%, var(--brass-mid) 26%, var(--brass-lit) 42%,
+    var(--brass-mid) 60%, var(--brass-dark) 84%, var(--brass-mid) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/*
+ * ===========================================================================
+ * FURNITURE — everything the hand touches
+ * ===========================================================================
+ *
+ * Cards, sheets, dialogs, the navigation shelf. These are objects in the room,
+ * not rectangles on a page, and the difference is entirely in how they meet
+ * the light: a broad soft reflection across the top face, the material falling
+ * away below it, and a wide low shadow underneath so the thing rests on
+ * something rather than hovering over it.
+ *
+ * Leather, not grey. Warm, because the room is lit by lamps.
+ */
+.furniture {
+  position: relative;
+  background:
+    linear-gradient(180deg, #17231c 0%, var(--color-surface) 34%, #0e1712 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.055),
+    var(--shadow-furniture);
+  border-radius: var(--radius-md);
+}
+
+/* Grain. Discovered, never noticed — if you can see it from arm's length it
+   is too strong, and it stops being leather and becomes noise. */
+.furniture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.085;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='l'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23l)'/%3E%3C/svg%3E");
+}
+
+/* The same hide, raised — a drawer pulled out of the same carcass. */
+.furniture-raised {
+  background:
+    linear-gradient(180deg, #1d2b23 0%, var(--color-surface-alt) 36%, #121c16 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.075),
+    var(--shadow-hero);
+}
+
+/*
+ * ===========================================================================
+ * METAL — brushed brass, and only where something is live
+ * ===========================================================================
+ *
+ * A hairline of worn brass. Directional, so it is brighter where it faces the
+ * lamp — a single flat gold would read as a drawn outline, which is the thing
+ * this replaces. Never a glow: brass reflects, it does not emit.
+ */
+.brass-edge {
+  border: 1px solid transparent;
+  background-image:
+    linear-gradient(var(--color-surface), var(--color-surface)),
+    linear-gradient(102deg, var(--brass-dark) 0%, var(--brass-mid) 22%,
+      var(--brass-lit) 38%, var(--brass-mid) 56%, var(--brass-dark) 78%,
+      var(--brass-mid) 100%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.brass-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    90deg, transparent 0%, var(--brass-dark) 12%, var(--brass-mid) 50%,
+    var(--brass-dark) 88%, transparent 100%
+  );
+  opacity: 0.55;
+}
+
+/*
+ * ===========================================================================
+ * LEATHER CONTROLS
+ * ===========================================================================
+ *
+ * A button is a padded control, so pressing it COMPRESSES the material — the
+ * top highlight collapses and the shadow tucks under. It does not scale, which
+ * is a card trick rather than a physical one, and it does not bounce, because
+ * nothing in a room made of leather and brass is springy.
+ */
+.control {
+  transition:
+    box-shadow var(--motion-state) var(--ease-exit),
+    filter var(--motion-state) var(--ease-exit),
+    translate var(--motion-state) var(--ease-exit);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.10),
+    0 2px 3px rgba(0, 0, 0, 0.34),
+    0 10px 22px -10px rgba(0, 0, 0, 0.55);
+}
+
+.control:active:not(:disabled) {
+  translate: 0 1px;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.42),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Primary is brass over leather: the metal states that this is the live one. */
+.control-primary {
+  background: linear-gradient(180deg, #c8a55c 0%, var(--color-accent) 46%, #96793c 100%);
+}
+
+.control-secondary {
+  background: linear-gradient(180deg, #1a2720 0%, var(--color-surface) 42%, #0f1813 100%);
+}
+
+.control-danger {
+  background: linear-gradient(180deg, #b05a66 0%, var(--color-danger) 46%, #7e3a44 100%);
+}
+
+/*
+ * ===========================================================================
+ * THE SHELF — bottom navigation
+ * ===========================================================================
+ *
+ * Not an app toolbar. The near edge of the table: the piece the room is built
+ * on, which is why it is the heaviest furniture on screen and why the light
+ * catches its top edge hardest.
+ */
+.shelf {
+  background: linear-gradient(180deg, #16211b 0%, #0d1410 55%, #070c09 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 240, 214, 0.09),
+    0 -12px 30px -12px rgba(0, 0, 0, 0.8);
 }

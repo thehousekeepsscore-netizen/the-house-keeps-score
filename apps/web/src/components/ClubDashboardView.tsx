@@ -290,11 +290,11 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           <div className="flex items-center gap-3">
             <BrandLogo className="w-9 h-9" letterClassName="text-xl" suitClassName="w-1.5 h-1.5" />
             <div>
-              <h1 className="text-sm md:text-base font-black tracking-wider text-text uppercase leading-none">
-                THE HOUSE KEEPS SCORE
+              <h1 className="text-sm md:text-base font-semibold text-text leading-none">
+                The House Keeps Score
               </h1>
               <span className="text-[10px] text-text-muted font-medium tracking-widest uppercase">
-                POKER CLUBS & LOBBY HUB
+                Poker clubs and lobby
               </span>
             </div>
           </div>
@@ -302,8 +302,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           {/* User Profile Info & Badges */}
           <div className="flex items-center gap-3">
             {isSuperUser && (
-              <span className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-warning/15 border border-accent rounded-full text-[10px] font-black text-accent uppercase tracking-wider animate-pulse">
-                <Sparkles className="w-3.5 h-3.5 text-accent" /> SUPER USER DEVELOPER
+              <span className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-warning/15 border border-accent rounded-full text-[10px] font-semibold text-accent uppercase tracking-wider animate-pulse">
+                <Sparkles className="w-3.5 h-3.5 text-accent" /> Super user
               </span>
             )}
 
@@ -330,7 +330,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             >
               <Bell className="w-4 h-4" />
               {pendingAdminRequests.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-danger text-white font-black text-[9px] w-4 h-4 rounded-full flex items-center justify-center border border-line animate-bounce">
+                <span className="absolute -top-1 -right-1 bg-danger text-white font-semibold text-[9px] w-4 h-4 rounded-full flex items-center justify-center border border-line animate-bounce">
                   {pendingAdminRequests.length}
                 </span>
               )}
@@ -357,7 +357,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                <h2 className="text-base font-semibold text-text flex items-center gap-2">
                   <Users className="w-5 h-5 text-accent" /> Your Poker Clubs
                   <InfoHint>
                     Clubs you're a member or admin of. Open one to join the table or host a game.
@@ -369,7 +369,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             {!hasLoaded ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-label="Loading your clubs">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="p-5 bg-surface border border-line rounded-2xl space-y-3 animate-pulse">
+                  <div key={i} className="p-5 furniture rounded-2xl space-y-3 animate-pulse">
                     <div className="h-5 w-2/3 bg-surface-alt rounded" />
                     <div className="h-3 w-full bg-surface-alt rounded" />
                     <div className="h-3 w-4/5 bg-surface-alt rounded" />
@@ -385,13 +385,13 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 <div className="flex gap-2 justify-center pt-2">
                   <button
                     onClick={() => setActiveTab('browse')}
-                    className="bg-accent hover:bg-accent text-accent-contrast font-bold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer"
+                    className="bg-accent hover:bg-accent text-accent-contrast font-medium px-4 py-2 rounded-xl text-xs cursor-pointer"
                   >
                     Browse Clubs
                   </button>
                   <button
                     onClick={() => setActiveTab('create')}
-                    className="bg-surface hover:bg-surface-alt border border-line text-text font-bold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer"
+                    className="bg-surface hover:bg-surface-alt border border-line text-text font-medium px-4 py-2 rounded-xl text-xs cursor-pointer"
                   >
                     Create Club
                   </button>
@@ -407,16 +407,16 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   return (
                     <div
                       key={club.id}
-                      className="bg-surface border border-line hover:border-accent/60 rounded-2xl p-5 space-y-4 shadow-xl transition-all relative overflow-hidden flex flex-col justify-between"
+                      className="furniture hover:border-accent/60 rounded-2xl p-5 space-y-4 transition-all relative overflow-hidden flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="text-lg font-black text-text uppercase tracking-wide">
+                              <h3 className="text-lg font-semibold text-text ">
                                 {club.name}
                               </h3>
-                              <span className="px-2 py-0.5 bg-bg border border-line font-mono text-accent font-black text-[11px] rounded-lg">
+                              <span className="px-2 py-0.5 bg-bg border border-line font-mono text-accent font-semibold text-[11px] rounded-lg">
                                 Code: #{club.code}
                               </span>
                             </div>
@@ -449,9 +449,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       <div className="pt-3 border-t border-line flex items-center gap-2">
                         <button
                           onClick={() => onSelectClub(club)}
-                          className="flex-grow bg-accent hover:bg-accent text-accent-contrast font-black py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                          className="flex-grow bg-accent hover:bg-accent text-accent-contrast font-semibold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
                         >
-                          <Play className="w-3.5 h-3.5 fill-current" /> ENTER CLUB TABLE
+                          <Play className="w-3.5 h-3.5 fill-current" /> Enter club table
                         </button>
                       </div>
                     </div>
@@ -467,7 +467,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                <h2 className="text-base font-semibold text-text flex items-center gap-2">
                   <Search className="w-5 h-5 text-accent" /> Public Clubs Directory
                 </h2>
                 <p className="text-xs text-text-muted">
@@ -483,7 +483,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="Search by club name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text font-bold focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text font-medium focus:border-accent outline-none"
                 />
               </div>
             </div>
@@ -503,19 +503,19 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   return (
                     <div
                       key={club.id}
-                      className="bg-surface border border-line hover:border-accent/50 rounded-2xl p-5 space-y-4 shadow-xl transition-all flex flex-col justify-between"
+                      className="furniture hover:border-accent/50 rounded-2xl p-5 space-y-4 transition-all flex flex-col justify-between"
                     >
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-lg font-black text-text uppercase tracking-wide">
+                          <h3 className="text-lg font-semibold text-text ">
                             {club.name}
                           </h3>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="px-2 py-0.5 bg-bg border border-line font-mono text-accent font-black text-[10px] rounded-lg">
+                            <span className="px-2 py-0.5 bg-bg border border-line font-mono text-accent font-semibold text-[10px] rounded-lg">
                               #{club.code}
                             </span>
                             {isMember && (
-                              <span className="px-2 py-0.5 bg-accent/15 border border-accent/50 text-accent font-bold text-[10px] uppercase rounded-full">
+                              <span className="px-2 py-0.5 bg-accent/15 border border-accent/50 text-accent font-medium text-[10px] uppercase rounded-full">
                                 Joined
                               </span>
                             )}
@@ -536,21 +536,21 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         {isMember ? (
                           <button
                             onClick={() => onSelectClub(club)}
-                            className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
                           >
-                            <Play className="w-3.5 h-3.5 fill-current" /> ENTER CLUB
+                            <Play className="w-3.5 h-3.5 fill-current" /> Enter club
                           </button>
                         ) : myPendingReq ? (
                           <button
                             disabled
-                            className="w-full bg-surface border border-line text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed flex items-center justify-center gap-2"
+                            className="w-full furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed flex items-center justify-center gap-2"
                           >
-                            <Clock className="w-3.5 h-3.5 text-warning" /> JOIN REQUEST PENDING
+                            <Clock className="w-3.5 h-3.5 text-warning" /> Request pending
                           </button>
                         ) : isFull ? (
                           <button
                             disabled
-                            className="w-full bg-surface border border-line text-text-muted font-bold py-2.5 px-4 rounded-xl text-xs uppercase cursor-not-allowed"
+                            className="w-full furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed"
                           >
                             CLUB FULL ({club.maxCapacity || 50}/{club.maxCapacity || 50})
                           </button>
@@ -558,9 +558,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                           <button
                             onClick={() => requestJoin.run(club.id, club)}
                             disabled={requestJoin.isPending(club.id)}
-                            className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-bold py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
                           >
-                            <Plus className="w-3.5 h-3.5 text-accent" /> REQUEST TO JOIN
+                            <Plus className="w-3.5 h-3.5 text-accent" /> Request to join
                           </button>
                         )}
                       </div>
@@ -573,7 +573,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
         {/* TAB 3: CREATE A CLUB */}
         {activeTab === 'create' && (
-          <div className="max-w-xl mx-auto bg-surface border border-line p-6 md:p-8 rounded-3xl shadow-2xl space-y-5">
+          <div className="max-w-xl mx-auto furniture p-6 md:p-8 rounded-3xl space-y-5">
             <div className="border-b border-line pb-4">
               <div className="flex items-start gap-3">
                 {/* Without this the only way out of the form is to actually
@@ -587,7 +587,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div className="min-w-0">
-                  <h2 className="text-lg font-black text-text uppercase tracking-wider flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-text flex items-center gap-2">
                     <Plus className="w-5 h-5 text-accent" /> Create a New Club
                     <InfoHint>
                       You become the Owner and first Admin. Names must be unique across the app.
@@ -611,7 +611,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
             <form onSubmit={handleCreateClub} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
                   Unique Club Name <span className="text-danger">*</span>
                 </label>
                 <input
@@ -620,12 +620,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="e.g. Royal Flush Syndicate"
                   value={newClubName}
                   onChange={(e) => setNewClubName(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-bold focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-medium focus:border-accent outline-none"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-text-muted">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
                   Club Description
                 </label>
                 <textarea
@@ -633,7 +633,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="Private weekend Hold'em games and tournament leaderboards..."
                   value={newClubDesc}
                   onChange={(e) => setNewClubDesc(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-bold focus:border-accent outline-none resize-none"
+                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-medium focus:border-accent outline-none resize-none"
                 />
               </div>
 
@@ -644,7 +644,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 onClick={() => setShowAdvancedRake((v) => !v)}
                 className="w-full flex items-center justify-between p-3 bg-bg border border-line rounded-xl cursor-pointer hover:border-line-strong transition"
               >
-                <span className="text-xs font-bold text-text flex items-center gap-2">
+                <span className="text-xs font-medium text-text flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-accent" /> Advanced Settings
                   <span className="text-[10px] text-text-muted font-normal">Chips valuation & session rake</span>
                 </span>
@@ -657,7 +657,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   keeps the default (1 Chip = ₹1) self-evident. */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                 <div>
-                  <p className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                  <p className="text-xs font-medium text-text flex items-center gap-1.5">
                     <Coins className="w-4 h-4 text-accent" /> Chips Valuation
                     <InfoHint>
                       What a chip is worth in cash when you settle up. Balances always display in Chips either way.
@@ -672,9 +672,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     max={100}
                     value={devaluationFactor}
                     onChange={(e) => setDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-24 bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-text font-mono font-bold outline-none focus:border-accent"
+                    className="w-24 furniture rounded-xl px-3 py-2.5 text-sm text-text font-mono font-medium outline-none focus:border-accent"
                   />
-                  <span className="text-sm text-text font-mono font-bold">Chips = ₹1</span>
+                  <span className="text-sm text-text font-mono font-medium">Chips = ₹1</span>
                 </div>
 
                 <p className="text-[10px] text-text-muted">
@@ -686,7 +686,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
               {/* ---- Rake ---- */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
-                <p className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                <p className="text-xs font-medium text-text flex items-center gap-1.5">
                   <Coins className="w-4 h-4 text-accent" /> Buy-in Limit
                   <InfoHint>
                     How much a player may take in one go. The first buy-in of a session is never capped — it sets the reference the rest match.
@@ -705,10 +705,10 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       type="button"
                       onClick={() => setBuyInMode(value)}
                       className={`w-full text-left p-3 rounded-xl border transition-colors cursor-pointer ${
-                        buyInMode === value ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'
+ buyInMode === value ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong'
                       }`}
                     >
-                      <span className={`block text-xs font-bold ${buyInMode === value ? 'text-accent' : 'text-text'}`}>
+                      <span className={`block text-xs font-medium ${buyInMode === value ? 'text-accent' : 'text-text'}`}>
                         {label}
                       </span>
                       <span className="block text-[10px] text-text-muted mt-0.5 leading-relaxed">{blurb}</span>
@@ -720,7 +720,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               {/* Two independent charges. Either, both, or neither — both
                   fund the Club Pot. */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-4">
-                <p className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                <p className="text-xs font-medium text-text flex items-center gap-1.5">
                   <Coins className="w-4 h-4 text-accent" /> House Rake
                   <InfoHint>
                     What the house takes. You can charge a flat fee, a cut of winnings, or both. Everything charged goes into the Club Pot.
@@ -728,7 +728,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 </p>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-text-muted uppercase">
+                  <label className="text-[10px] font-medium text-text-muted uppercase">
                     Session rake — flat amount
                   </label>
                   <input
@@ -737,7 +737,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     step={50}
                     value={sessionRake}
                     onChange={(e) => setSessionRake(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-surface border border-line rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-3 py-2.5 text-sm font-mono font-medium text-text focus:border-accent outline-none"
                     placeholder="0"
                   />
                   <p className="text-[10px] text-text-muted">
@@ -748,7 +748,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 </div>
 
                 <div className="space-y-1.5 pt-1 border-t border-line">
-                  <label className="text-[10px] font-bold text-text-muted uppercase pt-2 block">
+                  <label className="text-[10px] font-medium text-text-muted uppercase pt-2 block">
                     Winners&apos; cut — percentage
                   </label>
                   <div className="flex items-center gap-2">
@@ -758,9 +758,9 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       max={100}
                       value={winnersCutPercent}
                       onChange={(e) => setWinnersCutPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
-                      className="w-24 bg-surface border border-line rounded-xl px-3 py-2.5 text-sm font-mono font-bold text-text focus:border-accent outline-none"
+                      className="w-24 furniture rounded-xl px-3 py-2.5 text-sm font-mono font-medium text-text focus:border-accent outline-none"
                     />
-                    <span className="text-sm font-mono font-bold text-text">% of each winner&apos;s profit</span>
+                    <span className="text-sm font-mono font-medium text-text">% of each winner&apos;s profit</span>
                   </div>
                   <p className="text-[10px] text-text-muted">
                     {winnersCutPercent > 0
@@ -770,7 +770,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 </div>
 
                 {(sessionRake > 0 || winnersCutPercent > 0) && (
-                  <p className="text-[10px] text-accent font-bold pt-1 border-t border-line">
+                  <p className="text-[10px] text-accent font-medium pt-1 border-t border-line">
                     {[sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per session` : null,
                       winnersCutPercent > 0 ? `${winnersCutPercent}% of winnings` : null]
                       .filter(Boolean).join(' + ')} → Club Pot
@@ -781,7 +781,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               )}
 
               <div className="p-3 bg-bg border border-line rounded-xl text-[11px] text-text-muted space-y-1">
-                <p className="font-bold text-text flex items-center gap-1.5">
+                <p className="font-semibold text-text flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-accent" /> Club Will Be Created With:
                 </p>
                 <ul className="list-disc list-inside space-y-0.5 text-[10px]">
@@ -800,7 +800,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full bg-accent hover:bg-accent text-accent-contrast font-black py-3.5 rounded-xl text-xs uppercase tracking-widest shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold py-3.5 rounded-xl text-xs shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Crown className="w-4 h-4" />
                 {isSubmitting ? 'Creating Club...' : 'CREATE CLUB & BECOME OWNER'}
@@ -810,7 +810,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 type="button"
                 onClick={() => setActiveTab('myClubs')}
                 disabled={isSubmitting}
-                className="w-full text-center text-xs font-bold text-text-muted hover:text-text transition-colors cursor-pointer disabled:opacity-50 py-1"
+                className="w-full text-center text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer disabled:opacity-50 py-1"
               >
                 Cancel
               </button>
@@ -823,12 +823,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           <div className="space-y-6 max-w-3xl mx-auto">
 
             {/* Admin Notifications Box */}
-            <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
+            <div className="furniture p-6 rounded-3xl space-y-4">
               <div className="flex items-center justify-between border-b border-line pb-3">
-                <h2 className="text-base font-bold text-text uppercase tracking-wider flex items-center gap-2">
+                <h2 className="text-base font-semibold text-text flex items-center gap-2">
                   <Bell className="w-5 h-5 text-accent" /> Pending Club Requests (Admin Notifications)
                 </h2>
-                <span className="px-2.5 py-0.5 bg-accent text-accent-contrast font-black text-xs rounded-full">
+                <span className="px-2.5 py-0.5 bg-accent text-accent-contrast font-semibold text-xs rounded-full">
                   {pendingAdminRequests.length}
                 </span>
               </div>
@@ -848,12 +848,12 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         {req.userAvatarUrl ? (
                           <img src={req.userAvatarUrl} alt="User" className="w-10 h-10 rounded-full object-cover border border-accent" />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-surface-alt text-accent font-bold flex items-center justify-center text-sm border border-line">
+                          <div className="w-10 h-10 rounded-full bg-surface-alt text-accent font-medium flex items-center justify-center text-sm border border-line">
                             {(req.userDisplayName || 'P')[0].toUpperCase()}
                           </div>
                         )}
                         <div>
-                          <div className="text-xs font-bold text-text">
+                          <div className="text-xs font-medium text-text">
                             {req.userDisplayName}
                           </div>
                           <div className="text-[10px] text-text-muted">
@@ -869,14 +869,14 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         <button
                             onClick={() => decideRequest.run(req.id, req.clubId, 'accepted')}
                             disabled={decideRequest.isPending(req.id)}
-                            className="bg-accent hover:bg-accent text-accent-contrast font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-accent hover:bg-accent text-accent-contrast font-medium px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <Check className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Accept'}
                         </button>
                         <button
                             onClick={() => decideRequest.run(req.id, req.clubId, 'rejected')}
                             disabled={decideRequest.isPending(req.id)}
-                            className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <X className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Reject'}
                         </button>
@@ -888,8 +888,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             </div>
 
             {/* My Sent Requests Status */}
-            <div className="bg-surface border border-line p-6 rounded-3xl space-y-4 shadow-xl">
-              <h2 className="text-sm font-bold text-text uppercase tracking-wider border-b border-line pb-3">
+            <div className="furniture p-6 rounded-3xl space-y-4">
+              <h2 className="text-sm font-medium text-text border-b border-line pb-3">
                 Your Sent Join Requests Status
               </h2>
 
@@ -902,21 +902,21 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   {mySentRequests.map((req) => (
                     <div key={req.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between text-xs">
                       <div>
-                        <span className="font-bold text-text">{req.clubName}</span>
+                        <span className="font-semibold text-text">{req.clubName}</span>
                       </div>
                       <div>
                         {req.status === 'pending' && (
-                          <span className="px-2.5 py-0.5 bg-warning/15 border border-warning/40 text-warning font-bold text-[10px] uppercase rounded-full flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 bg-warning/15 border border-warning/40 text-warning font-medium text-[10px] uppercase rounded-full flex items-center gap-1">
                             <Clock className="w-3 h-3" /> Pending Review
                           </span>
                         )}
                         {req.status === 'accepted' && (
-                          <span className="px-2.5 py-0.5 bg-accent/15 border border-accent/40 text-accent font-bold text-[10px] uppercase rounded-full flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 bg-accent/15 border border-accent/40 text-accent font-medium text-[10px] uppercase rounded-full flex items-center gap-1">
                             <Check className="w-3 h-3" /> Accepted & Joined
                           </span>
                         )}
                         {req.status === 'rejected' && (
-                          <span className="px-2.5 py-0.5 bg-danger/15 border border-danger/40 text-danger font-bold text-[10px] uppercase rounded-full flex items-center gap-1">
+                          <span className="px-2.5 py-0.5 bg-danger/15 border border-danger/40 text-danger font-medium text-[10px] uppercase rounded-full flex items-center gap-1">
                             <X className="w-3 h-3" /> Rejected
                           </span>
                         )}
@@ -937,14 +937,14 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
               <div className="flex items-center justify-between border-b border-line pb-4">
                 <div>
-                  <h2 className="text-lg font-black text-accent uppercase tracking-wider flex items-center gap-2">
-                    <Sparkles className="w-5 h-5" /> SUPER USER DEVELOPER CONTROL PANEL
+                  <h2 className="text-lg font-semibold text-accent flex items-center gap-2">
+                    <Sparkles className="w-5 h-5" /> Super user control panel
                   </h2>
                   <p className="text-xs text-text-muted mt-1">
                     Special developer privileges: Manage all clubs, bypass request approvals, override admins, and monitor network health.
                   </p>
                 </div>
-                <span className="px-3 py-1 bg-accent text-accent-contrast font-black text-xs uppercase rounded-full">
+                <span className="px-3 py-1 bg-accent text-accent-contrast font-semibold text-xs rounded-full">
                   Developer Mode
                 </span>
               </div>
@@ -952,28 +952,28 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               {/* Quick System Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-4 bg-bg border border-line rounded-2xl text-center">
-                  <div className="text-2xl font-black text-accent">{rawClubs.length}</div>
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Total Clubs</div>
+                  <div className="text-2xl font-semibold text-accent">{rawClubs.length}</div>
+                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-medium">Total Clubs</div>
                 </div>
                 <div className="p-4 bg-bg border border-line rounded-2xl text-center">
-                  <div className="text-2xl font-black text-accent">
+                  <div className="text-2xl font-semibold text-accent">
                     {rawClubs.reduce((acc, c) => acc + (c.members?.length || 0), 0)}
                   </div>
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold font-mono">Total Club Players</div>
+                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-medium font-mono">Total Club Players</div>
                 </div>
                 <div className="p-4 bg-bg border border-line rounded-2xl text-center">
-                  <div className="text-2xl font-black text-accent">{requests.filter(r => r.status === 'pending').length}</div>
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold font-mono">Pending System Reqs</div>
+                  <div className="text-2xl font-semibold text-accent">{requests.filter(r => r.status === 'pending').length}</div>
+                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-medium font-mono">Pending System Reqs</div>
                 </div>
                 <div className="p-4 bg-bg border border-line rounded-2xl text-center">
-                  <div className="text-2xl font-black text-accent">50 Max</div>
-                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-bold">Cap per Club</div>
+                  <div className="text-2xl font-semibold text-accent">50 Max</div>
+                  <div className="text-[10px] text-text-muted uppercase tracking-wider font-medium">Cap per Club</div>
                 </div>
               </div>
 
               {/* All System Clubs Management */}
               <div className="space-y-3 pt-2">
-                <h3 className="text-sm font-bold text-text uppercase tracking-wider">
+                <h3 className="text-sm font-medium text-text ">
                   Manage All System Clubs (Super User Override)
                 </h3>
 
@@ -986,7 +986,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       <div key={c.id} className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div>
-                            <div className="text-sm font-bold text-text flex items-center gap-2">
+                            <div className="text-sm font-medium text-text flex items-center gap-2">
                               {c.name}
                               <span className="text-[10px] text-text-muted font-mono">({membersList.length}/{c.maxCapacity || 50} Members)</span>
                             </div>
@@ -999,7 +999,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setExpandedClubMembersId(isExpanded ? null : c.id)}
-                              className="bg-surface hover:bg-surface-alt text-accent border border-line font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer flex items-center gap-1"
+                              className="bg-surface hover:bg-surface-alt text-accent border border-line font-medium px-3 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1"
                             >
                               <Users className="w-3.5 h-3.5" />
                               {isExpanded ? 'Hide Members' : `Manage Members (${membersList.length})`}
@@ -1012,7 +1012,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                   alert(`Added yourself as Admin to ${c.name}`);
                                 }}
                                 disabled={superuserJoinAction.isPending(c.id)}
-                                className="bg-accent text-accent-contrast font-black px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="bg-accent text-accent-contrast font-semibold px-3 py-1.5 rounded-xl text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {superuserJoinAction.isPending(c.id) ? 'Joining…' : 'Super Join as Admin'}
                               </button>
@@ -1028,7 +1028,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                 });
                               }}
                               disabled={deleteClubAction.isPending(c.id)}
-                              className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-bold px-3 py-1.5 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-1.5 rounded-xl text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {deleteClubAction.isPending(c.id) ? 'Deleting…' : 'Delete Club'}
                             </button>
@@ -1038,7 +1038,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         {/* Expandable Member List for SuperUser Deletion */}
                         {isExpanded && (
                           <div className="pt-3 border-t border-line/60 space-y-2">
-                            <div className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-1.5">
+                            <div className="text-xs font-medium text-accent flex items-center gap-1.5">
                               <ShieldCheck className="w-4 h-4" /> Club Members ({membersList.length})
                             </div>
 
@@ -1051,17 +1051,17 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                   const isAdmin = c.admins.some(a => a.id === m.id) || isOwner;
 
                                   return (
-                                    <div key={m.id} className="p-2.5 bg-surface border border-line rounded-xl flex items-center justify-between gap-2 text-xs">
+                                    <div key={m.id} className="p-2.5 furniture rounded-xl flex items-center justify-between gap-2 text-xs">
                                       <div className="space-y-0.5 truncate">
-                                        <div className="font-bold text-text flex items-center gap-1.5 truncate">
+                                        <div className="font-semibold text-text flex items-center gap-1.5 truncate">
                                           <span className="truncate">{m.displayName || m.email}</span>
                                           {isOwner && (
-                                            <span className="text-[9px] bg-warning/15 text-warning border border-warning/40 px-1.5 py-0.2 rounded uppercase shrink-0 font-bold">
+                                            <span className="text-[9px] bg-warning/15 text-warning border border-warning/40 px-1.5 py-0.2 rounded uppercase shrink-0 font-medium">
                                               Owner
                                             </span>
                                           )}
                                           {!isOwner && isAdmin && (
-                                            <span className="text-[9px] bg-accent/15 text-accent border border-accent/40 px-1.5 py-0.2 rounded uppercase shrink-0 font-bold">
+                                            <span className="text-[9px] bg-accent/15 text-accent border border-accent/40 px-1.5 py-0.2 rounded uppercase shrink-0 font-medium">
                                               Admin
                                             </span>
                                           )}
@@ -1090,7 +1090,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                                             });
                                           }}
                                           disabled={removeMemberAction.isPending(m.id)}
-                                          className="px-2.5 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="px-2.5 py-1 bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger text-[10px] font-medium uppercase rounded-lg cursor-pointer transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           {removeMemberAction.isPending(m.id) ? 'Removing…' : 'Delete User'}
                                         </button>
@@ -1115,63 +1115,63 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       </main>
 
       {/* MOBILE STICKY BOTTOM NAVIGATION BAR */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-bg/95 backdrop-blur-xl border-t border-line py-2 px-1 flex items-center shadow-2xl">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 shelf py-2 px-1 flex items-center">
         <button
           onClick={() => setActiveTab('myClubs')}
           className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-            activeTab === 'myClubs' ? 'text-accent' : 'text-text-muted hover:text-text'
+ activeTab === 'myClubs' ? 'text-accent' : 'text-text-muted hover:text-text'
           }`}
         >
           <Users className="w-5 h-5" />
-          <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">My Clubs</span>
+          <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">My Clubs</span>
         </button>
 
         <button
           onClick={() => setActiveTab('browse')}
           className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-            activeTab === 'browse' ? 'text-accent' : 'text-text-muted hover:text-text'
+ activeTab === 'browse' ? 'text-accent' : 'text-text-muted hover:text-text'
           }`}
         >
           <Search className="w-5 h-5" />
-          <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">Browse</span>
+          <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">Browse</span>
         </button>
 
         <button
           onClick={() => setActiveTab('create')}
           className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-            activeTab === 'create' ? 'text-accent' : 'text-text-muted hover:text-text'
+ activeTab === 'create' ? 'text-accent' : 'text-text-muted hover:text-text'
           }`}
         >
           <Plus className="w-5 h-5" />
-          <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">Create</span>
+          <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">Create</span>
         </button>
 
         <button
           onClick={() => setActiveTab('requests')}
           className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer relative min-h-[48px] justify-center ${
-            activeTab === 'requests' ? 'text-accent' : 'text-text-muted hover:text-text'
+ activeTab === 'requests' ? 'text-accent' : 'text-text-muted hover:text-text'
           }`}
         >
           <div className="relative">
             <Bell className="w-5 h-5" />
             {pendingAdminRequests.length > 0 && (
-              <span className="absolute -top-1 -right-1.5 bg-danger text-white font-black text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
+              <span className="absolute -top-1 -right-1.5 bg-danger text-white font-semibold text-[8px] w-3.5 h-3.5 rounded-full flex items-center justify-center">
                 {pendingAdminRequests.length}
               </span>
             )}
           </div>
-          <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">Requests</span>
+          <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">Requests</span>
         </button>
 
         {isSuperUser && (
           <button
             onClick={() => setActiveTab('superuser')}
             className={`flex-1 min-w-0 flex flex-col items-center gap-1 px-0.5 py-1 rounded-xl transition-all cursor-pointer min-h-[48px] justify-center ${
-              activeTab === 'superuser' ? 'text-accent' : 'text-text-muted hover:text-text'
+ activeTab === 'superuser' ? 'text-accent' : 'text-text-muted hover:text-text'
             }`}
           >
             <Sparkles className="w-5 h-5" />
-            <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">Super</span>
+            <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">Super</span>
           </button>
         )}
 
@@ -1184,7 +1184,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
           ) : (
             <UserCircle className="w-5 h-5" />
           )}
-          <span className="text-[8px] font-bold uppercase tracking-tight font-sans leading-tight truncate max-w-full">Profile</span>
+          <span className="text-[10px] font-medium tracking-tight font-sans leading-tight truncate max-w-full">Profile</span>
         </button>
       </nav>
 

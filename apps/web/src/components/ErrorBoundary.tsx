@@ -71,7 +71,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         role="alert"
         className="min-h-[60vh] flex flex-col items-center justify-center gap-4 p-6 text-center"
       >
-        <p className="text-sm font-bold text-text">This screen didn't load.</p>
+        <p className="text-sm font-medium text-text">This screen didn't load.</p>
         <p className="text-xs text-text-muted max-w-sm leading-relaxed">
           Something went wrong rendering {this.props.title}. Your data is safe — nothing
           was changed. Try again, and if it keeps happening take a screenshot of this page.
@@ -86,7 +86,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         </code>
         <button
           onClick={this.handleRetry}
-          className="px-4 py-2 bg-accent text-accent-contrast rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer"
+          className="px-4 py-2 bg-accent text-accent-contrast rounded-xl text-xs font-medium cursor-pointer"
         >
           Try again
         </button>

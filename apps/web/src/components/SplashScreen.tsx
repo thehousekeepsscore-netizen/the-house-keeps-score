@@ -59,7 +59,7 @@ export const SplashScreen: React.FC = () => {
         transition={{ duration: 0.5, delay: 0.4 }}
         className="text-center"
       >
-        <h1 className="text-lg font-bold tracking-tight text-text">
+        <h1 className="text-lg font-semibold tracking-tight text-text">
           The House <span className="text-accent">Keeps Score</span>
         </h1>
         <div className="flex items-center justify-center gap-1.5 mt-3">

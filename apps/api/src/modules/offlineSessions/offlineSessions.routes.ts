@@ -10,6 +10,13 @@ offlineSessionsRouter.use(authenticate);
 offlineSessionsRouter.get('/active', asyncHandler(offlineSessionsController.getActive));
 offlineSessionsRouter.post('/', asyncHandler(offlineSessionsController.startSession));
 offlineSessionsRouter.post('/:sessionId/join', asyncHandler(offlineSessionsController.joinSession));
+offlineSessionsRouter.post('/:sessionId/start-playing', asyncHandler(offlineSessionsController.startPlaying));
+offlineSessionsRouter.post('/:sessionId/extend', asyncHandler(offlineSessionsController.extendSession));
+offlineSessionsRouter.post('/:sessionId/cash-out-requests/amend', asyncHandler(offlineSessionsController.amendCashOut));
+offlineSessionsRouter.post('/:sessionId/remove-from-lobby', asyncHandler(offlineSessionsController.removeFromLobby));
+offlineSessionsRouter.post('/:sessionId/begin-settling', asyncHandler(offlineSessionsController.beginSettling));
+offlineSessionsRouter.post('/:sessionId/resume', asyncHandler(offlineSessionsController.resumeNight));
+offlineSessionsRouter.post('/:sessionId/lift-time-limit', asyncHandler(offlineSessionsController.liftTimeLimit));
 offlineSessionsRouter.post('/:sessionId/sit-in-requests', asyncHandler(offlineSessionsController.requestSitIn));
 offlineSessionsRouter.post(
   '/:sessionId/sit-in-requests/:decision(approve|reject)',

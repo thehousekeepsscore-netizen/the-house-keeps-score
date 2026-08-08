@@ -37,11 +37,22 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
   className?: string;
 }
 
+/*
+ * Leather controls, not Tailwind buttons.
+ *
+ * Primary is brass over leather — the metal is what says "this is the live
+ * one", rather than a brighter fill. Secondary is the same hide with no metal.
+ * Ghost carries no material at all, which is what makes it recede.
+ *
+ * The press is in `.control` (index.css): the material COMPRESSES — highlight
+ * collapses, shadow tucks under, the face drops a pixel. It does not scale,
+ * which is a card trick rather than a physical one.
+ */
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-accent-contrast hover:brightness-110 border border-transparent',
-  secondary: 'bg-surface text-text border border-line hover:border-line-strong',
-  danger: 'bg-danger text-white hover:brightness-110 border border-transparent',
-  ghost: 'bg-transparent text-text-muted border border-transparent hover:text-text hover:bg-surface',
+  primary: 'control control-primary text-accent-contrast',
+  secondary: 'control control-secondary text-text',
+  danger: 'control control-danger text-white',
+  ghost: 'bg-transparent text-text-muted hover:text-text',
 };
 
 // Every size clears 44px. `sm` is compact in padding, not in touch area.
@@ -65,9 +76,7 @@ export const Button: React.FC<ButtonProps> = ({
     disabled={disabled || loading}
     aria-busy={loading || undefined}
     className={[
-      'inline-flex items-center justify-center gap-2 rounded-xl font-semibold',
-      'transition-[transform,filter,background-color,border-color] duration-150 ease-out',
-      'active:scale-95',
+      'inline-flex items-center justify-center gap-2 rounded-[var(--radius-sm)] font-semibold',
       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
       'disabled:opacity-50 disabled:pointer-events-none',
       'cursor-pointer select-none',

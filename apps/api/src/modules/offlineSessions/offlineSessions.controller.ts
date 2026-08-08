@@ -14,12 +14,81 @@ const startSchema = z.object({
   maxBuyIn: z.number().int().positive().optional(),
   maxPlayers: z.number().int().positive().optional(),
   skipBlindLimit: z.number().int().min(0).max(2).optional(),
+  // The night's length, and whether to say anything when it runs out. Capped at
+  // a day because the field is minutes and a typo should not create a week.
+  durationMinutes: z.number().int().positive().max(24 * 60).optional(),
+  remindAtEnd: z.boolean().optional(),
 });
 
 export async function startSession(req: Request, res: Response) {
   const input = startSchema.parse(req.body);
   const session = await offlineSessionsService.startSession(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, input);
   return res.status(201).json(session);
+}
+
+const extendSchema = z.object({
+  // Same ceiling as the original duration: the field is minutes, and a typo
+  // should not buy the night a week.
+  minutes: z.number().int().positive().max(24 * 60),
+});
+
+const amendSchema = z.object({
+  userId: z.string().min(1),
+  amount: z.number().int().nonnegative(),
+});
+
+/** Correcting a count that was already agreed. Admins only, until settlement. */
+export async function amendCashOut(req: Request, res: Response) {
+  const { userId, amount } = amendSchema.parse(req.body);
+  const session = await offlineSessionsService.amendCashOut(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, userId, amount);
+  return res.json(session);
+}
+
+const removeSchema = z.object({ userId: z.string().min(1) });
+
+/** Taking somebody out of the lobby who is not coming. Admins only. */
+export async function removeFromLobby(req: Request, res: Response) {
+  const { userId } = removeSchema.parse(req.body);
+  const session = await offlineSessionsService.removeFromLobby(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, userId);
+  return res.json(session);
+}
+
+/** Stop the table so the figures can be agreed. Reversible. Admins only. */
+export async function beginSettling(req: Request, res: Response) {
+  const session = await offlineSessionsService.beginSettling(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
+/** Give the table back. */
+export async function resumeNight(req: Request, res: Response) {
+  const session = await offlineSessionsService.resumeNight(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
+/** More time on the clock. Additive, unlimited, admins only. */
+export async function extendSession(req: Request, res: Response) {
+  const { minutes } = extendSchema.parse(req.body);
+  const session = await offlineSessionsService.extendSession(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, minutes);
+  return res.json(session);
+}
+
+/** Carry on with no limit for the rest of the night. One-way, admins only. */
+export async function liftTimeLimit(req: Request, res: Response) {
+  const session = await offlineSessionsService.liftTimeLimit(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
+/** The host saying "alright, let's start" — the one moment nothing can infer. */
+export async function startPlaying(req: Request, res: Response) {
+  const session = await offlineSessionsService.startPlaying(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
 }
 
 /**
@@ -79,13 +148,17 @@ export async function requestCashOut(req: Request, res: Response) {
   return res.status(201).json(session);
 }
 
-const cashOutDecisionSchema = z.object({ userId: z.string().min(1) });
+const cashOutDecisionSchema = z.object({
+  userId: z.string().min(1),
+  // A correction to the submitted count, not a new request — see the service.
+  amount: z.number().int().nonnegative().optional(),
+});
 
 export async function decideCashOut(req: Request, res: Response) {
-  const { userId } = cashOutDecisionSchema.parse(req.body);
+  const { userId, amount } = cashOutDecisionSchema.parse(req.body);
   const session = await offlineSessionsService.decideCashOut(
     req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin,
-    userId, req.params.decision === 'approve');
+    userId, req.params.decision === 'approve', amount);
   return res.json(session);
 }
 
@@ -94,7 +167,8 @@ const buyInSchema = z.object({ amount: z.number().int().positive(), userId: z.st
 export async function requestBuyIn(req: Request, res: Response) {
   await assertMemberOfClub(req);
   const { amount, userId } = buyInSchema.parse(req.body);
-  const request = await offlineSessionsService.requestBuyIn(req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount);
+  const request = await offlineSessionsService.requestBuyIn(
+    req.params.sessionId, req.params.clubId, userId || req.user!.sub, amount, req.user!.sub);
   return res.status(201).json(request);
 }
 

@@ -26,7 +26,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onDismis
           )}
 
           <div className="flex-1 min-w-0">
-            <h4 className="text-xs font-bold text-accent-2 uppercase tracking-wider">{toast.title}</h4>
+            <h4 className="text-xs font-medium text-accent-2 ">{toast.title}</h4>
             <p className="text-xs text-text font-medium leading-tight mt-0.5">{toast.message}</p>
           </div>
 

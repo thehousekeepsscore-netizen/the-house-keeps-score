@@ -1,8 +1,15 @@
 # Master product redesign brief — mobile first
 
-# `PRODUCT-BRIEF v1.1` — frozen 2026-08-06
+# `PRODUCT-BRIEF v1.3` — frozen 2026-08-06
 
-**Branch:** `product-polish` · **Status:** canonical, frozen
+**Branch:** `product-polish` · **Status:** canonical, frozen · **design frozen**
+**v1.3** — §2.6 *the eye should never have to choose where to look*. Design is
+now frozen: from here every implementation decision refers back to these
+documents, and a contradiction found while building is raised before anything
+changes.
+**v1.2** — §2.5 *live controls never move under a thumb*, promoted from an
+implementation detail found while mapping the live session's interaction model.
+Nothing revised; one principle added.
 **v1.1** — the five open decisions resolved (§18), plus §2.4 *prefer reducing
 taps*, a per-club default buy-in (§9.3), and the audit model widened to four
 fields (§13). No principle was revised; v1.0's were extended.
@@ -136,6 +143,46 @@ the settlement `Check the books → Close the night` gate (§12.4), the typed an
 confirmed cash-out amount (§10), and the explicit commit on a keyed-in buy-in
 (§9.2) all cost a tap deliberately and must not be optimised away. Reduce taps
 that cost time; keep taps that buy certainty.
+
+### 2.5 Live controls never move under a thumb
+
+> **A control that commits money must never change position because something
+> arrived while the user was reaching for it.**
+
+New items append; they never push existing ones. Lists that update live grow
+away from the thumb, not toward it. A layout shift disarms taps for a moment
+rather than letting them land on whatever moved into place.
+
+This looks like a rendering detail and is not. The app updates over a socket
+while an admin is mid-reach, and the controls it updates around are `Approve`
+and `Not now` on real money. Every other principle here is about what the user
+sees; this one is about what happens between deciding and touching.
+
+It is also the rule that settles arguments the others cannot. "Newest first"
+would be better by §2.1 — you would see the new request instantly — and is
+forbidden by this, because it relocates a live Approve button under a
+descending finger. Where the two conflict, this wins.
+
+### 2.6 The eye should never have to choose where to look
+
+> **At any instant there is exactly one thing asking for attention.**
+
+One primary action. One animated element. One highlighted player. One pending
+queue. One control in the bottom bar — or none.
+
+This is the strongest filter in the document, because it is the one that
+resolves conflicts between the others rather than adding a new demand. When
+§2.1 wants to surface something and §2.3 wants to hide it, this decides: does
+adding it mean the eye now has two candidates? Then it does not go there.
+
+It is also what makes §2.5's scarcity work. Motion means something only when
+it is rare — and it can only be rare if, at any moment, one element has earned
+it and the rest have not.
+
+Applied backwards, it explains decisions already made: why an empty action
+queue is absent rather than reported, why the bottom bar shows nothing when
+there is nothing to do, why exactly one seat may pulse, and why a nav badge
+changes value without animating.
 
 ## 3. The complete journey
 

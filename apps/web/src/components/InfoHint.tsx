@@ -63,7 +63,7 @@ export const InfoHint: React.FC<InfoHintProps> = ({
           setOpen((v) => !v);
         }}
         className={`inline-flex items-center justify-center rounded-full transition cursor-pointer ${
-          open ? 'text-accent' : 'text-text-faint hover:text-text-muted'
+ open ? 'text-accent' : 'text-text-faint hover:text-text-muted'
         }`}
       >
         <Info className="w-3.5 h-3.5" />
@@ -73,7 +73,7 @@ export const InfoHint: React.FC<InfoHintProps> = ({
         <span
           role="tooltip"
           className={`absolute top-full mt-1.5 z-50 w-56 max-w-[calc(100vw-2rem)] p-2.5 rounded-xl bg-surface border border-line-strong shadow-2xl text-[11px] leading-relaxed text-text-muted font-normal normal-case tracking-normal text-left ${
-            side === 'right' ? 'right-0' : 'left-0'
+ side === 'right' ? 'right-0' : 'left-0'
           }`}
         >
           {children}

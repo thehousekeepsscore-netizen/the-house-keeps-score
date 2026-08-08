@@ -21,8 +21,8 @@ import { getSocket } from '../lib/socket';
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
     <div className="p-3 bg-surface border border-line rounded-xl">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{label}</div>
-      <div className="text-lg font-mono font-black text-text mt-0.5">{value}</div>
+      <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</div>
+      <div className="text-lg font-mono font-semibold text-text mt-0.5">{value}</div>
       {hint && <div className="text-[10px] text-text-muted mt-0.5 leading-tight">{hint}</div>}
     </div>
   );
@@ -73,7 +73,7 @@ export const PerformanceDebugView: React.FC = () => {
     <div className="min-h-screen bg-bg text-text p-4 md:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-black uppercase tracking-wider">Performance</h1>
+          <h1 className="text-lg font-semibold ">Performance</h1>
           <p className="text-xs text-text-muted mt-0.5">
             Counters since this tab loaded. Not persisted, not linked from the app.
           </p>
@@ -81,13 +81,13 @@ export const PerformanceDebugView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => { resetMetrics(); setSnap(snapshot()); }}
-            className="px-3 py-1.5 bg-surface border border-line rounded-xl text-xs font-bold uppercase cursor-pointer hover:border-line-strong"
+            className="px-3 py-1.5 bg-surface border border-line rounded-xl text-xs font-medium cursor-pointer hover:border-line-strong"
           >
             Reset
           </button>
           <button
             onClick={() => navigate('/')}
-            className="px-3 py-1.5 bg-accent text-accent-contrast rounded-xl text-xs font-bold uppercase cursor-pointer"
+            className="px-3 py-1.5 bg-accent text-accent-contrast rounded-xl text-xs font-medium cursor-pointer"
           >
             Back
           </button>
@@ -95,7 +95,7 @@ export const PerformanceDebugView: React.FC = () => {
       </div>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">Cache</h2>
+        <h2 className="text-xs font-medium text-text-muted">Cache</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat
             label="Hit rate"
@@ -109,7 +109,7 @@ export const PerformanceDebugView: React.FC = () => {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">Network</h2>
+        <h2 className="text-xs font-medium text-text-muted">Network</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Requests" value={snap.networkRequests} hint="fetches that hit the wire" />
           <Stat label="Deduped" value={snap.dedupedRequests} hint="joined one already in flight" />
@@ -122,14 +122,14 @@ export const PerformanceDebugView: React.FC = () => {
         </div>
         <button
           onClick={measureApi}
-          className="px-3 py-1.5 bg-surface border border-line rounded-xl text-xs font-bold uppercase cursor-pointer hover:border-line-strong"
+          className="px-3 py-1.5 bg-surface border border-line rounded-xl text-xs font-medium cursor-pointer hover:border-line-strong"
         >
           Measure API latency
         </button>
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">Mutations</h2>
+        <h2 className="text-xs font-medium text-text-muted">Mutations</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Write-throughs" value={snap.writeThroughs} hint="cache.update, no GET" />
           <Stat label="Refreshes" value={snap.refreshes} hint="forced refetch" />
@@ -139,7 +139,7 @@ export const PerformanceDebugView: React.FC = () => {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">Socket</h2>
+        <h2 className="text-xs font-medium text-text-muted">Socket</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Connection" value={socketState} />
         </div>
@@ -151,7 +151,7 @@ export const PerformanceDebugView: React.FC = () => {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-text-muted">Slowest resources</h2>
+        <h2 className="text-xs font-medium text-text-muted">Slowest resources</h2>
         {snap.slowest.length === 0 ? (
           <p className="text-xs text-text-muted">No requests recorded yet.</p>
         ) : (
@@ -159,10 +159,10 @@ export const PerformanceDebugView: React.FC = () => {
             <table className="w-full text-xs font-mono">
               <thead>
                 <tr className="text-text-muted text-left">
-                  <th className="py-1.5 pr-4 font-bold">Key</th>
-                  <th className="py-1.5 pr-4 font-bold">Avg</th>
-                  <th className="py-1.5 pr-4 font-bold">Last</th>
-                  <th className="py-1.5 font-bold">Count</th>
+                  <th className="py-1.5 pr-4 font-semibold">Key</th>
+                  <th className="py-1.5 pr-4 font-semibold">Avg</th>
+                  <th className="py-1.5 pr-4 font-semibold">Last</th>
+                  <th className="py-1.5 font-semibold">Count</th>
                 </tr>
               </thead>
               <tbody>

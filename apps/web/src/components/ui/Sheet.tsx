@@ -9,66 +9,135 @@ import { useInRouterContext, useLocation, useNavigate } from 'react-router-dom';
  * the one thing nobody wants: leaves the screen behind the sheet — or the app —
  * while the sheet itself was the only thing they meant to dismiss.
  *
- * Mounted only while the sheet is open, so its lifecycle *is* the sheet's:
+ * The obvious implementation is push-on-mount, pop-on-cleanup. It is wrong, and
+ * wrong in a way no jsdom test caught. React double-invokes effects, and
+ * `navigate` is queued rather than applied, so opening one sheet in a real
+ * browser produced:
  *
- *   mount      push an entry at the current URL, marked with this sheet's id
- *   Back       the marker disappears, so the sheet closes and nothing navigates
- *   unmount    if the entry is still ours, pop it, so closing by button,
- *              backdrop or Escape leaves the history stack as it found it
+ *     push · push · go(-1) · push
+ *
+ * The cleanup's pop ran against the index from *before* the push had committed,
+ * so it consumed the entry for the page underneath — and the push that followed
+ * truncated that page off the stack for good. Closing the sheet by backdrop,
+ * button or Escape then stepped back onto whatever preceded it. From a club
+ * table, that was the dashboard.
+ *
+ * So mounting and unmounting do not touch history at all. They only move a
+ * count, and a task later one reconciliation step moves the stack to match it.
+ * That makes mount → unmount → mount collapse into a single push, which is what
+ * React's double invocation actually means. And an entry is only ever given
+ * back when the live history state still shows it is ours, so a pop can never
+ * consume a page somebody is standing on.
  *
  * A separate component rather than a hook inside Sheet, because Sheet must keep
  * working outside a router — every existing Sheet test renders it bare, and
  * hooks cannot be called conditionally while components can be rendered so.
  */
+type NavigateFn = ReturnType<typeof useNavigate>;
+
+const MARKER = '__sheet';
+
+/** Sheets mounted right now. */
+let want = 0;
+/** Entries we have pushed and not yet given back. */
+let have = 0;
+let scheduled = false;
+
+const markerOf = (state: unknown): number =>
+  Number((state as Record<string, unknown> | null)?.[MARKER] ?? 0);
+
+/**
+ * True when this entry is still the one we pushed.
+ *
+ * `have` alone is nearly enough — the location effect below decrements it the
+ * moment Back takes our entry away — but it cannot see a Back press that lands
+ * in the gap between unmount and the reconciliation below. So when a real
+ * browser history is underneath, confirm against the entry the browser is
+ * actually sitting on before giving anything back.
+ *
+ * react-router's browser history stamps every entry with `idx`; a memory router
+ * never touches `window.history` at all. Checking for that rather than for the
+ * marker is what keeps the two paths honest: a guard that quietly did nothing
+ * under a memory router is how the original bug survived five passing tests.
+ */
+function stillOurs(): boolean {
+  const state = window.history.state as { usr?: unknown; idx?: number } | null;
+  if (state == null || typeof state.idx !== 'number') return true;
+  return markerOf(state.usr) > have;
+}
+
+/**
+ * Move the stack one step towards `want`, then look again.
+ *
+ * One step per task, never a loop: `navigate` does not apply synchronously, so
+ * a second step decided in the same tick would be reading a stack that has not
+ * moved yet — the exact mistake that caused the bug above.
+ */
+function schedule(navigate: NavigateFn) {
+  if (scheduled) return;
+  scheduled = true;
+  setTimeout(() => {
+    scheduled = false;
+    if (have === want) return;
+
+    if (have < want) {
+      // Same URL, new entry. The address bar is unchanged — a sheet is not a
+      // place, it is a thing open on top of one — but the stack gains a step
+      // for Back to consume.
+      const { pathname, search, hash } = window.location;
+      const usr = (window.history.state as { usr?: Record<string, unknown> } | null)?.usr;
+      have += 1;
+      navigate({ pathname, search, hash }, { state: { ...usr, [MARKER]: have } });
+    } else {
+      have -= 1;
+      if (stillOurs()) navigate(-1);
+    }
+
+    schedule(navigate);
+  }, 0);
+}
+
+/** Test seam: module state outlives a single test, and a leak fails the next. */
+export function __resetSheetHistory() {
+  want = 0;
+  have = 0;
+  scheduled = false;
+}
+
 const SheetHistoryEntry: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const idRef = useRef(`sheet-${Math.random().toString(36).slice(2, 9)}`);
-  const pushedRef = useRef(false);
-  // Only treat a missing marker as a Back press once the marker has actually
-  // been seen. The push below is asynchronous, so this effect runs once against
-  // the pre-push location — without this the sheet would close the instant it
-  // opened.
-  const sawMarkerRef = useRef(false);
+  const depthRef = useRef(0);
+  // Only treat a missing marker as a Back press once our own entry has actually
+  // arrived. The push is asynchronous, so this runs first against the pre-push
+  // location — without this the sheet would close the instant it opened.
+  const landedRef = useRef(false);
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const locationRef = useRef(location);
-  locationRef.current = location;
 
   useEffect(() => {
-    const { pathname, search, hash, state } = locationRef.current;
-    // Same URL, new entry. The address bar is unchanged — a sheet is not a
-    // place, it is a thing open on top of one — but the stack gains a step for
-    // Back to consume.
-    navigate(
-      { pathname, search, hash },
-      { state: { ...(state as Record<string, unknown> | null), __sheet: idRef.current } }
-    );
-    pushedRef.current = true;
-
+    depthRef.current = want += 1;
+    schedule(navigate);
     return () => {
-      // Closed by something other than Back, so our entry is still on the
-      // stack. Leaving it there would make the next Back a no-op that looks
-      // like the gesture broke.
-      if (pushedRef.current) navigate(-1);
+      want -= 1;
+      schedule(navigate);
     };
   }, [navigate]);
 
   useEffect(() => {
-    const isOurs =
-      (location.state as { __sheet?: string } | null)?.__sheet === idRef.current;
-
-    if (isOurs) {
-      sawMarkerRef.current = true;
+    if (markerOf(location.state) >= depthRef.current) {
+      landedRef.current = true;
       return;
     }
-    if (!sawMarkerRef.current) return;
+    if (!landedRef.current) return;
 
-    // The marker was there and is gone: Back popped our entry. The history is
-    // already where it should be, so close without navigating again.
-    pushedRef.current = false;
+    // Our entry was there and is gone: Back consumed it. The browser has
+    // already done the popping, so close without navigating again — and stop
+    // counting an entry that no longer exists.
+    landedRef.current = false;
+    have = Math.max(0, have - 1);
     onCloseRef.current();
   }, [location]);
 
@@ -195,7 +264,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         is decoration; the real close paths are Escape, the button, and this tap.
       */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-[fade-in_160ms_ease-out]"
+        className="absolute inset-0 bg-black/72 backdrop-blur-[3px] animate-[fade-in_160ms_ease-out]"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -207,15 +276,15 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         aria-labelledby={titleId.current}
         tabIndex={-1}
         className="
-          relative w-full sm:max-w-md
-          bg-surface border-t sm:border border-line
-          rounded-t-3xl sm:rounded-3xl
-          shadow-2xl outline-none
-          max-h-[90vh] flex flex-col
-          animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
-          sm:animate-[fade-in_160ms_ease-out]
-          safe-bottom
-        "
+ relative w-full sm:max-w-md
+ furniture furniture-raised
+ rounded-t-3xl sm:rounded-3xl
+ outline-none
+ max-h-[90vh] flex flex-col
+ animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
+ sm:animate-[fade-in_160ms_ease-out]
+ safe-bottom
+ "
       >
         {/* Grab handle. Purely a signifier that this surface came from the
             bottom and can be dismissed downward — the convention every native
@@ -225,7 +294,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         </div>
 
         <div className="px-5 pt-3 pb-4 shrink-0">
-          <h2 id={titleId.current} className="text-base font-bold text-text">
+          <h2 id={titleId.current} className="text-base font-semibold text-text">
             {title}
           </h2>
           {description && (

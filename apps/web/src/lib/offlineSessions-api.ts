@@ -16,6 +16,7 @@ export interface ApiOfflineSession {
   endedAt: string | null;
   activePlayerUids: string[];
   pendingSitInUids?: string[];
+  sitInRequestedAt?: Record<string, string>;
   cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
   assignedDealerUid?: string;
   assignedDealerName?: string;
@@ -25,6 +26,12 @@ export interface ApiOfflineSession {
   maxBuyIn?: number;
   maxPlayers?: number;
   skipBlindLimit?: number;
+  startedPlayingAt?: string | null;
+  durationMinutes?: number;
+  timeExtensions?: { minutes: number; at: string }[];
+  timeLimitLiftedAt?: string | null;
+  settlingAt?: string | null;
+  remindAtEnd?: boolean;
 }
 
 export function toPokerSession(s: ApiOfflineSession): PokerSession {
@@ -36,6 +43,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     status: s.status,
     activePlayerUids: s.activePlayerUids || [],
     pendingSitInUids: s.pendingSitInUids || [],
+    // Was dropped here, which is why sit-ins had no countdown and could not be
+    // ordered against buy-ins and cash-outs. The payload always carried it.
+    sitInRequestedAt: s.sitInRequestedAt || {},
     cashOuts: s.cashOuts || [],
     startedBy: s.startedById,
     createdAt: s.createdAt,
@@ -48,6 +58,12 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     maxBuyIn: s.maxBuyIn,
     maxPlayers: s.maxPlayers,
     skipBlindLimit: s.skipBlindLimit,
+    startedPlayingAt: s.startedPlayingAt,
+    durationMinutes: s.durationMinutes,
+    timeExtensions: s.timeExtensions ?? [],
+    timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
+    settlingAt: s.settlingAt ?? null,
+    remindAtEnd: s.remindAtEnd,
   };
 }
 
@@ -97,10 +113,86 @@ export interface StartSessionInput {
   maxBuyIn?: number;
   maxPlayers?: number;
   skipBlindLimit?: number;
+  /** Minutes the host set aside. Omitted means no limit. */
+  durationMinutes?: number;
+  /** Whether to say anything when the clock runs out. It never ends the night. */
+  remindAtEnd?: boolean;
 }
 
 export async function startSession(clubId: string, input: StartSessionInput): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(`/clubs/${clubId}/offline-sessions`, { method: 'POST', body: input });
+  return toPokerSession(s);
+}
+
+/**
+ * More time on the clock. Additive, unlimited, admins only.
+ *
+ * The scheduled duration is a plan; extending it is the host saying the plan
+ * changed, which at a poker table it always does.
+ */
+export async function extendSession(
+  clubId: string, sessionId: string, minutes: number
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/extend`, { method: 'POST', body: { minutes } });
+  return toPokerSession(s);
+}
+
+/**
+ * Stop the table so the figures can be agreed. Reversible — admins only.
+ *
+ * Settlement is a conversation about a set of numbers, and it cannot happen
+ * while somebody is still buying chips.
+ */
+export async function beginSettling(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/begin-settling`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/**
+ * Taking somebody out of the lobby who is not coming.
+ *
+ * Refused for anyone holding chips — that is standing up, and it goes through
+ * the count like everybody else's.
+ */
+export async function removeFromLobby(
+  clubId: string, sessionId: string, userId: string
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/remove-from-lobby`,
+    { method: 'POST', body: { userId } });
+  return toPokerSession(s);
+}
+
+/** Give the table back. The other half of the freeze, and what makes it safe. */
+export async function resumeNight(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/resume`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/** Correcting a count that was already agreed. Admins only, until settlement. */
+export async function amendCashOut(
+  clubId: string, sessionId: string, userId: string, amount: number
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/amend`,
+    { method: 'POST', body: { userId, amount } });
+  return toPokerSession(s);
+}
+
+/** Carry on with no limit for the rest of the night. One-way, admins only. */
+export async function liftTimeLimit(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/lift-time-limit`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/** "Alright, let's start." Admins only, and only with two players holding chips. */
+export async function startPlaying(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/start-playing`, { method: 'POST' });
   return toPokerSession(s);
 }
 
@@ -127,10 +219,13 @@ export async function requestCashOut(clubId: string, sessionId: string, amount: 
   return toPokerSession(s);
 }
 
-export async function decideCashOut(clubId: string, sessionId: string, userId: string, approve: boolean): Promise<PokerSession> {
+/** `amount` corrects the player's own count on the way through — see the service. */
+export async function decideCashOut(
+  clubId: string, sessionId: string, userId: string, approve: boolean, amount?: number
+): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/${approve ? 'approve' : 'reject'}`,
-    { method: 'POST', body: { userId } });
+    { method: 'POST', body: { userId, amount } });
   return toPokerSession(s);
 }
 

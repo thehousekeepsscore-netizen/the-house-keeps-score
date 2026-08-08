@@ -78,7 +78,7 @@ export const ActionQueue: React.FC<{
           <span className="absolute inline-flex h-full w-full rounded-full bg-warning opacity-60 animate-ping" />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warning" />
         </span>
-        <h2 className="text-sm font-bold text-text">
+        <h2 className="text-sm font-medium text-text">
           {items.length} {items.length === 1 ? 'action needs' : 'actions need'} you
         </h2>
       </header>

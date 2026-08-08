@@ -154,7 +154,7 @@ export const ProfileSetupView: React.FC = () => {
           <div className="w-11 h-11 rounded-full bg-accent/10 border border-accent/30 text-accent flex items-center justify-center mx-auto mb-1">
             <Sparkles className="w-5 h-5" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-text">Complete your profile</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-text">Complete your profile</h1>
           <p className="text-xs text-text-muted">This is what other players will see at the table.</p>
         </div>
 

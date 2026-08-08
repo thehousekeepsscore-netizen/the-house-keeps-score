@@ -129,7 +129,55 @@ export interface PokerSession {
   status: 'active' | 'settled';
   activePlayerUids: string[];
   pendingSitInUids?: string[];
-  cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
+  /**
+   * When each pending sit-in was asked for. The server has always sent this —
+   * it is part of engineState — but the client dropped it, which left sit-ins
+   * as the one request type with no timestamp, so they could not be ordered
+   * against the other two or shown a countdown.
+   */
+  sitInRequestedAt?: Record<string, string>;
+  cashOuts?: {
+    userId: string; amount: number; status: 'pending' | 'confirmed';
+    requestedAt: string; confirmedBy?: string;
+    /** Set when an admin corrected an already-agreed count. */
+    amendedBy?: string; amendedAt?: string;
+  }[];
+  /**
+   * When the host said "alright, let's start", or null while the table is open
+   * and people are still gathering.
+   *
+   * UNDEFINED means a session created before the lobby existed. Those are being
+   * played right now, so they are read as started — see deriveNight.
+   */
+  startedPlayingAt?: string | null;
+  /**
+   * Minutes the host originally set aside. Absent means no limit.
+   *
+   * The PLAN, not the current total — extensions live beside it so the feed can
+   * say "started with a 2-hour timer" and "extended by 30 minutes" rather than
+   * silently showing a bigger number. See scheduledMinutes in night-clock.ts.
+   */
+  durationMinutes?: number;
+  /** Every extension, in the order they were granted. Additive and unlimited. */
+  timeExtensions?: { minutes: number; at: string }[];
+  /**
+   * When the host chose to carry on with no limit.
+   *
+   * One-way for the rest of the night, and that is the point: it is what stops
+   * a night running three hours over from showing a grace period every five
+   * minutes for the last two of them.
+   */
+  timeLimitLiftedAt?: string | null;
+  /**
+   * When the host started settling, and the table stopped moving.
+   *
+   * Figures cannot be agreed while they are still changing underneath. Nothing
+   * mutates from here until the night settles or the host hands it back —
+   * reversible on purpose, because a mis-tap must not hold a room hostage.
+   */
+  settlingAt?: string | null;
+  /** Superseded by the grace period, which is a banner rather than an alert. */
+  remindAtEnd?: boolean;
   startedBy: string;
   createdAt: string;
   endedAt?: string;

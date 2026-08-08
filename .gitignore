@@ -18,3 +18,9 @@ coverage/
 # Deliberately NOT the CLI's own suggestion of `.env*`, which sits after the
 # `!.env.example` exception above and would silently re-ignore the template.
 .vercel
+
+# macOS/iCloud duplication artefacts — byte-identical copies of tracked files
+*\ 2.ts
+*\ 2.tsx
+*\ 2.md
+*\ 2.json

@@ -4,6 +4,8 @@ import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
 import { useOAuthLanding } from './lib/use-oauth-landing';
+import { TablePreview } from './components/session/TablePreview';
+import { SessionPreview } from './components/session/SessionPreview';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -35,7 +37,6 @@ import { ToastContainer } from './components/ToastContainer';
 import { ProfileSetupView } from './components/ProfileSetupView';
 import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
-import { useApplyTheme } from './lib/theme';
 import { Club } from './types';
 import * as clubsApi from './lib/clubs-api';
 import { useResource, useResourceCache } from './lib/resource-cache';
@@ -105,7 +106,6 @@ export default function App() {
   const navigate = useNavigate();
   const cache = useResourceCache();
   const { user: authUser, status: authStatus, logout, authError, clearAuthError } = useAuth();
-  useApplyTheme(authUser?.themePreference);
   const [tableCode, setTableCode] = useState('7742');
   const [tableCodeInput, setTableCodeInput] = useState('7742');
   const [playerNameInput, setPlayerNameInput] = useState('');
@@ -632,6 +632,8 @@ export default function App() {
           {/* Developer instrumentation. Deliberately unlinked from the UI, and
               inside the authenticated tree so it is not a public endpoint. */}
           <Route path="/debug/performance" element={<PerformanceDebugView />} />
+          <Route path="/debug/table" element={<TablePreview />} />
+          <Route path="/debug/session" element={<SessionPreview />} />
           <Route path="/setup" element={<Navigate to="/" replace />} />
           {/* Unknown URLs — including the OAuth callback, whose code
               AuthProvider has already consumed and whose URL it has rewritten. */}
@@ -689,11 +691,11 @@ const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>[
       // silently bouncing to the dashboard, which would look like a bug.
       return (
         <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
-          <p className="text-sm font-bold text-text">This club isn't available.</p>
+          <p className="text-sm font-medium text-text">This club isn't available.</p>
           <p className="text-xs text-text-muted">It may have been deleted, or you may not be a member.</p>
           <button
             onClick={() => navigate('/', { replace: true })}
-            className="bg-accent text-accent-contrast font-bold px-4 py-2 rounded-xl text-xs uppercase cursor-pointer"
+            className="bg-accent text-accent-contrast font-medium px-4 py-2 rounded-xl text-xs cursor-pointer"
           >
             Back to my clubs
           </button>
