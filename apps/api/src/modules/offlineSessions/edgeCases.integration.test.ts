@@ -553,6 +553,16 @@ describe('settling a night that never started', () => {
           activePlayerUids: [ownerId, priyaId],
           pendingSitInUids: [],
           cashOuts: [],
+        // Settlement refuses a night with no rules of its own, so a fixture that
+        // settles has to carry them exactly as startPlaying would have written.
+        settlementRules: {
+          capturedAt: new Date().toISOString(),
+          sessionRakeAmount: 0, winnersCutPercent: 0,
+          rakeEnabled: false, rakeMethod: 'PERCENT_PROFIT', rakeValue: 0,
+          potEnabled: true, mismatchStrategy: 'PROPORTIONAL_WINNERS',
+          rakeOrder: 'MISMATCH_FIRST', winnerDefinition: 'PROFIT_POSITIVE',
+          winnerTopN: 1, roundingRule: 'NONE',
+        },
           ...state,
         } as any,
       },

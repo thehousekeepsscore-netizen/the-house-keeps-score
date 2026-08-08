@@ -62,7 +62,20 @@ async function seedClub(potBalance: number) {
       sessionName: 'Atomicity Night',
       sessionType: 'OFFLINE',
       startedById: owner.id,
-      engineState: { activePlayerUids: [owner.id, player.id], pendingSitInUids: [] },
+      engineState: {
+        activePlayerUids: [owner.id, player.id],
+        pendingSitInUids: [],
+        // This club takes a 10% winners' cut, which is what drives the pot
+        // movement this file is about — the night's rules have to say so too.
+        settlementRules: {
+          capturedAt: new Date().toISOString(),
+          sessionRakeAmount: 0, winnersCutPercent: 10,
+          rakeEnabled: true, rakeMethod: 'PERCENT_PROFIT', rakeValue: 10,
+          potEnabled: true, mismatchStrategy: 'PROPORTIONAL_WINNERS',
+          rakeOrder: 'MISMATCH_FIRST', winnerDefinition: 'PROFIT_POSITIVE',
+          winnerTopN: 1, roundingRule: 'NONE',
+        },
+      },
     },
   });
   sessionId = session.id;
