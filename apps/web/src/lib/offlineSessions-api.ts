@@ -279,3 +279,21 @@ export async function settleSession(clubId: string, sessionId: string, input: Se
   });
   return result.playerSummaries;
 }
+
+/**
+ * Tell a night what it is playing for. Admins only, and only once.
+ *
+ * The server refuses a second call, so this is not an edit — the confirmation
+ * step in the UI carries that weight rather than a toast afterwards.
+ */
+export async function initSettlementRules(
+  clubId: string,
+  sessionId: string,
+  input: { sessionRakeAmount: number; winnersCutPercent: number }
+): Promise<PokerSession> {
+  const r = await apiFetch<{ session: ApiOfflineSession }>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/settlement-rules`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+  return toPokerSession(r.session);
+}

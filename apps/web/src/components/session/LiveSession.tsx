@@ -94,6 +94,13 @@ export interface LiveSessionProps {
   onResumeNight?: () => void;
   /** Admins only, in the lobby: take out somebody who said they were coming. */
   onRemoveFromLobby?: (userId: string) => void;
+  /**
+   * Admins only, and only for a night that has none: say what it plays for.
+   *
+   * Absent once the night has rules — the server refuses a second attempt, so
+   * a control that stayed on screen would offer something that cannot happen.
+   */
+  onSetSettlementRules?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -174,6 +181,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onKeepPlaying,
   onResumeNight,
   onRemoveFromLobby,
+  onSetSettlementRules,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -255,6 +263,30 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onKeepPlaying={onKeepPlaying}
           onSettle={onSettleNight}
         />
+      )}
+
+      {/*
+        A night that does not know what it is playing for.
+        
+        Only ever true of a game that started before rules were recorded
+        against a session, and it has to be dealt with before the night can be
+        settled — so it says that, here, rather than letting the host find out
+        at 2am when Settle refuses. Players see it too: what the house takes is
+        not an administrative detail to them.
+      */}
+      {live && !night.settling && !session?.settlementRules && night.startedPlayingAt !== null && (
+        <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40">
+          <p className="text-sm text-text">No settlement rules yet</p>
+          <p className="mt-0.5 text-xs text-text-muted leading-relaxed">
+            This night began before rules were recorded against a session, so it has none of
+            its own. They have to be set before it can be settled.
+          </p>
+          {isAdmin && onSetSettlementRules && (
+            <Button variant="primary" size="sm" fullWidth className="mt-2" onClick={onSetSettlementRules}>
+              Set tonight's rules
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Lead with what needs a decision. This sits above the stage in every

@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 /**
@@ -41,6 +41,7 @@ vi.mock('../lib/offlineSessions-api', async () => {
     beginSettling: vi.fn(),
     resumeNight: vi.fn(),
     settleSession: vi.fn(),
+    initSettlementRules: vi.fn(),
   };
 });
 
@@ -69,6 +70,7 @@ vi.mock('../lib/clubs-api', async () => {
 
 import { ClubDetailView } from './ClubDetailView';
 import { ResourceCacheProvider } from '../lib/resource-cache';
+import { __resetSheetHistory } from './ui/Sheet';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
 import * as clubsApi from '../lib/clubs-api';
 import * as clubRecordsApi from '../lib/clubRecords-api';
@@ -187,6 +189,12 @@ function renderClub(over: Partial<PokerSession> = {}) {
   });
   vi.mocked(offlineSessionsApi.settleSession).mockResolvedValue([]);
 
+  // Per MOUNT, not per test. Sheet's Back-gesture bookkeeping is module-level
+  // while each render gets its own memory router, so a counter left over from
+  // an earlier mount makes this router pop history it never pushed — it
+  // resolves "/" and renders a 404 boundary instead of the screen.
+  __resetSheetHistory();
+
   const router = createMemoryRouter(
     [
       {
@@ -241,6 +249,23 @@ const findPreview = () => screen.findAllByText(/^Profit \/ loss$/i);
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  __resetSheetHistory();
+});
+
+/**
+ * Unmount, let the Sheet finish, and only then reset it.
+ *
+ * Sheet reconciles its Back-gesture bookkeeping on a timeout, so a test that
+ * ends with a sheet open schedules a navigate(-1) that lands AFTER the next
+ * test has mounted its own router. That router has no history to pop, so it
+ * resolves "/" and renders a 404 boundary — a failure in a test that did
+ * nothing wrong, pointing nowhere near the cause. Draining the timer while the
+ * right router is still up keeps each test's history to itself.
+ */
+afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  __resetSheetHistory();
 });
 
 describe('settling a night', () => {
@@ -440,5 +465,113 @@ describe('the rules on the settlement screen', () => {
   it('says the club cannot move them', async () => {
     await openSettlement();
     expect(screen.getByText(/changing the club's settings does not move them/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The exact path tonight.
+ *
+ * A night already in progress with no rules of its own; an admin sets 1,000
+ * chips and 5%; and then every way anyone can arrive at that session has to
+ * show the same two numbers — the host's own screen, a second admin's, a
+ * player's, a reload, and the settlement preview that decides the money.
+ *
+ * Written because this is the sequence about to be performed on a live game
+ * with real chips on the table, and "it worked when I tried it once" is not
+ * the same as knowing every arrival agrees.
+ */
+describe('setting a running night\'s rules, then arriving from everywhere', () => {
+  const RULES = {
+    capturedAt: ago(1),
+    sessionRakeAmount: 1000,
+    winnersCutPercent: 5,
+    rakeEnabled: true,
+    rakeMethod: 'PERCENT_PROFIT',
+    rakeValue: 0,
+    potEnabled: true,
+    mismatchStrategy: 'PROPORTIONAL_WINNERS',
+    rakeOrder: 'MISMATCH_FIRST',
+    winnerDefinition: 'PROFIT_POSITIVE',
+    winnerTopN: 1,
+    roundingRule: 'NONE',
+  };
+
+  const withoutRules = (): Partial<PokerSession> => {
+    const { settlementRules, ...rest } = session;
+    return { ...rest, settlementRules: undefined };
+  };
+
+  /*
+   * NOT COVERED HERE: clicking through the sheet to the API call.
+   *
+   * Sheet pushes a history entry asynchronously so the Back gesture closes it
+   * instead of leaving the screen. Under jsdom that push and a synchronous
+   * fireEvent race, and the sheet closes under the test — it passes alone and
+   * fails behind any other mount in the file, which is a test that reports on
+   * its neighbours rather than on the code.
+   *
+   * Rather than leave a flaky test asserting something important, the two
+   * cases it covered are recorded as unverified: that Confirm sends exactly
+   * {sessionRakeAmount: 1000, winnersCutPercent: 5}, and that the first tap
+   * sends nothing. The server side of both IS covered — initSettlementRules
+   * has integration tests for the figures, the one-shot rule and concurrency.
+   * What is missing is the click path, and it wants a browser rather than a
+   * better mock.
+   */
+  it('offers the host a way to set them, on the felt while the night runs', async () => {
+    renderClub(withoutRules());
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+
+    // Not on the settlement screen: opening that freezes the table, and the
+    // server refuses to set rules once it is frozen.
+    expect(await screen.findByText(/no settlement rules yet/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /set tonight's rules/i })).toBeInTheDocument();
+  });
+
+
+
+  it('stops asking once the night has them', async () => {
+    renderClub({ settlementRules: RULES });
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+    await screen.findByRole('button', { name: /settle night/i });
+
+    // The server refuses a second attempt, so a control still on screen would
+    // be offering something that cannot happen.
+    expect(screen.queryByText(/no settlement rules yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /set tonight's rules/i })).not.toBeInTheDocument();
+  });
+
+  it('tells everyone at the table, players included', async () => {
+    // Derived from capturedAt, so it is in the story on a fresh load too —
+    // not a notification that only the connected admin saw.
+    renderClub({ settlementRules: RULES, isAdmin: false } as never);
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+
+    expect(await screen.findByText(/settlement rules set/i)).toBeInTheDocument();
+    expect(screen.getByText(/rake 1,000/i)).toBeInTheDocument();
+    expect(screen.getByText(/winners' cut 5%/i)).toBeInTheDocument();
+  });
+
+  it('shows a second admin the same two numbers on the settlement screen', async () => {
+    // A fresh mount IS the reconnect and reload case: nothing is held in
+    // memory, everything comes from the session the server returned.
+    await openSettlement({ settlementRules: RULES });
+
+    expect(screen.getByText('1,000 chips')).toBeInTheDocument();
+    expect(screen.getByText('5%')).toBeInTheDocument();
+  });
+
+  it('computes Auto Calculate from those rules, not the club\'s', async () => {
+    // The club in this fixture charges nothing. If the preview were reading it,
+    // there would be no rake line at all.
+    await openSettlement({ settlementRules: RULES });
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    await findPreview();
+    expect(screen.getByText(/House take/i)).toBeInTheDocument();
+    // Flat 1,000 across two players, plus 5% of the winner's 3,000 profit.
+    expect(screen.getByText(/Session rake \(flat\)/i)).toBeInTheDocument();
   });
 });
