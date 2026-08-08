@@ -19,12 +19,10 @@ import { durationPhrase } from './night-clock';
  *
  * TWO HONEST LIMITS, both from the shape of the data rather than from choice:
  *
- *   The story line is timestamped when a thing was ASKED for, not when it was
- *   agreed, and stays that way: it is the moment the chips moved in the room.
- *   Buy-ins now also carry `approvedAt`, and cash-outs carry `confirmedBy` —
- *   both are recorded on the event and read by the History sheet rather than
- *   by the story. Rows decided before those were recorded have neither, and
- *   are shown without a decision time rather than with a guessed one.
+ *   Buy-ins carry `createdAt` (when it was asked for) and no approval time, and
+ *   cash-outs carry `requestedAt` and no confirmation time. So an event is
+ *   timestamped when it was ASKED, not when it was agreed. The gap is bounded
+ *   by the five-minute request window and is usually seconds.
  *
  *   "Priya is now hosting" is not derivable at all — admin changes carry no
  *   timestamp anywhere in the payload — so it is absent rather than guessed at.
@@ -54,9 +52,7 @@ export type FeedKind =
   /** The host chose to carry on with no limit. */
   | 'timer-lifted'
   /** The night is over. */
-  | 'settled'
-  /** A buy-in was withdrawn through the approval workflow. Audit only. */
-  | 'buyin-deleted';
+  | 'settled';
 
 export interface FeedEvent {
   /** Stable across renders, so React keys and the "what is new" check both hold. */
@@ -68,34 +64,6 @@ export interface FeedEvent {
   amount?: number;
   /** How many events this line stands for, when it stands for more than one. */
   count?: number;
-
-  /*
-   * The audit half.
-   *
-   * Everything above answers "what happened in the room" and is what the
-   * inline story renders. Everything below answers "who moved this money and
-   * when", which the story deliberately refuses to say — see the note at the
-   * top of this file — and which the History sheet exists to answer.
-   *
-   * Both come from one derivation because they are one set of events. Only the
-   * rendering differs: feedLine() tells the story, historyEntry() reads the
-   * ledger. Deriving them separately would let the two drift apart while both
-   * claimed to describe the same night.
-   *
-   * Undefined throughout for events that have no actor — the clock running
-   * out belongs to nobody.
-   */
-  /** Who asked. Differs from userId when an admin banks chips for a player. */
-  requestedBy?: string;
-  approvedBy?: string;
-  /** Null on rows decided before this was recorded — shown without a time. */
-  approvedAt?: string;
-  editedBy?: string;
-  editedAt?: string;
-  /** What the amount was before a correction, so the change is legible. */
-  previousAmount?: number;
-  deletedBy?: string;
-  deletedAt?: string;
 }
 
 export interface FeedInput {
@@ -146,21 +114,10 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
   // Chronological on the way in, because two of these are cumulative: whether a
   // buy-in is somebody's first, and whether it moved the ceiling. Reversed at
   // the end, once the answers are known.
-  const decided = buyIns
+  const approved = buyIns
     .filter((r) => r.sessionId === session.id && r.status === 'approved')
     .slice()
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
-
-  /*
-   * A deleted buy-in stops being money and stays being history.
-   *
-   * It must leave `banks` — it is no longer in anyone's stack, so it must not
-   * count toward their total or hold the table maximum up at a figure that was
-   * withdrawn. But it keeps its line, because a buy-in that vanished without
-   * trace is the one thing an audit trail exists to prevent.
-   */
-  const approved = decided.filter((r) => !r.deletedAt);
-  const removed = decided.filter((r) => r.deletedAt);
 
   const banks = new Map<string, number>();
   let ceiling = ceilingOf(banks, buyInMode, clubMaxBuyIn);
@@ -175,12 +132,6 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
       at: r.createdAt,
       userId: r.userId,
       amount: r.amount,
-      requestedBy: r.requestedBy,
-      approvedBy: r.approvedBy,
-      approvedAt: r.approvedAt,
-      editedBy: r.editedBy,
-      editedAt: r.editedAt,
-      previousAmount: r.previousAmount,
     });
 
     /*
@@ -206,24 +157,6 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
     ceiling = next;
   }
 
-  // Timestamped when it was DELETED, not when it was bought. The removal is the
-  // event; the original line is gone from the running story because the chips
-  // are gone from the table.
-  for (const r of removed) {
-    events.push({
-      id: `buyin-deleted:${r.id}`,
-      kind: 'buyin-deleted',
-      at: r.deletedAt!,
-      userId: r.userId,
-      amount: r.amount,
-      requestedBy: r.requestedBy,
-      approvedBy: r.approvedBy,
-      approvedAt: r.approvedAt,
-      deletedBy: r.deletedBy,
-      deletedAt: r.deletedAt,
-    });
-  }
-
   // Seated with nothing down yet. Only for people who have not bought in at all,
   // so an arrival and their first chips are never two lines about one moment.
   for (const userId of session.pendingSitInUids ?? []) {
@@ -244,10 +177,6 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
       at: c.requestedAt,
       userId: c.userId,
       amount: c.amount,
-      requestedBy: c.userId,
-      approvedBy: c.confirmedBy,
-      editedBy: c.amendedBy,
-      editedAt: c.amendedAt,
     });
   }
 
@@ -348,7 +277,6 @@ const ICON: Record<FeedKind, string> = {
   left: '✅',
   ceiling: '⬆️',
   settled: '🏁',
-  'buyin-deleted': '↩️',
 };
 
 /**
@@ -399,8 +327,6 @@ export function feedLine(
       return { icon, text: 'Session continued without a time limit' };
     case 'settled':
       return { icon, text: 'Settlement started' };
-    case 'buyin-deleted':
-      return { icon, text: `${who}'s buy-in of ${amount(n)} was removed` };
   }
 }
 

@@ -143,11 +143,6 @@ export interface PokerSession {
     amendedBy?: string; amendedAt?: string;
   }[];
   /**
-   * Corrections to a banked buy-in, waiting on a second admin. Transient and
-   * dies with the session; the outcome lives on the BuyInRequest row.
-   */
-  entryChanges?: { id: string; buyInId: string; type: 'edit' | 'delete'; amount?: number; requestedBy: string; requestedAt: string }[];
-  /**
    * When the host said "alright, let's start", or null while the table is open
    * and people are still gathering.
    *
@@ -242,16 +237,7 @@ export interface BuyInRequest {
   status: 'pending' | 'approved' | 'rejected';
   requestedBy: string;
   approvedBy?: string;
-  /** When it was ASKED for. The decision has its own time below. */
   createdAt: string;
-  /** When it was decided. Absent on rows decided before this was recorded. */
-  approvedAt?: string;
-  /** Correction and removal, both through the approval workflow. */
-  previousAmount?: number;
-  editedBy?: string;
-  editedAt?: string;
-  deletedBy?: string;
-  deletedAt?: string;
 }
 
 export interface PlayerSessionSummary {

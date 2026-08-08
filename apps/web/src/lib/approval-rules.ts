@@ -61,13 +61,11 @@ export function selfApprovalBlock(
   who: WhoIsHere,
   viewerUid: string,
   authorUid: string,
-  what: 'buy-in' | 'cash-out' | 'correction'
+  what: 'buy-in' | 'cash-out'
 ): string | null {
   if (authorUid !== viewerUid) return null;
   if (!hasAnotherAdminHere(who, viewerUid)) return null;
   return what === 'cash-out'
     ? 'Another admin needs to confirm this one.'
     : 'Another admin needs to approve this one.';
-  // 'correction' takes the same sentence as a buy-in on purpose: it IS an
-  // approval, and inventing a third phrasing for it would suggest otherwise.
 }

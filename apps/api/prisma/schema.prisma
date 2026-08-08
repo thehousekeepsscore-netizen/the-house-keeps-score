@@ -221,25 +221,6 @@ model BuyInRequest {
   approvedBy   String?
   createdAt    DateTime @default(now())
 
-  /// When the decision was taken, kept apart from createdAt on purpose.
-  ///
-  /// createdAt is when the player ASKED. Until this existed the history could
-  /// say who approved a buy-in but not when, so a request made at 20:11 and
-  /// approved at 20:47 read as one instant. The gap between the two is
-  /// frequently the thing being argued about.
-  ///
-  /// Null for rows decided before this shipped, and for anything still pending.
-  approvedAt   DateTime?
-
-  /// Correction and removal, through the same approval workflow as everything
-  /// else. A deleted buy-in is struck from the running totals but stays in the
-  /// history — erasing money movement is exactly what an audit trail is for.
-  amount_previous Int?
-  editedBy     String?
-  editedAt     DateTime?
-  deletedBy    String?
-  deletedAt    DateTime?
-
   @@index([sessionId])
   @@index([clubId])
 }

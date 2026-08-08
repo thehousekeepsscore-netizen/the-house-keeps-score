@@ -153,8 +153,6 @@ export const SESSION_PATCH_EVENTS = [
   'club:settling-cancelled',
   'club:cashout-amended',
   'club:lobby-player-removed',
-  'club:entry-change-requested',
-  'club:entry-change-decided',
 ] as const;
 
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
@@ -1855,23 +1853,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         };
       }
 
-      if (q.kind === 'entry-change') {
-        const changeId = q.id.replace(/^entry-change:/, '');
-        const change = activeSession.entryChanges?.find((c) => c.id === changeId);
-        // Same authorship rule as a buy-in, named the same way: whoever asked
-        // for the correction may not also agree it while another admin is here.
-        const blocked = change && !isSuperUser
-          ? selfApprovalBlock(whoIsHere, currentUser.uid, change.requestedBy, 'correction')
-          : null;
-        return {
-          ...base,
-          blockedReason: blocked,
-          pending: false,
-          onApprove: () => decideEntryChange(changeId, true),
-          onDismiss: () => decideEntryChange(changeId, false),
-        };
-      }
-
       if (q.kind === 'sit-in') {
         return {
           ...base,
@@ -1967,54 +1948,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       if (!activeSession) return;
       applySession(await offlineSessionsApi.removeFromLobby(club.id, activeSession.id, userId));
     }, 'Please try again.');
-
-  /*
-   * Correcting a banked buy-in.
-   *
-   * Neither of these changes anything on its own — they ASK, and another admin
-   * decides, exactly as the buy-in itself did. The sheet below collects the
-   * corrected figure; removal has nothing to collect, so it goes straight to
-   * the request and the confirmation is the queue entry it creates.
-   */
-  const [correcting, setCorrecting] = useState<{ buyInId: string; amount: number } | null>(null);
-  const [correctionAmount, setCorrectionAmount] = useState('');
-
-  const decideEntryChange = async (changeId: string, approve: boolean) => {
-    if (!activeSession) return;
-    try {
-      const { session } = await offlineSessionsApi.decideEntryChange(
-        club.id, activeSession.id, changeId, approve
-      );
-      applySession(session);
-      // The buy-in ROW changed, not just the session, and the feed is derived
-      // from those rows — so the session patch alone would leave the corrected
-      // figure on screen unchanged until something else refetched.
-      await refreshActiveSession();
-    } catch (err) {
-      pushToast('Could not decide that', err instanceof Error ? err.message : 'Please try again.', 'warning');
-    }
-  };
-
-  const askForEntryChange = async (
-    buyInId: string,
-    type: 'edit' | 'delete',
-    amount?: number
-  ) => {
-    if (!activeSession) return;
-    try {
-      const { session } = await offlineSessionsApi.requestEntryChange(club.id, activeSession.id, {
-        buyInId, type, ...(amount !== undefined ? { amount } : {}),
-      });
-      applySession(session);
-      pushToast(
-        type === 'delete' ? 'Removal sent for approval' : 'Correction sent for approval',
-        'Another admin needs to agree before anything changes.',
-        'success'
-      );
-    } catch (err) {
-      pushToast('Could not send that', err instanceof Error ? err.message : 'Please try again.', 'warning');
-    }
-  };
 
   /** Hand the table back. A mis-tap must not end somebody's evening. */
   const resumeNight = async () => {
@@ -2502,60 +2435,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   setSheetUid(currentUser.uid);
                 }}
                 feed={nightFeed}
-                onEditEntry={isAdmin ? (buyInId, amount) => {
-                  setCorrectionAmount(String(amount));
-                  setCorrecting({ buyInId, amount });
-                } : undefined}
-                onDeleteEntry={isAdmin ? (buyInId) => askForEntryChange(buyInId, 'delete') : undefined}
               />
             )}
-
-            {/* One number, and a reminder that entering it does not apply it. */}
-            <Sheet
-              open={correcting !== null}
-              onClose={() => setCorrecting(null)}
-              title="Correct this buy-in"
-              description="Another admin has to agree before the figure changes. The original stays on the record."
-              footer={
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  disabled={
-                    !correctionAmount ||
-                    Number(correctionAmount) <= 0 ||
-                    Number(correctionAmount) === correcting?.amount
-                  }
-                  onClick={() => {
-                    if (!correcting) return;
-                    askForEntryChange(correcting.buyInId, 'edit', Number(correctionAmount));
-                    setCorrecting(null);
-                  }}
-                >
-                  Send for approval
-                </Button>
-              }
-            >
-              <div className="px-5 pb-2">
-                <label className="text-xs text-text-muted" htmlFor="correction-amount">
-                  Corrected amount
-                </label>
-                <input
-                  id="correction-amount"
-                  type="number"
-                  min={1}
-                  inputMode="numeric"
-                  value={correctionAmount}
-                  onChange={(e) => setCorrectionAmount(e.target.value)}
-                  className="mt-1 w-full furniture rounded-xl px-3 py-3 text-base font-mono tabular-nums text-text focus:border-accent outline-none"
-                />
-                {correcting && (
-                  <p className="mt-2 text-xs text-text-faint">
-                    Currently {formatUnit(correcting.amount)}.
-                  </p>
-                )}
-              </div>
-            </Sheet>
 
             {/* Picks a person, and nothing else. Choosing one opens their own
                 sheet, which opens on the bank chooser because they have no

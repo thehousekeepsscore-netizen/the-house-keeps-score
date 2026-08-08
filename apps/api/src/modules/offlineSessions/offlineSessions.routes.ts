@@ -33,12 +33,4 @@ offlineSessionsRouter.post(
   '/:sessionId/buy-in-requests/:requestId/:decision(approve|reject)',
   asyncHandler(offlineSessionsController.decideBuyInRequest)
 );
-// Corrections to a banked buy-in. Both halves of the same approval workflow
-// the buy-in itself went through — request, then a second admin decides.
-offlineSessionsRouter.post('/:sessionId/entry-changes', asyncHandler(offlineSessionsController.requestEntryChange));
-offlineSessionsRouter.post(
-  '/:sessionId/entry-changes/:changeId/:decision(approve|reject)',
-  asyncHandler(offlineSessionsController.decideEntryChange)
-);
-
 offlineSessionsRouter.post('/:sessionId/settle', asyncHandler(offlineSessionsController.settleSession));

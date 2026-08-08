@@ -210,35 +210,3 @@ export async function settleSession(req: Request, res: Response) {
   const settlement = await offlineSessionsService.settleSession(req.params.sessionId, req.user!.sub, req.user!.isSuperAdmin, input);
   return res.status(201).json(settlement);
 }
-
-const entryChangeSchema = z.object({
-  buyInId: z.string().min(1),
-  type: z.enum(['edit', 'delete']),
-  // Checked again in the service, which is where the "not the amount it
-  // already is" rule lives — that one needs the row.
-  amount: z.number().int().positive().optional(),
-});
-
-export async function requestEntryChange(req: Request, res: Response) {
-  const input = entryChangeSchema.parse(req.body);
-  const result = await offlineSessionsService.requestEntryChange(
-    req.params.sessionId,
-    req.params.clubId,
-    req.user!.sub,
-    req.user!.isSuperAdmin,
-    input
-  );
-  return res.status(201).json(result);
-}
-
-export async function decideEntryChange(req: Request, res: Response) {
-  const result = await offlineSessionsService.decideEntryChange(
-    req.params.sessionId,
-    req.params.clubId,
-    req.user!.sub,
-    req.user!.isSuperAdmin,
-    req.params.changeId,
-    req.params.decision === 'approve'
-  );
-  return res.json(result);
-}
