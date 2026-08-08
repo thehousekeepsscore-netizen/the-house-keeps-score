@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { prisma } from '../lib/prisma.js';
@@ -231,28 +231,41 @@ describe('an event emitted on the server arrives at a connected client', () => {
  * to tell the next one.
  */
 describe('a join whose query fails', () => {
+  /**
+   * Breaks the query by hand rather than with vi.spyOn.
+   *
+   * Prisma's model delegates are lazily defined properties, and spyOn's
+   * mockRestore does not put them back — the next test got
+   * "prisma.club.findUnique is not a function" and failed for a reason that had
+   * nothing to do with the guard. Saving the original and reassigning it is
+   * blunt, and it restores exactly what was there.
+   */
+  async function withFailingClubLookup<T>(body: () => Promise<T>): Promise<T> {
+    const club = prisma.club as unknown as Record<string, unknown>;
+    const original = club.findUnique;
+    club.findUnique = () =>
+      Promise.reject(new Error('FATAL: max clients reached in session mode'));
+    try {
+      return await body();
+    } finally {
+      club.findUnique = original;
+    }
+  }
+
   it('denies that one join instead of taking the server down', async () => {
     const client = await open(memberId);
-    const boom = vi
-      .spyOn(prisma.club, 'findUnique')
-      .mockRejectedValueOnce(new Error('FATAL: max clients reached in session mode'));
 
-    const ack = await joinClub(client, clubId);
+    const ack = await withFailingClubLookup(() => joinClub(client, clubId));
 
     expect(ack).toEqual({ ok: false, error: 'Could not join right now' });
-    boom.mockRestore();
   });
 
   it('is still serving the next client afterwards', async () => {
     const failing = await open(memberId);
-    const boom = vi
-      .spyOn(prisma.club, 'findUnique')
-      .mockRejectedValueOnce(new Error('FATAL: max clients reached in session mode'));
-    await joinClub(failing, clubId);
-    boom.mockRestore();
+    await withFailingClubLookup(() => joinClub(failing, clubId));
 
     // The whole point: the process is alive, the room still works, and events
-    // still arrive. Before the guard, there was nothing here to connect to.
+    // still arrive. Before the guard there was nothing here to connect to.
     const client = await open(memberId);
     expect(await joinClub(client, clubId)).toEqual({ ok: true });
 
