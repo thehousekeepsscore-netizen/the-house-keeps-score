@@ -132,6 +132,22 @@ const session: PokerSession = {
   timeExtensions: [],
   timeLimitLiftedAt: null,
   settlingAt: null,
+  // The rules this night plays by. A session without them cannot be settled at
+  // all now, so every test that settles needs one — which is the guard working.
+  settlementRules: {
+    capturedAt: ago(90),
+    sessionRakeAmount: 0,
+    winnersCutPercent: 0,
+    rakeEnabled: false,
+    rakeMethod: 'PERCENT_PROFIT',
+    rakeValue: 0,
+    potEnabled: false,
+    mismatchStrategy: 'PROPORTIONAL_WINNERS',
+    rakeOrder: 'MISMATCH_FIRST',
+    winnerDefinition: 'PROFIT_POSITIVE',
+    winnerTopN: 1,
+    roundingRule: 'NONE',
+  },
 };
 
 const buyIn = (id: string, userId: string, amount: number): BuyInRequest => ({
@@ -373,5 +389,56 @@ describe('a player who stood up early', () => {
     // Only the host's cash-out is outstanding.
     fireEvent.change(amountFields()[1], { target: { value: '2600' } });
     expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+  });
+});
+
+describe('a night with no rules of its own', () => {
+  const noRules = (): Partial<PokerSession> => {
+    const { settlementRules, ...rest } = session;
+    return { ...rest, settlementRules: undefined };
+  };
+
+  it('says why it cannot be settled instead of showing figures', async () => {
+    await openSettlement(noRules());
+
+    expect(screen.getByText(/started before its rules were recorded/i)).toBeInTheDocument();
+  });
+
+  it('does not quietly substitute the club settings', async () => {
+    await openSettlement(noRules());
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    // No preview at all: the admin is never shown numbers the server would
+    // refuse to commit.
+    expect(previewLines()).toHaveLength(0);
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
+  });
+});
+
+describe('the rules on the settlement screen', () => {
+  it('shows what this night is being settled by', async () => {
+    await openSettlement();
+
+    expect(screen.getByText(/this night's rules/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Rake$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Winners' cut$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Rounding$/)).toBeInTheDocument();
+  });
+
+  it('reads them from the session, not from the club', async () => {
+    // The club charges; the night does not. What is shown must be the night's.
+    await openSettlement({
+      settlementRules: { ...session.settlementRules!, sessionRakeAmount: 1000, winnersCutPercent: 5 },
+    });
+
+    expect(screen.getByText('1,000 chips')).toBeInTheDocument();
+    expect(screen.getByText('5%')).toBeInTheDocument();
+  });
+
+  it('says the club cannot move them', async () => {
+    await openSettlement();
+    expect(screen.getByText(/changing the club's settings does not move them/i)).toBeInTheDocument();
   });
 });

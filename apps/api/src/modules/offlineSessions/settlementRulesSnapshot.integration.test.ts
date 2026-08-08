@@ -21,7 +21,7 @@ vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
 const {
   requestBuyIn, decideBuyInRequest, startPlaying, startSession,
-  settleSession, setSessionSettlementRules,
+  settleSession, initSettlementRules, beginSettling,
 } = await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -218,106 +218,174 @@ describe('a night that predates snapshots', () => {
     await prisma.pokerSession.update({ where: { id: sessionId }, data: { engineState: state as never } });
   });
 
-  it('still settles rather than stranding a live game', async () => {
-    await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
-  });
-
-  it('says on the record that it used the club, not its own rules', async () => {
+  it('REFUSES to settle rather than quietly using the club', async () => {
+    // The original fault wearing a different hat: a night with no rules of its
+    // own settling at whatever the club happens to say tonight.
     await changeClubTo(RAKED);
-    await settleSession(sessionId, ownerId, false, entries());
 
-    // NOTE: auditLog.sessionId holds the CashOutSettlement id for this action,
-    // not the PokerSession id, so it cannot be looked up by the session it
-    // settled. Scoped by club and action instead.
-    const audit = await prisma.auditLog.findFirstOrThrow({
-      where: { clubId, action: 'settle_session' },
-    });
-    const meta = (audit.changes as { meta: Record<string, unknown> }).meta;
-
-    // The difference between a fallback and "arbitrary current settings" is
-    // that the record says which it was, and what they were.
-    expect(meta.settlementRulesSource).toBe('club-at-settlement');
-    expect(meta.settlementRules).toMatchObject(RAKED);
+    await expect(settleSession(sessionId, ownerId, false, entries()))
+      .rejects.toThrow(/before settlement rules were recorded/i);
   });
 
-  it('stamps a snapshotted night as having carried its own', async () => {
-    // Rebuild one that does have a snapshot, to prove the two are told apart.
-    await prisma.pokerSession.deleteMany({ where: { id: sessionId } });
-    sessionId = await playANight();
-    await settleSession(sessionId, ownerId, false, entries());
+  it('books nothing at all when it refuses', async () => {
+    await expect(settleSession(sessionId, ownerId, false, entries())).rejects.toThrow();
 
-    const audit = await prisma.auditLog.findFirstOrThrow({
-      where: { clubId, action: 'settle_session' },
-      orderBy: { createdAt: 'desc' },
-    });
-    expect((audit.changes as { meta: { settlementRulesSource: string } }).meta.settlementRulesSource)
-      .toBe('session-snapshot');
-  });
-});
-
-describe('changing a running night on purpose', () => {
-  beforeEach(async () => {
-    await seed(NO_RAKE);
-    sessionId = await playANight();
+    expect(await prisma.cashOutSettlement.count({ where: { clubId } })).toBe(0);
+    const row = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(row.status).toBe('active');
   });
 
-  it('sets the two figures a host can actually need to correct', async () => {
-    await setSessionSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+  it('settles once it has been told what it is playing for', async () => {
+    await changeClubTo(RAKED);
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
 
-    expect(await snapshotOf(sessionId)).toMatchObject(RAKED);
-  });
-
-  it('settles by them afterwards', async () => {
-    await setSessionSettlementRules(sessionId, clubId, ownerId, false, RAKED);
     await settleSession(sessionId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
     expect(settled.rakeCollected).toBe(1_250);
   });
 
-  it('leaves how the money is worked out completely alone', async () => {
-    const before = await snapshotOf(sessionId);
-    await setSessionSettlementRules(sessionId, clubId, ownerId, false, RAKED);
-    const after = await snapshotOf(sessionId);
-
-    for (const key of ['mismatchStrategy', 'rakeOrder', 'winnerDefinition', 'winnerTopN', 'roundingRule']) {
-      expect(after?.[key]).toEqual(before?.[key]);
-    }
-  });
-
-  it('records what it was before, and who changed it', async () => {
-    await setSessionSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+  it('records the rules that decided it, on the settlement record', async () => {
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+    await settleSession(sessionId, ownerId, false, entries());
 
     const audit = await prisma.auditLog.findFirstOrThrow({
-      where: { sessionId, action: 'set_session_settlement_rules' },
+      where: { clubId, action: 'settle_session' },
     });
-    const changes = audit.changes as { before: typeof RAKED; after: typeof RAKED };
-    expect(changes.before).toMatchObject(NO_RAKE);
-    expect(changes.after).toMatchObject(RAKED);
+    const meta = (audit.changes as { meta: { settlementRules: typeof RAKED } }).meta;
+    expect(meta.settlementRules).toMatchObject(RAKED);
+  });
+});
+
+describe('telling a night what it plays for', () => {
+  beforeEach(async () => {
+    await seed(NO_RAKE);
+    sessionId = await playANight();
+    const row = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const state = row.engineState as Record<string, unknown>;
+    delete state.settlementRules;
+    await prisma.pokerSession.update({ where: { id: sessionId }, data: { engineState: state as never } });
+  });
+
+  it('succeeds once', async () => {
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+
+    expect(await snapshotOf(sessionId)).toMatchObject(RAKED);
+  });
+
+  it('fills the rest of the rules in from the club, not from nothing', async () => {
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+    const snap = await snapshotOf(sessionId);
+
+    const club = await prisma.club.findUniqueOrThrow({ where: { id: clubId } });
+    expect(snap?.mismatchStrategy).toBe(club.mismatchStrategy);
+    expect(snap?.rakeOrder).toBe(club.rakeOrder);
+    expect(snap?.winnerDefinition).toBe(club.winnerDefinition);
+    expect(snap?.winnerTopN).toBe(club.winnerTopN);
+    expect(snap?.roundingRule).toBe(club.roundingRule);
+  });
+
+  it('REFUSES a second attempt, so the economics cannot be walked around', async () => {
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+
+    // One admin raising the rake and another lowering it mid-game is the
+    // loophole this whole mechanism exists to close.
+    await expect(
+      initSettlementRules(sessionId, clubId, ownerId, false, { sessionRakeAmount: 2_000, winnersCutPercent: 10 })
+    ).rejects.toThrow(/already has its rules/i);
+
+    expect(await snapshotOf(sessionId)).toMatchObject(RAKED);
+  });
+
+  it('has exactly one winner when two admins try at the same instant', async () => {
+    const results = await Promise.allSettled([
+      initSettlementRules(sessionId, clubId, ownerId, false, RAKED),
+      initSettlementRules(sessionId, clubId, priyaId, true, { sessionRakeAmount: 2_000, winnersCutPercent: 10 }),
+    ]);
+
+    const won = results.filter((r) => r.status === 'fulfilled');
+    const lost = results.filter((r) => r.status === 'rejected');
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+
+    // And the stored rules are the winner's, whole — not a blend of both.
+    const snap = await snapshotOf(sessionId);
+    const pairs = [
+      { sessionRakeAmount: 1_000, winnersCutPercent: 5 },
+      { sessionRakeAmount: 2_000, winnersCutPercent: 10 },
+    ];
+    expect(pairs).toContainEqual({
+      sessionRakeAmount: snap?.sessionRakeAmount,
+      winnersCutPercent: snap?.winnersCutPercent,
+    });
+  });
+
+  it('cannot be overwritten by a club settings change afterwards', async () => {
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+    await changeClubTo({ sessionRakeAmount: 9_000, winnersCutPercent: 40 });
+
+    expect(await snapshotOf(sessionId)).toMatchObject(RAKED);
+  });
+
+  it('records who, what it was, what it became, and the database clock', async () => {
+    const before = new Date();
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { sessionId, action: 'init_settlement_rules' },
+    });
+    const changes = audit.changes as { before: null; after: typeof RAKED };
+
     expect(audit.changedBy).toBe(ownerId);
+    expect(audit.changedByName).toBe('Host');
+    // Null, not the club's values: the night genuinely had no rules, and
+    // writing the club's in would claim it had been playing by them.
+    expect(changes.before).toBeNull();
+    expect(changes.after).toMatchObject(RAKED);
+    // Server-generated. The caller never supplies this.
+    expect(audit.createdAt.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1_000);
   });
 
   it('is not a thing a player can do', async () => {
     await expect(
-      setSessionSettlementRules(sessionId, clubId, priyaId, false, RAKED)
+      initSettlementRules(sessionId, clubId, priyaId, false, RAKED)
     ).rejects.toThrow(/admin/i);
   });
 
   it('refuses nonsense figures', async () => {
     await expect(
-      setSessionSettlementRules(sessionId, clubId, ownerId, false, { winnersCutPercent: 140 })
+      initSettlementRules(sessionId, clubId, ownerId, false, { sessionRakeAmount: 0, winnersCutPercent: 140 })
     ).rejects.toThrow(/between 0 and 100/i);
     await expect(
-      setSessionSettlementRules(sessionId, clubId, ownerId, false, { sessionRakeAmount: -50 })
+      initSettlementRules(sessionId, clubId, ownerId, false, { sessionRakeAmount: -50, winnersCutPercent: 5 })
     ).rejects.toThrow(/cannot be negative/i);
   });
 
-  it('does not touch a single chip on the table', async () => {
-    const before = await prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { id: 'asc' } });
-    await setSessionSettlementRules(sessionId, clubId, ownerId, false, RAKED);
-    const after = await prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { id: 'asc' } });
+  it('is refused once the table is frozen', async () => {
+    await beginSettling(sessionId, clubId, ownerId, false);
 
-    expect(after).toEqual(before);
+    await expect(
+      initSettlementRules(sessionId, clubId, ownerId, false, RAKED)
+    ).rejects.toThrow(/being settled/i);
+  });
+
+  it('changes ONLY engineState.settlementRules — not a chip on the table', async () => {
+    const buyInsBefore = await prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { id: 'asc' } });
+    const rowBefore = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const stateBefore = { ...(rowBefore.engineState as Record<string, unknown>) };
+
+    await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
+
+    expect(await prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { id: 'asc' } }))
+      .toEqual(buyInsBefore);
+
+    const rowAfter = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const stateAfter = rowAfter.engineState as Record<string, unknown>;
+    const { settlementRules, ...restAfter } = stateAfter;
+    expect(settlementRules).toBeDefined();
+    // Everything else byte for byte: seats, cash-outs, the clock, the lot.
+    expect(restAfter).toEqual(stateBefore);
+    expect(rowAfter.status).toBe('active');
   });
 });
 

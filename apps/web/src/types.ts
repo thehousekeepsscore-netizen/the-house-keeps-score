@@ -143,6 +143,15 @@ export interface PokerSession {
     amendedBy?: string; amendedAt?: string;
   }[];
   /**
+   * The rules this night settles by, fixed when it started playing.
+   *
+   * Undefined on a night that began before these were recorded. Settlement
+   * refuses those until a host says what they are playing for — the club's
+   * current settings are NOT a safe substitute, since they may have changed
+   * since the night began.
+   */
+  settlementRules?: { capturedAt: string; sessionRakeAmount: number; winnersCutPercent: number; rakeEnabled: boolean; rakeMethod: string; rakeValue: number; potEnabled: boolean; mismatchStrategy: string; rakeOrder: string; winnerDefinition: string; winnerTopN: number; roundingRule: string };
+  /**
    * When the host said "alright, let's start", or null while the table is open
    * and people are still gathering.
    *

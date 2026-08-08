@@ -212,15 +212,16 @@ export async function settleSession(req: Request, res: Response) {
 }
 
 const sessionRulesSchema = z.object({
-  // Chips, not rupees. The engine is chip-based throughout and never consults
-  // devaluationFactor — that is a display concern.
-  sessionRakeAmount: z.number().int().min(0).optional(),
-  winnersCutPercent: z.number().int().min(0).max(100).optional(),
+  // Both required: this initialises a night's rules, so a partial call would
+  // leave it half-decided. Chips, not rupees — the engine is chip-based
+  // throughout and never consults devaluationFactor, which is display only.
+  sessionRakeAmount: z.number().int().min(0),
+  winnersCutPercent: z.number().int().min(0).max(100),
 });
 
-export async function setSessionSettlementRules(req: Request, res: Response) {
+export async function initSettlementRules(req: Request, res: Response) {
   const input = sessionRulesSchema.parse(req.body);
-  const result = await offlineSessionsService.setSessionSettlementRules(
+  const result = await offlineSessionsService.initSettlementRules(
     req.params.sessionId,
     req.params.clubId,
     req.user!.sub,

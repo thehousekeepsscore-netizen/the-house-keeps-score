@@ -153,10 +153,9 @@ export const SESSION_PATCH_EVENTS = [
   'club:settling-cancelled',
   'club:cashout-amended',
   'club:lobby-player-removed',
-  // A host changing the night's rake or winners' cut mid-game changes what
-  // every player's chips are worth at the end. Nobody should learn that by
-  // refreshing.
-  'club:settlement-rules-changed',
+  // Setting a night's rake or winners' cut decides what every player's chips
+  // are worth at the end. Nobody should learn that by refreshing.
+  'club:settlement-rules-set',
 ] as const;
 
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
@@ -1566,6 +1565,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // authoritative result the same way at settle time.
   // One source of truth for the club's rules, shared by the live-settle
   // preview and the back-dated one so the two can never drift apart.
+  /**
+   * The club's rules — for a night that has not started, and for back-dated
+   * records, which genuinely have no session to take rules from.
+   */
   const clubSettlementSettings: SettlementSettings = {
     sessionRakeAmount: club.sessionRakeAmount ?? 0,
     winnersCutPercent: club.winnersCutPercent ?? 0,
@@ -1580,8 +1583,40 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     roundingRule: club.roundingRule ?? 'NONE',
   };
 
+  /**
+   * What the LIVE night settles by — its own snapshot, never the club.
+   *
+   * The preview an admin approves has to be computed from the same rules the
+   * server will use, or they sign off on figures that are not the ones
+   * committed. Reading the club here would put that disagreement back exactly
+   * where the snapshot removed it: a settings change between kick-off and
+   * Confirm would show one set of numbers and write another.
+   *
+   * Null when the night has no rules yet. The screen says so and holds the
+   * Calculate button rather than quietly substituting the club's.
+   */
+  const sessionSettlementRules = activeSession?.settlementRules ?? null;
+  const liveSettlementSettings: SettlementSettings | null = sessionSettlementRules
+    ? {
+        sessionRakeAmount: sessionSettlementRules.sessionRakeAmount,
+        winnersCutPercent: sessionSettlementRules.winnersCutPercent,
+        rakeEnabled: sessionSettlementRules.rakeEnabled,
+        rakeMethod: sessionSettlementRules.rakeMethod as SettlementSettings['rakeMethod'],
+        rakeValue: sessionSettlementRules.rakeValue,
+        potEnabled: sessionSettlementRules.potEnabled,
+        mismatchStrategy: sessionSettlementRules.mismatchStrategy as SettlementSettings['mismatchStrategy'],
+        rakeOrder: sessionSettlementRules.rakeOrder as SettlementSettings['rakeOrder'],
+        winnerDefinition: sessionSettlementRules.winnerDefinition as SettlementSettings['winnerDefinition'],
+        winnerTopN: sessionSettlementRules.winnerTopN,
+        roundingRule: sessionSettlementRules.roundingRule as SettlementSettings['roundingRule'],
+      }
+    : null;
+
   const calculateSettlement = (): SettlementResult | null => {
     if (!activeSession) return null;
+    // No rules, no preview. Falling back to the club here would show the admin
+    // figures the server is going to refuse to commit.
+    if (!liveSettlementSettings) return null;
 
     const players = settlementUids.map(uid => ({
       userId: uid,
@@ -1593,7 +1628,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       manualWinner: manualWinnerInputs[uid],
     }));
 
-    return computeSettlement(players, clubSettlementSettings, {
+    return computeSettlement(players, liveSettlementSettings, {
+      // The pot as it stands NOW — a balance, not a rule, and deliberately not
+      // part of the night's snapshot.
       currentPotBalance: club.clubPotBalance ?? 0,
       mismatchAcknowledged,
     });
@@ -3526,6 +3563,45 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 Close this and it stays on hold.
               </p>
 
+              {/* What this night is being settled BY, from its own snapshot.
+                  On screen before Confirm rather than buried in club settings,
+                  because these are the numbers that decide what everyone walks
+                  away with — and because the club's may no longer match. */}
+              {sessionSettlementRules ? (
+                <div className="p-3.5 bg-bg border border-line rounded-2xl">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-text-faint">
+                    This night's rules
+                  </p>
+                  <dl className="mt-2 space-y-1 text-[11px] font-mono tabular-nums">
+                    {[
+                      ['Rake', `${sessionSettlementRules.sessionRakeAmount.toLocaleString()} chips`],
+                      ["Winners' cut", `${sessionSettlementRules.winnersCutPercent}%`],
+                      ['Rake order', sessionSettlementRules.rakeOrder.replace(/_/g, ' ').toLowerCase()],
+                      ['Winner definition', sessionSettlementRules.winnerDefinition.replace(/_/g, ' ').toLowerCase()],
+                      ['Winners counted', String(sessionSettlementRules.winnerTopN)],
+                      ['Mismatch', sessionSettlementRules.mismatchStrategy.replace(/_/g, ' ').toLowerCase()],
+                      ['Rounding', sessionSettlementRules.roundingRule.replace(/_/g, ' ').toLowerCase()],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-baseline gap-3">
+                        <dt className="flex-1 min-w-0 truncate text-text-muted">{label}</dt>
+                        <dd className="shrink-0 text-text">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="mt-2 text-[10px] text-text-faint leading-relaxed">
+                    Fixed when this night started. Changing the club's settings does not move them.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-warning/10 border border-warning/40 rounded-2xl">
+                  <p className="text-[11px] text-warning leading-relaxed">
+                    This night started before its rules were recorded, so it has none of its own.
+                    It cannot be settled until somebody sets its rake and winners' cut — the club's
+                    current settings are not used, because they may have changed since the night began.
+                  </p>
+                </div>
+              )}
+
               {/* Player Rows: Buy-in (editable) / Cash-out (editable) */}
               <div className="space-y-3">
                 {settlementUids.map(uid => {
@@ -3608,7 +3684,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               <button
                 onClick={() => { setCashoutCalculated(true); setConfirmingSettle(false); }}
-                disabled={!allCashOutsEntered}
+                disabled={!allCashOutsEntered || !liveSettlementSettings}
                 className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
                 <Scale className="w-4 h-4" /> Auto Calculate
@@ -3643,7 +3719,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               {!confirmingSettle ? (
                 <button
                   onClick={() => setConfirmingSettle(true)}
-                  disabled={!cashoutCalculated || !allCashOutsEntered || (preview?.requiresManualResolution ?? false)}
+                  disabled={!cashoutCalculated || !allCashOutsEntered || !preview || preview.requiresManualResolution}
                   className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
                   Settle Session

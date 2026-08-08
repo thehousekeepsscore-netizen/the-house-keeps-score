@@ -32,6 +32,7 @@ export interface ApiOfflineSession {
   timeLimitLiftedAt?: string | null;
   settlingAt?: string | null;
   remindAtEnd?: boolean;
+  settlementRules?: { capturedAt: string; sessionRakeAmount: number; winnersCutPercent: number; rakeEnabled: boolean; rakeMethod: string; rakeValue: number; potEnabled: boolean; mismatchStrategy: string; rakeOrder: string; winnerDefinition: string; winnerTopN: number; roundingRule: string };
 }
 
 export function toPokerSession(s: ApiOfflineSession): PokerSession {
@@ -64,6 +65,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
     settlingAt: s.settlingAt ?? null,
     remindAtEnd: s.remindAtEnd,
+    // The rules this night plays by. Undefined on a night that started before
+    // they were recorded — the settlement screen says so rather than guessing.
+    settlementRules: s.settlementRules,
   };
 }
 

@@ -287,29 +287,33 @@ function captureSettlementRules(club: {
 }
 
 /**
- * Which rules settle this night, and where they came from.
+ * Which rules settle this night.
  *
- * A night that carries its own snapshot settles by it, full stop — that is the
- * whole point, and it is what makes a club settings change safe while a game is
- * running.
+ * A night settles by its own snapshot or it does not settle. There is no
+ * fallback to the club, deliberately: falling back is the original fault
+ * wearing a different hat — a night with no rules of its own would go on
+ * settling at whatever the club says at the moment somebody presses Confirm,
+ * which is exactly the silent restatement this whole mechanism exists to stop.
  *
- * A night that does not is one that started before this existed. Those settle
- * the way they always have, off the club as it stands, because the alternative
- * is refusing to settle a game that is on a table right now — and stranding a
- * live night is a worse failure than the one being fixed. What changes is that
- * it is no longer silent: the source is returned, stamped onto the audit
- * record, so a settled night says which rules decided it and whether they were
- * its own. That is the difference between a fallback and "arbitrary current
- * settings", which is the thing to avoid.
+ * Nights that started before snapshots existed therefore have to be told what
+ * they are playing for, once, by a human — see initSettlementRules. Refusing
+ * costs a host one deliberate action at the end of one night. Guessing costs
+ * players money under rules nobody agreed to, and nothing in the record would
+ * show it happened.
+ *
+ * The refusal names the next step rather than stating a fact, because a host
+ * hitting this at 2am needs to know what to press.
  */
-function settlementRulesFor(
-  state: OfflineEngineState,
-  club: Parameters<typeof captureSettlementRules>[0]
-): { rules: SettlementRules; source: 'session-snapshot' | 'club-at-settlement' } {
-  if (state.settlementRules) {
-    return { rules: state.settlementRules, source: 'session-snapshot' };
+function settlementRulesFor(state: OfflineEngineState): SettlementRules {
+  if (!state.settlementRules) {
+    throw new HttpError(
+      409,
+      'This night started before settlement rules were recorded against a session. ' +
+        'Set its rake and winners\' cut before settling — they cannot be guessed from the club, ' +
+        'because the club may have changed since the night began.'
+    );
   }
-  return { rules: captureSettlementRules(club), source: 'club-at-settlement' };
+  return state.settlementRules;
 }
 
 /**
@@ -1399,7 +1403,7 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
      * calculation below is untouched — only where the configuration comes from
      * has moved.
      */
-    const { rules, source: settlementRulesSource } = settlementRulesFor(state, club);
+    const rules = settlementRulesFor(state);
 
     const settlementSettings: SettlementSettings = {
       sessionRakeAmount: rules.sessionRakeAmount,
@@ -1509,7 +1513,7 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
             // Without this a settled record cannot be told apart from one
             // settled under rules that changed after the chips were bought —
             // which is the entire failure this snapshot exists to prevent.
-            settlementRulesSource,
+            // The rules that decided these numbers, on the record beside them.
             settlementRules: rules,
           },
           totalBuyIns: engineResult.totalBuyIns,
@@ -1576,83 +1580,95 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
 }
 
 /**
- * Set the rake and winners' cut for a night that is already being played.
+ * Tell a night what it is playing for. Once.
  *
- * The deliberate escape hatch, and it is narrow on purpose. Only the two
- * figures a host actually needs to correct mid-night can be set — mismatch
- * strategy, rake order, winner definition, top-N and rounding decide HOW the
- * money is worked out, and changing those halfway through a game is not a
- * correction, it is a different game.
+ * The narrow, deliberate door for nights that started before snapshots existed
+ * and would otherwise have no rules to settle by. It is an INITIALISATION, not
+ * an edit: once a night holds rules, nothing changes them — not another admin,
+ * not a club settings change, not a reconnect, not settlement.
  *
- * Legal only while playing. Once the table is frozen the figures are being
- * agreed against these rules, and once it is settled they are a receipt; a
- * settled night whose rules could still move is not a receipt at all.
+ * That one-shot restriction is the whole safety property. An endpoint that
+ * could be called repeatedly would let one admin raise the rake and another
+ * lower it while a game is running, which is the loophole this mechanism was
+ * built to close, reintroduced through its own escape hatch. A host who set the
+ * wrong figure has to resume, settle, and start a night with the right ones —
+ * expensive on purpose, because the alternative is economics that move under
+ * players who already put chips down.
  *
- * Recorded rather than applied quietly: who changed it, when, and what it was
- * before. This endpoint is the one sanctioned way to move a running night's
- * economics, so the record of it having happened matters more here than
- * anywhere else — and everyone at the table is told, because it changes what
- * their chips are worth at the end.
+ * The check and the write happen inside mutateSessionState's row lock, so two
+ * admins initialising at the same instant serialise: the first wins, the second
+ * reads the rules the first just wrote and is refused. Both are told which.
  */
-export async function setSessionSettlementRules(
+export async function initSettlementRules(
   sessionId: string,
   clubId: string,
   requesterId: string,
   isSuperAdmin: boolean,
-  input: { sessionRakeAmount?: number; winnersCutPercent?: number }
+  input: { sessionRakeAmount: number; winnersCutPercent: number }
 ) {
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  if (input.sessionRakeAmount === undefined && input.winnersCutPercent === undefined) {
-    throw new HttpError(400, 'Nothing to change');
-  }
-  if (input.sessionRakeAmount !== undefined && (!Number.isInteger(input.sessionRakeAmount) || input.sessionRakeAmount < 0)) {
+  if (!Number.isInteger(input.sessionRakeAmount) || input.sessionRakeAmount < 0) {
     throw new HttpError(400, 'The session rake must be a whole number of chips, and cannot be negative');
   }
-  if (input.winnersCutPercent !== undefined && (!Number.isInteger(input.winnersCutPercent) || input.winnersCutPercent < 0 || input.winnersCutPercent > 100)) {
+  if (!Number.isInteger(input.winnersCutPercent) || input.winnersCutPercent < 0 || input.winnersCutPercent > 100) {
     throw new HttpError(400, "The winners' cut must be a whole percentage between 0 and 100");
   }
 
   const { session, result } = await mutateSessionState(sessionId, async (state, tx, row) => {
     assertPhase(row, state, ['playing']);
 
-    // A night that started before snapshots existed has none, so take one from
-    // the club first and then apply the change on top. That leaves it holding a
-    // complete set of rules rather than two fields floating on nothing.
-    const before = state.settlementRules ?? captureSettlementRules(club);
-    const after: SettlementRules = {
-      ...before,
-      ...(input.sessionRakeAmount !== undefined ? { sessionRakeAmount: input.sessionRakeAmount } : {}),
-      ...(input.winnersCutPercent !== undefined ? { winnersCutPercent: input.winnersCutPercent } : {}),
+    // Inside the lock. Two admins arriving together both read the state fresh
+    // here, one at a time, so the second sees what the first wrote.
+    if (state.settlementRules) {
+      const held = state.settlementRules;
+      throw new HttpError(
+        409,
+        `This night already has its rules: rake ${held.sessionRakeAmount} chips, ` +
+          `winners' cut ${held.winnersCutPercent}%. They are fixed for the rest of the night.`
+      );
+    }
+
+    // Everything except the two figures being set comes from the club, so the
+    // night ends up with a complete and coherent set rather than two values
+    // floating on nothing.
+    const rules: SettlementRules = {
+      ...captureSettlementRules(club),
+      sessionRakeAmount: input.sessionRakeAmount,
+      winnersCutPercent: input.winnersCutPercent,
     };
 
     const actor = await tx.user.findUnique({ where: { id: requesterId }, select: { displayName: true } });
     await tx.auditLog.create({
       data: {
         clubId: row.clubId,
+        // The PokerSession, not a settlement record — this happened to the
+        // night itself, and is the one place that lookup means what it says.
         sessionId,
         sessionTitle: row.sessionName,
-        action: 'set_session_settlement_rules',
+        action: 'init_settlement_rules',
         changedBy: requesterId,
         changedByName: actor?.displayName ?? 'Unknown',
         details:
-          `Changed the rules for ${row.sessionName} mid-night: ` +
-          `rake ${before.sessionRakeAmount} → ${after.sessionRakeAmount} chips, ` +
-          `winners' cut ${before.winnersCutPercent}% → ${after.winnersCutPercent}%.`,
+          `Set the settlement rules for ${row.sessionName}: ` +
+          `rake ${rules.sessionRakeAmount} chips, winners' cut ${rules.winnersCutPercent}%. ` +
+          'The night had none, having started before rules were recorded against a session.',
         changes: {
-          meta: { auditSchemaVersion: AUDIT_SCHEMA_VERSION, createdFrom: 'setSessionSettlementRules' },
-          before,
-          after,
+          meta: { auditSchemaVersion: AUDIT_SCHEMA_VERSION, createdFrom: 'initSettlementRules' },
+          // Null rather than the club's current values: this night genuinely
+          // had no rules, and writing the club's in as "before" would claim it
+          // was playing by them.
+          before: null,
+          after: rules,
         },
+        // createdAt is the database's own clock — never the caller's.
       },
     });
 
-    return { state: { ...state, settlementRules: after }, result: { before, after } };
+    return { state: { ...state, settlementRules: rules }, result: rules };
   });
 
-  emitToClub(clubId, 'club:settlement-rules-changed', {
-    sessionId, session, rules: result.after,
-  });
-  return { session, ...result };
+  emitToClub(clubId, 'club:settlement-rules-set', { sessionId, session, rules: result });
+  return { session, rules: result };
 }
