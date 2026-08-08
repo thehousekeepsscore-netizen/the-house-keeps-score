@@ -615,3 +615,76 @@ describe('taking somebody out of the lobby', () => {
     expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Every phase of a night still renders.
+ *
+ * Written when the old screen was deleted and this became the only session
+ * experience: with nothing to fall back to, "it renders at all" is worth
+ * asserting for each state rather than for the two that happened to have tests.
+ *
+ * The clock phases use real time rather than the fixture's NOW, because the
+ * banner reads Date.now() directly — a night that started 121 real minutes ago
+ * is genuinely inside its grace period.
+ */
+describe('every phase renders', () => {
+  const realAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  const banked = (uid: string, id: string): BuyInRequest => ({
+    id, sessionId: 's1', clubId: 'c1', userId: uid, userDisplayName: '',
+    amount: 5000, status: 'approved', requestedBy: uid, createdAt: ago(90),
+  });
+
+  it('no session — the table is dark', () => {
+    renderScreen({ session: null });
+    expect(screen.getByText(/no session running/i)).toBeInTheDocument();
+  });
+
+  it('grace period — the plan ran out and nothing stopped', () => {
+    renderScreen(
+      {
+        session: session({
+          activePlayerUids: ['host', 'priya'],
+          startedPlayingAt: realAgo(121),
+          durationMinutes: 120,
+        }),
+      },
+      [banked('host', 'b1'), banked('priya', 'b2')]
+    );
+    expect(screen.getByText(/time limit reached/i)).toBeInTheDocument();
+    expect(screen.getByText(/grace period/i)).toBeInTheDocument();
+    // Nothing is locked: the felt is still there and still the hero.
+    expect(screen.getByRole('group', { name: /at the table/i })).toBeInTheDocument();
+  });
+
+  it('session complete — the host is asked, not told', () => {
+    renderScreen(
+      {
+        session: session({
+          activePlayerUids: ['host', 'priya'],
+          startedPlayingAt: realAgo(130),
+          durationMinutes: 120,
+        }),
+      },
+      [banked('host', 'b1'), banked('priya', 'b2')]
+    );
+    expect(screen.getByText(/session complete/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue playing/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /settle night/i })).toBeInTheDocument();
+  });
+
+  it('settled — the night is a receipt', () => {
+    renderScreen({
+      session: session({
+        status: 'settled',
+        activePlayerUids: [],
+        cashOuts: [
+          { userId: 'priya', amount: 8200, status: 'confirmed', requestedAt: ago(9) },
+          { userId: 'arjun', amount: 4100, status: 'confirmed', requestedAt: ago(5) },
+        ],
+      }),
+    });
+    expect(screen.getByText(/this night is settled/i)).toBeInTheDocument();
+    // Nothing to settle twice.
+    expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
+  });
+});

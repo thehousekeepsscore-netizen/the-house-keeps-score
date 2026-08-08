@@ -4,12 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.tsx';
 import { AuthProvider } from './lib/auth-context';
 import { ResourceCacheProvider } from './lib/resource-cache';
-import { applyFlagOverridesFromUrl } from './lib/feature-flags';
 import './index.css';
-
-// Before the first render, so ?next-session=1 takes effect on the same load
-// rather than the next one.
-applyFlagOverridesFromUrl();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

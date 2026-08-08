@@ -1,10 +1,8 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { LiveSession } from './session/LiveSession';
 import { deriveNight } from '../lib/night-state';
-import { useNextLiveSession } from '../lib/feature-flags';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
-import { ActionQueue, type QueueItem } from './session/ActionQueue';
 import { type WaitingRow } from './session/WaitingForYou';
 import { PlayerSheet } from './session/PlayerSheet';
 import { AddPlayerSheet } from './session/AddPlayerSheet';
@@ -12,7 +10,6 @@ import { OpenTableSheet } from './session/OpenTableSheet';
 import { ExtendSessionSheet } from './session/ExtendSessionSheet';
 import { deriveFeed } from '../lib/night-feed';
 import { selfApprovalBlock, WhoIsHere } from '../lib/approval-rules';
-import { GameVitals } from './session/GameVitals';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
 import { useAction } from '../lib/use-action';
@@ -51,7 +48,6 @@ import {
   Crown, 
   Users, 
   ShieldCheck, 
-  DollarSign, 
   History, 
   CalendarPlus,
   Trash2 as PastRowTrash,
@@ -64,7 +60,6 @@ import {
   ArrowLeft, 
   AlertCircle, 
   CheckCircle2, 
-  Clock, 
   Coins, 
   FileText, 
   Download, 
@@ -91,8 +86,6 @@ import {
   FileEdit,
   UserCircle,
   Spade,
-  Hand,
-  LogOut
 } from 'lucide-react';
 import { AccountSettingsModal } from './AccountSettingsModal';
 import { PokerTableRing } from './PokerTableRing';
@@ -315,7 +308,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   );
   const activeSession = sessionRes.data?.session ?? null;
   const buyInRequests = sessionRes.data?.buyIns ?? EMPTY_BUY_INS;
-  const sessionLoaded = sessionRes.status === 'ready';
   const refreshActiveSession = sessionRes.refresh;
 
   // Real-time data
@@ -668,11 +660,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // What is actually on the table right now: everything bought in, less
   // anything an admin has already confirmed out. Buy-ins alone would keep
   // counting chips that have left with the player who cashed them.
-  const chipsInPlay =
-    activeSessionBuyIns.reduce((sum, r) => sum + r.amount, 0) -
-    (activeSession?.cashOuts ?? [])
-      .filter((c) => c.status === 'confirmed')
-      .reduce((sum, c) => sum + c.amount, 0);
 
   // Calculate Largest Active Bank currently held by any player at the table
   const playerBanks: Record<string, number> = {};
@@ -704,18 +691,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Seating state for the current user / the admin's sit-in queue.
   // Admins triage everyone's requests; a player only ever sees their own.
-  const visiblePendingBuyIns = buyInRequests.filter(
-    (r) => r.status === 'pending' && (isAdmin || r.userId === currentUser.uid)
-  );
 
-  const visibleProcessedBuyIns = buyInRequests.filter(
-    (r) => r.status !== 'pending' && (isAdmin || r.userId === currentUser.uid)
-  );
 
-  const pendingSitInUids = activeSession?.pendingSitInUids || [];
   const sessionCashOuts = activeSession?.cashOuts || [];
-  const pendingCashOuts = sessionCashOuts.filter((c) => c.status === 'pending');
-  const myCashOut = sessionCashOuts.find((c) => c.userId === currentUser.uid);
 
   // A player who stood up early already has an admin-confirmed cash-out. The
   // server settles on that number no matter what the settle form says, so
@@ -756,7 +734,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   }, [confirmedCashOutByUid]);
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
-  const showNextLiveSession = useNextLiveSession();
   const night = useMemo(
     () =>
       deriveNight({
@@ -768,8 +745,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     [activeSession, buyInRequests, currentUser.uid, isAdmin]
   );
 
-  const isSeated = !!activeSession?.activePlayerUids.includes(currentUser.uid);
-  const hasRequestedSitIn = pendingSitInUids.includes(currentUser.uid);
 
   // ---------- Data loading (REST) + live sync (Socket.IO) ----------
 
@@ -1351,33 +1326,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   };
 
   // Join Active Table
-  const handleJoinTable = async () => {
-    if (!activeSession) {
-      pushToast('No live session', 'There is nothing running right now.', 'warning');
-      return;
-    }
-    try {
-      applySession(await offlineSessionsApi.joinSession(club.id, activeSession.id));
-    } catch (err) {
-      console.error('Failed to join table:', err);
-      pushToast('Could not join', err instanceof Error ? err.message : 'Please try again.', 'warning');
-    }
-  };
 
   // Ask to be dealt in — goes to an admin rather than seating immediately.
-  const handleRequestSitIn = async () => {
-    if (!activeSession) {
-      pushToast('No live session', 'There is nothing running right now.', 'warning');
-      return;
-    }
-    try {
-      applySession(await offlineSessionsApi.requestSitIn(club.id, activeSession.id));
-      pushToast('Request sent', 'An admin will wave you in shortly.', 'info');
-    } catch (err) {
-      console.error('Sit-in request failed:', err);
-      pushToast('Could not send request', err instanceof Error ? err.message : 'Please try again.', 'warning');
-    }
-  };
 
   const handleDecideSitIn = async (userId: string, approve: boolean) => {
     if (!isAdmin || !activeSession) {
@@ -1825,8 +1775,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const settleAction = useAction(handleSettleSession);
   const startSessionAction = useAction(handleStartSession);
-  const joinTableAction = useAction(handleJoinTable);
-  const requestSitInAction = useAction(handleRequestSitIn);
   const requestBuyInAction = useAction(handleRequestBuyIn);
   const standUpAction = useAction(handleStandUp);
   const decideSitInAction = useAction(handleDecideSitIn);
@@ -1835,25 +1783,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const rejectBuyInAction = useAction(handleRejectBuyIn);
 
   /**
-   * Everything waiting on this user, newest last.
-   *
-   * Built here rather than inside ActionQueue so the queue component stays a
-   * presentation concern and the permission rules stay next to the other
-   * permission rules. Ordered oldest-first: the longest wait is the biggest
-   * social cost at a real table.
-   */
-  /**
    * What the one primary action should say right now.
    *
    * Not a menu title. The screen has a next thing to do, and the button should
    * name it rather than hiding it behind a generic plus.
    */
-  const primaryActionLabel = (() => {
-    if (!activeSession) return 'Quick actions';
-    if (allCashOutsEntered && isAdmin) return 'Settle session';
-    if (isSeated) return 'Request chips';
-    return 'Quick actions';
-  })();
 
   /**
    * Who is at this table, for the self-approval rule.
@@ -1862,12 +1796,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * the second pair of eyes, and counting them is what deadlocks a night that
    * the owner opened and then left. Mirrors hasAnotherAdminHere on the server.
    *
-   * MUST STAY ABOVE actionQueue, which reads it inside its callback. useMemo
-   * runs that callback during the render it is declared in, so with this
-   * declaration below it the read landed in the temporal dead zone and threw
-   * "Cannot access 'whoIsHere' before initialization" — taking the whole club
-   * screen into the ErrorBoundary for any admin with a pending buy-in, on the
-   * old layout as well as the new one. It reached production.
+   * MUST STAY ABOVE every memo that reads it — waitingForYou today. useMemo
+   * runs its callback during the render it is declared in, so a reader declared
+   * above this line reads it inside the temporal dead zone and throws
+   * "Cannot access 'whoIsHere' before initialization", taking the whole club
+   * screen into the ErrorBoundary for any admin with a pending buy-in. That
+   * reached production once; ClubDetailView.render.test.tsx is what would catch
+   * it happening again.
    */
   const whoIsHere = useMemo<WhoIsHere>(() => ({
     ownerUid: club.ownerUid ?? club.createdBy,
@@ -1879,53 +1814,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       .map((c) => c.userId),
   }), [club.ownerUid, club.createdBy, club.adminUids, activeSession]);
 
-  const actionQueue = useMemo<QueueItem[]>(() => {
-    if (!isAdmin || !activeSession) return [];
-    const buyIns: QueueItem[] = visiblePendingBuyIns.map((req) => {
-      const cannotSelfApprove =
-        !isSuperUser && selfApprovalBlock(whoIsHere, currentUser.uid, req.requestedBy, 'buy-in') !== null;
-      return {
-        id: `buyin-${req.id}`,
-        kind: 'buy-in',
-        playerName: allUsers[req.userId]?.displayName || 'Player',
-        amount: req.amount,
-        requestedAt: req.createdAt,
-        blockedReason: cannotSelfApprove ? 'Another Club Admin must approve your own request.' : undefined,
-        pending: approveBuyInAction.isPending(req.id) || rejectBuyInAction.isPending(req.id),
-        onApprove: () => approveBuyInAction.run(req),
-        onReject: () => rejectBuyInAction.run(req),
-      };
-    });
-
-    const sitIns: QueueItem[] = pendingSitInUids.map((uid: string) => ({
-      id: `sitin-${uid}`,
-      kind: 'sit-in',
-      playerName: allUsers[uid]?.displayName || 'Player',
-      requestedAt: (activeSession as { sitInRequestedAt?: Record<string, string> }).sitInRequestedAt?.[uid],
-      pending: decideSitInAction.isPending(uid),
-      onApprove: () => decideSitInAction.run(uid, true),
-      onReject: () => decideSitInAction.run(uid, false),
-    }));
-
-    const cashOuts: QueueItem[] = pendingCashOuts.map((c) => ({
-      id: `cashout-${c.userId}`,
-      kind: 'cash-out',
-      playerName: allUsers[c.userId]?.displayName || 'Player',
-      amount: c.amount,
-      requestedAt: c.requestedAt,
-      pending: decideCashOutAction.isPending(c.userId),
-      onApprove: () => decideCashOutAction.run(c.userId, true),
-      onReject: () => decideCashOutAction.run(c.userId, false),
-    }));
-
-    return [...buyIns, ...sitIns, ...cashOuts].sort((a, b) =>
-      (a.requestedAt ?? '').localeCompare(b.requestedAt ?? '')
-    );
-  }, [
-    isAdmin, activeSession, club.adminUids, club.ownerUid, club.createdBy, currentUser.uid,
-    isOwner, isSuperUser, visiblePendingBuyIns, pendingSitInUids, pendingCashOuts, allUsers,
-    approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
-  ]);
 
   /**
    * The same three request types, as one list of people.
@@ -2140,7 +2028,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * table quietly collapses back to its own content height, which is what it
    * did on the club screen while looking correct in the debug harness.
    */
-  const liveTableFillsScreen = showNextLiveSession && activeTab === 'activeSession';
+  const liveTableFillsScreen = activeTab === 'activeSession';
 
   const sheetSeat = useMemo(
     () => [...night.seats, ...night.room].find((s) => s.userId === sheetUid) ?? null,
@@ -2507,13 +2395,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
         <div className={liveTableFillsScreen ? 'flex-1 min-h-0 flex flex-col' : 'space-y-6'}>
 
-            {/*
-              PR #3 builds the live session as a new component tree rather than
-              mutating this one. Both exist until the cutover; the flag is what
-              keeps that safe, and it is deleted along with the old screen.
-              Opt in with ?next-session=1.
-            */}
-            {activeTab === 'activeSession' && showNextLiveSession && (
+            {/* The live session. Built alongside the screen it replaced and
+                gated behind a flag until the cutover; both the flag and that
+                screen are gone, so this is the only session experience. */}
+            {activeTab === 'activeSession' && (
               <LiveSession
                 club={club}
                 session={activeSession ?? null}
@@ -2561,7 +2446,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             {/* The sheet is where every action originates. Mounted beside the
                 screen rather than inside it, so the felt never has to know
                 what a request is. */}
-            {showNextLiveSession && sheetUid && (
+            {sheetUid && (
               <PlayerSheet
                 open
                 onClose={() => { setSheetAsksForChips(false); setSheetUid(null); }}
@@ -2624,392 +2509,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             />
 
             {/* TAB: MERGED ACTIVE SESSION & BUY-INS */}
-            {activeTab === 'activeSession' && !showNextLiveSession && (
-              <div className="space-y-6">
-                {!sessionLoaded ? (
-                  <div
-                    className="p-8 furniture rounded-3xl space-y-4 animate-pulse"
-                    aria-busy="true"
-                    aria-label="Loading table"
-                  >
-                    <div className="h-12 w-12 bg-surface-alt rounded-full mx-auto" />
-                    <div className="h-5 w-56 bg-surface-alt rounded mx-auto" />
-                    <div className="h-3 w-72 bg-surface-alt rounded mx-auto" />
-                    <div className="h-10 w-40 bg-surface-alt rounded-2xl mx-auto mt-2" />
-                  </div>
-                ) : !activeSession ? (
-                  <div className="p-8 furniture rounded-3xl text-center space-y-4">
-                    <Clock className="w-12 h-12 text-text-muted mx-auto opacity-60" />
-                    <h3 className="text-lg font-semibold text-text ">
-                      No Active Poker Session
-                    </h3>
-                    <p className="text-xs text-text-muted max-w-md mx-auto leading-relaxed">
-                      Start a live session to track player banks for this table.
-                    </p>
-                    {isAdmin ? (
-                      <div className="flex items-center justify-center pt-2">
-                        <button
-                          onClick={() => startSessionAction.run()}
-                          disabled={startSessionAction.pending}
-                          className="bg-accent hover:bg-accent text-accent-contrast font-semibold px-5 py-3 rounded-xl text-xs cursor-pointer shadow-lg transition-all"
-                        >
-                          Start New Session
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-bg border border-line rounded-2xl text-xs text-warning font-mono inline-block">
-                        Waiting for Club Admin to start session...
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {/*
-                      Admin-first: anything waiting on a decision comes before
-                      anything that is merely true. Renders nothing when the
-                      queue is empty, so a quiet table is not pushed down by a
-                      permanent "0 pending" header.
-                    */}
-                    <GameVitals
-                      playersIn={activeSession.activePlayerUids.length}
-                      chipsInPlay={chipsInPlay}
-                      startedAt={activeSession.createdAt}
-                    />
-
-                    <ActionQueue items={actionQueue} formatAmount={formatVal} />
-
-                    {/* Active Session Card Header */}
-                    <div className="furniture p-6 rounded-3xl space-y-6">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line pb-4">
-                        {/*
-                          Was a pulsing "● SESSION ACTIVE" pill above the session
-                          name in black. The vitals row directly above
-                          already says the session is running — it shows an
-                          elapsed time, which is stronger evidence than a label —
-                          and the page header already names the club. Three
-                          elements were saying the same thing at three weights.
-                        */}
-                        <div className="min-w-0">
-                          <h2 className="text-base font-semibold text-text truncate">
-                            {activeSession.sessionName}
-                          </h2>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {isSeated && !myCashOut && (
-                            <button
-                              onClick={() => { setStandUpAmount(0); setShowStandUpModal(true); }}
-                              className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium px-4 py-2.5 rounded-xl text-xs cursor-pointer flex items-center gap-1.5"
-                            >
-                              <LogOut className="w-4 h-4" /> Stand Up
-                            </button>
-                          )}
-                          {myCashOut?.status === 'pending' && (
-                            <span className="border border-dashed border-line-strong text-text-muted font-medium px-4 py-2.5 rounded-xl text-xs">
-                              Cash-out pending…
-                            </span>
-                          )}
-                          {!isSeated && (
-                            hasRequestedSitIn ? (
-                              <span className="border border-dashed border-line-strong text-text-muted font-medium px-4 py-2.5 rounded-xl text-xs">
-                                Sit-in requested…
-                              </span>
-                            ) : isAdmin ? (
-                              <button
-                                onClick={() => joinTableAction.run()}
-                                disabled={joinTableAction.pending}
-                                className="bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium px-4 py-2.5 rounded-xl text-xs cursor-pointer"
-                              >
-                                Sit In
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => requestSitInAction.run()}
-                                disabled={requestSitInAction.pending}
-                                className="bg-accent text-accent-contrast font-semibold px-4 py-2.5 rounded-xl text-xs cursor-pointer shadow flex items-center gap-1.5"
-                              >
-                                <Hand className="w-4 h-4" /> Request to Sit In
-                              </button>
-                            )
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Players seated around the table */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-medium text-text-muted flex items-center gap-2">
-                          <Users className="w-4 h-4 text-accent" /> At the table
-                        </h3>
-
-                        {/* The ceiling moves as the table plays, so it has to be
-                            on the table itself — everyone needs to know what
-                            they can take without opening the buy-in form. */}
-                        <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-bg border border-line rounded-2xl">
-                          <span className="text-[10px] font-medium text-text-muted flex items-center gap-1.5">
-                            <Coins className="w-3.5 h-3.5 text-accent" /> Max buy-in
-                            <InfoHint>
-                              {(club.buyInMode ?? 'MATCH_HIGHEST') === 'UNCAPPED'
-                                ? 'This club sets no ceiling — players agree limits between themselves.'
-                                : 'You can take up to the biggest bank at the table. Taking the maximum makes your bank the new reference.'}
-                            </InfoHint>
-                          </span>
-                          <span className="text-sm font-mono font-semibold text-accent whitespace-nowrap">
-                            {buyInCeiling === null ? 'No limit' : formatVal(buyInCeiling)}
-                          </span>
-                        </div>
-
-                        {activeSession.activePlayerUids.length === 0 && pendingSitInUids.length === 0 ? (
-                          <p className="text-xs text-text-muted py-2">No players have joined the table yet.</p>
-                        ) : (
-                          <PokerTableRing
-                            players={[
-                              ...activeSession.activePlayerUids.map(uid => {
-                                // The seat's state, so it can be read without
-                                // reading: a coin badge means chips are pending,
-                                // a door badge means a cash-out is.
-                                const awaitingChips = visiblePendingBuyIns.some(r => r.userId === uid);
-                                const awaitingCashOut = pendingCashOuts.some(c => c.userId === uid);
-                                return {
-                                  uid,
-                                  name: uid === currentUser.uid
-                                    ? 'Me'
-                                    : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 5)})`),
-                                  avatarUrl: allUsers[uid]?.avatarUrl,
-                                  bank: activeSessionBuyIns
-                                    .filter(r => r.userId === uid)
-                                    .reduce((sum, r) => sum + r.amount, 0),
-                                  state: awaitingCashOut
-                                    ? ('waiting-cashout' as const)
-                                    : awaitingChips
-                                      ? ('waiting-buyin' as const)
-                                      : ('playing' as const),
-                                };
-                              }),
-                              ...pendingSitInUids.map(uid => ({
-                                uid,
-                                name: uid === currentUser.uid
-                                  ? 'Me'
-                                  : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 5)})`),
-                                avatarUrl: allUsers[uid]?.avatarUrl,
-                                bank: 0,
-                                // Not yet dealt in: dimmed rather than badged,
-                                // because nothing is pending on their money.
-                                state: 'sitting-out' as const,
-                              })),
-                            ]}
-                            formatBank={formatVal}
-                            onRequestBankFor={(uid) => {
-                              setBuyInTargetUser(uid);
-                              setBuyInAmount(club.minBuyIn || 1000);
-                              setShowBuyInModal(true);
-                            }}
-                          />
-                        )}
-                      </div>
-
-                      {isAdmin && pendingCashOuts.length > 0 && (
-                        <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-medium text-text">
-                            Cash-outs to Confirm ({pendingCashOuts.length})
-                          </h3>
-                          {pendingCashOuts.map((c) => (
-                            <div key={c.userId} className="p-3 bg-bg border border-line rounded-2xl space-y-2">
-                              <div className="text-xs text-text">
-                                <span className="font-semibold">
-                                  {c.userId === currentUser.uid ? 'You' : (allUsers[c.userId]?.displayName || 'Player')}
-                                </span>
-                                <span className="text-text-muted"> is standing up with </span>
-                                <span className="font-mono font-semibold text-accent">{formatVal(c.amount)}</span>
-                              </div>
-                              <p className="text-[10px] text-text-muted">
-                                Count their chips before confirming — this figure is locked into the settlement.
-                              </p>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => decideCashOutAction.run(c.userId, true)}
-                                  disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-accent text-accent-contrast cursor-pointer flex items-center justify-center gap-1"
-                                >
-                                  <Check className="w-3 h-3" /> Confirm
-                                </button>
-                                <button
-                                  onClick={() => decideCashOutAction.run(c.userId, false)}
-                                  disabled={decideCashOutAction.isPending(c.userId)}
-                                  className="flex-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center justify-center gap-1"
-                                >
-                                  <X className="w-3 h-3" /> Reject
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Sit-in requests waiting on an admin */}
-                      {isAdmin && pendingSitInUids.length > 0 && (
-                        <div className="space-y-2 border-t border-line pt-4">
-                          <h3 className="text-xs font-medium text-text">
-                            Sit-in Requests ({pendingSitInUids.length})
-                          </h3>
-                          {pendingSitInUids.map(uid => (
-                            <div key={uid} className="p-3 bg-bg border border-line rounded-2xl flex items-center justify-between gap-3">
-                              <span className="text-xs font-medium text-text">
-                                {allUsers[uid]?.displayName || `Player (${uid.slice(0, 6)})`}
-                                <span className="text-text-muted font-normal ml-2">wants to be dealt in</span>
-                              </span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => decideSitInAction.run(uid, true)}
-                                  disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-accent text-accent-contrast cursor-pointer flex items-center gap-1"
-                                >
-                                  <Check className="w-3 h-3" /> Seat
-                                </button>
-                                <button
-                                  onClick={() => decideSitInAction.run(uid, false)}
-                                  disabled={decideSitInAction.isPending(uid)}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-danger/15 border border-danger/40 text-danger cursor-pointer flex items-center gap-1"
-                                >
-                                  <X className="w-3 h-3" /> Decline
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Integrated Buy-ins Dashboard (ONLY SHOWN WHEN SESSION IS ACTIVE) */}
-                    <div className="furniture p-6 rounded-3xl space-y-4">
-                      <div className="flex items-center justify-between border-b border-line pb-3">
-                        <div>
-                          <h2 className="text-base font-semibold text-text flex items-center gap-2">
-                            <DollarSign className="w-5 h-5 text-accent" /> {isAdmin ? 'Approvals' : 'My Buy-ins'}
-                            <InfoHint>
-                              {isAdmin
-                                ? 'Buy-ins waiting on you. Chips only count toward a player&apos;s stack once approved.'
-                                : 'Your buy-in requests. Chips only count toward your stack once an admin approves them.'}
-                            </InfoHint>
-                          </h2>
-                        </div>
-                      </div>
-
-                      {/* Pending Requests List */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-medium text-text">
-                          {isAdmin ? 'Pending Approvals' : 'Awaiting Approval'} ({visiblePendingBuyIns.length})
-                        </h3>
-
-                        {visiblePendingBuyIns.length === 0 ? (
-                          <p className="text-xs text-text-muted py-2">
-                            {isAdmin ? 'Nothing waiting on you right now.' : "You have no buy-ins waiting. Use the + button to ask for chips."}
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {visiblePendingBuyIns.map(req => {
-                              const isSelfRequest = req.requestedBy === currentUser.uid;
-                              const otherAdmins = (club.adminUids || []).filter(u => u !== currentUser.uid && u !== club.ownerUid && u !== club.createdBy);
-                              const hasOtherAdmins = otherAdmins.length > 0;
-                              const cannotSelfApprove = isSelfRequest && !isOwner && !isSuperUser && hasOtherAdmins;
-
-                              return (
-                                <div key={req.id} className="p-4 bg-bg border border-line rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                  <div>
-                                    <div className="text-xs font-medium text-text flex items-center gap-2">
-                                      {allUsers[req.userId]?.displayName || 'Player'}
-                                      <span className="text-warning font-mono text-sm">
-                                        {formatVal(req.amount)}
-                                      </span>
-                                    </div>
-                                    <div className="text-[10px] text-text-muted">
-                                      Requested at: {new Date(req.createdAt).toLocaleTimeString()}
-                                    </div>
-
-                                    {/* ADMIN SELF-APPROVAL WARNING BADGE */}
-                                    {cannotSelfApprove && (
-                                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-warning bg-warning/80 border border-warning/40 px-2 py-0.5 rounded-full">
-                                        <ShieldAlert className="w-3 h-3" /> Multi-Admin rule: Requires another Admin to approve
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {isAdmin && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => approveBuyInAction.run(req)}
-                                        disabled={cannotSelfApprove || approveBuyInAction.pending}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1 ${
- cannotSelfApprove 
- ? 'bg-surface-alt text-text-faint cursor-not-allowed border border-line-strong'
-                                            : 'bg-accent hover:bg-accent text-accent-contrast cursor-pointer shadow'
-                                        }`}
-                                        title={cannotSelfApprove ? "Another Club Admin must approve your request" : "Approve Bank"}
-                                      >
-                                        <Check className="w-3.5 h-3.5" /> Approve
-                                      </button>
-
-                                      <button
-                                        onClick={() => rejectBuyInAction.run(req)}
-                                        disabled={rejectBuyInAction.pending}
-                                        className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-1.5 rounded-xl text-xs cursor-pointer flex items-center gap-1"
-                                      >
-                                        <X className="w-3.5 h-3.5" /> Reject
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Approved / Rejected History */}
-                      <div className="pt-4 border-t border-line space-y-3">
-                        <h3 className="text-xs font-medium text-text">
-                          {isAdmin ? 'Processed Buy-ins History' : 'My Past Buy-ins'}
-                        </h3>
-
-                        {visibleProcessedBuyIns.length === 0 && (
-                          <p className="text-xs text-text-muted py-1">
-                            {isAdmin ? 'Nothing decided yet this session.' : 'None yet this session.'}
-                          </p>
-                        )}
-
-                        <div className="space-y-2">
-                          {visibleProcessedBuyIns.slice(0, 10).map(req => (
-                            <div key={req.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between text-xs font-mono">
-                              <div>
-                                <span className="font-semibold text-text">{allUsers[req.userId]?.displayName || 'Player'}</span>
-                                <span className="text-text-muted ml-2">{formatVal(req.amount)}</span>
-                              </div>
-                              <div>
-                                {req.status === 'approved' ? (
-                                  <span className="text-accent font-semibold">Approved</span>
-                                ) : (
-                                  <span className="text-danger font-semibold">Rejected</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Settling up closes out the night, so it sits at the very
-                        bottom — after everything that happens during play. */}
-                    {isAdmin && (
-                      <button
-                        onClick={openCashoutModal}
-                        className="w-full bg-accent text-accent-contrast font-semibold px-4 py-4 rounded-3xl text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xl"
-                      >
-                        <Sliders className="w-5 h-5" /> Cashout
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
 
 
             {/* GAME HISTORY */}
@@ -4990,62 +4489,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             point is that there often isn't one. Leaving this pair underneath it
             would put the two competing primaries back on the screen that exists
             to remove them. */}
-        {activeTab === 'activeSession' && activeSession && !showNextLiveSession && (
-          <div className="md:hidden fixed bottom-[4.25rem] left-0 right-0 z-40 px-4 pointer-events-none">
-            <div className="max-w-md mx-auto pointer-events-auto flex gap-2">
-              {/*
-                The two things a seated player does, side by side and equally
-                weighted, because neither is secondary — one puts money on the
-                table and the other takes it off.
-
-                They are told apart by identity rather than by hierarchy: Buy in
-                keeps the + affordance and the accent fill; Cash out is outlined
-                with a door icon. Same size, same height, different character —
-                so neither is mistaken for the other under a thumb in a dim room.
-              */}
-              {isSeated && !myCashOut && (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  onClick={() => {
-                    setBuyInTargetUser(currentUser.uid);
-                    setBuyInAmount(club.minBuyIn || 1000);
-                    setShowBuyInModal(true);
-                  }}
-                  className="shadow-2xl"
-                >
-                  <Plus className="w-5 h-5 stroke-[2.5]" aria-hidden="true" />
-                  Buy in
-                </Button>
-              )}
-              {isSeated && !myCashOut && (
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  fullWidth
-                  onClick={() => { setStandUpAmount(0); setShowStandUpModal(true); }}
-                  className="shadow-2xl"
-                >
-                  <LogOut className="w-5 h-5" aria-hidden="true" />
-                  Cash out
-                </Button>
-              )}
-              {(!isSeated || myCashOut) && (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  onClick={() => setMobileFabOpen(true)}
-                  className="shadow-2xl"
-                >
-                  <Plus className="w-5 h-5" aria-hidden="true" />
-                  {primaryActionLabel}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Sticky Bottom Navigation Bar */}
           <nav className="fixed bottom-0 left-0 right-0 z-40 shelf py-2 px-1 flex items-center">

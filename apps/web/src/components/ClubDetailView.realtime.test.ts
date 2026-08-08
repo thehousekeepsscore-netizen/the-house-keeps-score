@@ -33,22 +33,34 @@ function walk(dir: string): string[] {
   });
 }
 
-/** Every event name the API emits, read out of the source. */
+/**
+ * Every event name the API emits, read out of the source — once.
+ *
+ * Memoised because this walks and reads the whole API tree, and three tests
+ * want it. Doing that per test made the suite fail on a slow machine for a
+ * reason that had nothing to do with what it was checking.
+ */
+let emittedCache: string[] | null = null;
 function emittedEvents(): string[] {
+  if (emittedCache) return emittedCache;
   const found = new Set<string>();
   for (const file of walk(API_SRC)) {
     const src = readFileSync(file, 'utf8');
     for (const m of src.matchAll(/emitToClub\([^,]+,\s*'([^']+)'/g)) found.add(m[1]);
   }
-  return [...found].sort();
+  emittedCache = [...found].sort();
+  return emittedCache;
 }
 
-/** Every event this screen subscribes to, read out of its source. */
+/** Every event this screen subscribes to, read out of its source — once. */
+let subscribedCache: string[] | null = null;
 function subscribedEvents(): string[] {
+  if (subscribedCache) return subscribedCache;
   const src = readFileSync(resolve(__dirname, 'ClubDetailView.tsx'), 'utf8');
   // `club:` only — connect/disconnect are Socket.IO's own lifecycle, not ours.
   const inline = [...src.matchAll(/socket\.on\('(club:[^']+)'/g)].map((m) => m[1]);
-  return [...new Set([...inline, ...SESSION_PATCH_EVENTS])].sort();
+  subscribedCache = [...new Set([...inline, ...SESSION_PATCH_EVENTS])].sort();
+  return subscribedCache;
 }
 
 /**
