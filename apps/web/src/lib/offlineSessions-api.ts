@@ -32,6 +32,7 @@ export interface ApiOfflineSession {
   timeLimitLiftedAt?: string | null;
   settlingAt?: string | null;
   remindAtEnd?: boolean;
+  settlementRules?: { capturedAt: string; sessionRakeAmount: number; winnersCutPercent: number; rakeEnabled: boolean; rakeMethod: string; rakeValue: number; potEnabled: boolean; mismatchStrategy: string; rakeOrder: string; winnerDefinition: string; winnerTopN: number; roundingRule: string };
 }
 
 export function toPokerSession(s: ApiOfflineSession): PokerSession {
@@ -64,6 +65,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
     settlingAt: s.settlingAt ?? null,
     remindAtEnd: s.remindAtEnd,
+    // The rules this night plays by. Undefined on a night that started before
+    // they were recorded — the settlement screen says so rather than guessing.
+    settlementRules: s.settlementRules,
   };
 }
 
@@ -274,4 +278,22 @@ export async function settleSession(clubId: string, sessionId: string, input: Se
     body: input,
   });
   return result.playerSummaries;
+}
+
+/**
+ * Tell a night what it is playing for. Admins only, and only once.
+ *
+ * The server refuses a second call, so this is not an edit — the confirmation
+ * step in the UI carries that weight rather than a toast afterwards.
+ */
+export async function initSettlementRules(
+  clubId: string,
+  sessionId: string,
+  input: { sessionRakeAmount: number; winnersCutPercent: number }
+): Promise<PokerSession> {
+  const r = await apiFetch<{ session: ApiOfflineSession }>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/settlement-rules`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+  return toPokerSession(r.session);
 }

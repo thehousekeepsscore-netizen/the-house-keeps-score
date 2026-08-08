@@ -52,7 +52,9 @@ export type FeedKind =
   /** The host chose to carry on with no limit. */
   | 'timer-lifted'
   /** The night is over. */
-  | 'settled';
+  | 'settled'
+  /** A night that had no rules of its own was told what it plays for. */
+  | 'rules-set';
 
 export interface FeedEvent {
   /** Stable across renders, so React keys and the "what is new" check both hold. */
@@ -181,6 +183,36 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
   }
 
   /*
+   * Rules arriving late.
+   *
+   * A night started after this shipped carries its rules from the first hand,
+   * and there is nothing to announce — that is simply what the night is. A
+   * night that started BEFORE has to be told, mid-game, and that changes what
+   * everyone's chips are worth at the end. "I thought this game had no rake" is
+   * a reasonable thing to say if nobody mentioned it.
+   *
+   * Derived from the snapshot's own capturedAt rather than pushed as a
+   * notification, so it is in the story for anyone who joins late, survives a
+   * reconnect, and cannot be missed by having the app closed at the moment.
+   *
+   * The minute of slack keeps the ordinary case silent: rules captured as the
+   * night starts are part of starting it, not an event in it.
+   */
+  if (session.settlementRules && session.startedPlayingAt) {
+    const captured = Date.parse(session.settlementRules.capturedAt);
+    const started = Date.parse(session.startedPlayingAt);
+    if (Number.isFinite(captured) && Number.isFinite(started) && captured - started > 60_000) {
+      events.push({
+        id: `rules:${session.settlementRules.capturedAt}`,
+        kind: 'rules-set',
+        at: session.settlementRules.capturedAt,
+        amount: session.settlementRules.sessionRakeAmount,
+        count: session.settlementRules.winnersCutPercent,
+      });
+    }
+  }
+
+  /*
    * The clock, as things that happened.
    *
    * A timer changing under you is confusing unless the feed says why: the
@@ -277,6 +309,7 @@ const ICON: Record<FeedKind, string> = {
   left: '✅',
   ceiling: '⬆️',
   settled: '🏁',
+  'rules-set': '📋',
 };
 
 /**
@@ -327,6 +360,13 @@ export function feedLine(
       return { icon, text: 'Session continued without a time limit' };
     case 'settled':
       return { icon, text: 'Settlement started' };
+    case 'rules-set':
+      // Stated plainly and in full. A player reading this needs the figures,
+      // not a pointer to a settings screen they cannot open.
+      return {
+        icon,
+        text: `Settlement rules set — rake ${amount(n)}, winners' cut ${event.count ?? 0}%`,
+      };
   }
 }
 

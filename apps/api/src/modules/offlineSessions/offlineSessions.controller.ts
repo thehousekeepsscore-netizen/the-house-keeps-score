@@ -210,3 +210,23 @@ export async function settleSession(req: Request, res: Response) {
   const settlement = await offlineSessionsService.settleSession(req.params.sessionId, req.user!.sub, req.user!.isSuperAdmin, input);
   return res.status(201).json(settlement);
 }
+
+const sessionRulesSchema = z.object({
+  // Both required: this initialises a night's rules, so a partial call would
+  // leave it half-decided. Chips, not rupees — the engine is chip-based
+  // throughout and never consults devaluationFactor, which is display only.
+  sessionRakeAmount: z.number().int().min(0),
+  winnersCutPercent: z.number().int().min(0).max(100),
+});
+
+export async function initSettlementRules(req: Request, res: Response) {
+  const input = sessionRulesSchema.parse(req.body);
+  const result = await offlineSessionsService.initSettlementRules(
+    req.params.sessionId,
+    req.params.clubId,
+    req.user!.sub,
+    req.user!.isSuperAdmin,
+    input
+  );
+  return res.json(result);
+}

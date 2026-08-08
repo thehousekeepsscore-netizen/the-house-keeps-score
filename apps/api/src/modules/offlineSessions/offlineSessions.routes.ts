@@ -33,4 +33,12 @@ offlineSessionsRouter.post(
   '/:sessionId/buy-in-requests/:requestId/:decision(approve|reject)',
   asyncHandler(offlineSessionsController.decideBuyInRequest)
 );
+// Tells a night what it is playing for, once. POST rather than PATCH because
+// it creates something that did not exist and cannot be repeated — a PATCH
+// implies an edit, and an edit is exactly what this refuses to be.
+offlineSessionsRouter.post(
+  '/:sessionId/settlement-rules',
+  asyncHandler(offlineSessionsController.initSettlementRules)
+);
+
 offlineSessionsRouter.post('/:sessionId/settle', asyncHandler(offlineSessionsController.settleSession));

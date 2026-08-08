@@ -1,7 +1,7 @@
 import React from 'react';
 import { Coins, AlertCircle } from 'lucide-react';
 import { Club } from '../types';
-import { SettlementResult } from '../lib/settlementEngine';
+import { SettlementResult, SettlementSettings } from '../lib/settlementEngine';
 
 /**
  * The one place a settlement is shown to a human.
@@ -63,6 +63,19 @@ export interface SettlementPreviewProps {
   potDisplay?: 'balance' | 'share';
   /** Supplied only where the admin can acknowledge a manual mismatch. */
   mismatchAcknowledgement?: { checked: boolean; onChange: (checked: boolean) => void };
+  /**
+   * The rules these figures were actually computed from.
+   *
+   * A live night settles by its own snapshot, which may differ from what the
+   * club charges today — so reading the club here put the numbers and the
+   * labels explaining them on different sources. A 1,000-chip session rake
+   * simply had no line, because the club's was zero.
+   *
+   * Optional because the back-dated and edit flows genuinely have no session
+   * to take rules from; those still fall back to the club, which is correct
+   * for them.
+   */
+  settings?: Pick<SettlementSettings, 'sessionRakeAmount' | 'winnersCutPercent' | 'potEnabled'>;
 }
 
 export function SettlementPreview({
@@ -72,9 +85,11 @@ export function SettlementPreview({
   formatSigned,
   potDisplay = 'balance',
   mismatchAcknowledgement,
+  settings,
 }: SettlementPreviewProps) {
-  const cutPercent = club.winnersCutPercent ?? 0;
-  const flatRake = club.sessionRakeAmount ?? 0;
+  const cutPercent = settings?.winnersCutPercent ?? club.winnersCutPercent ?? 0;
+  const flatRake = settings?.sessionRakeAmount ?? club.sessionRakeAmount ?? 0;
+  const potEnabled = settings?.potEnabled ?? club.potEnabled;
   const showHouseTake = flatRake > 0 || result.totalRakeCollected > 0;
 
   return (
@@ -194,7 +209,7 @@ export function SettlementPreview({
         </div>
       )}
 
-      {club.potEnabled && (
+      {potEnabled && (
         <div className="p-3 bg-surface border border-accent/30 rounded-xl flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-medium text-text min-w-0 flex-1">
             <Coins className="w-4 h-4 text-accent shrink-0" />

@@ -94,6 +94,13 @@ export interface LiveSessionProps {
   onResumeNight?: () => void;
   /** Admins only, in the lobby: take out somebody who said they were coming. */
   onRemoveFromLobby?: (userId: string) => void;
+  /**
+   * Admins only, and only for a night that has none: say what it plays for.
+   *
+   * Absent once the night has rules — the server refuses a second attempt, so
+   * a control that stayed on screen would offer something that cannot happen.
+   */
+  onSetSettlementRules?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -174,6 +181,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onKeepPlaying,
   onResumeNight,
   onRemoveFromLobby,
+  onSetSettlementRules,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -255,6 +263,30 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onKeepPlaying={onKeepPlaying}
           onSettle={onSettleNight}
         />
+      )}
+
+      {/*
+        A night that does not know what it is playing for.
+        
+        Only ever true of a game that started before rules were recorded
+        against a session, and it has to be dealt with before the night can be
+        settled — so it says that, here, rather than letting the host find out
+        at 2am when Settle refuses. Players see it too: what the house takes is
+        not an administrative detail to them.
+      */}
+      {live && !night.settling && !session?.settlementRules && night.startedPlayingAt !== null && (
+        <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40">
+          <p className="text-sm text-text">No settlement rules yet</p>
+          <p className="mt-0.5 text-xs text-text-muted leading-relaxed">
+            This night began before rules were recorded against a session, so it has none of
+            its own. They have to be set before it can be settled.
+          </p>
+          {isAdmin && onSetSettlementRules && (
+            <Button variant="primary" size="sm" fullWidth className="mt-2" onClick={onSetSettlementRules}>
+              Set tonight's rules
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Lead with what needs a decision. This sits above the stage in every
@@ -386,6 +418,8 @@ const Header: React.FC<{
 
     {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
+    {live && <HouseTake rules={session?.settlementRules} formatAmount={formatAmount} />}
+
     {/* Only when the host set a length. A night with no end has nothing to
         count towards, so it is shown no clock at all. */}
     <NightClockLine clock={clock} />
@@ -401,6 +435,43 @@ const Header: React.FC<{
     {night.phase === 'windingDown' && <WindingDownProgress night={night} />}
   </header>
 );
+
+/**
+ * What the house takes, on screen for everybody.
+ *
+ * The control that sets these disappears once they are locked, which would
+ * otherwise take the figures with it — and they are the only numbers on this
+ * screen that decide what a player walks away with. Somebody who joined at
+ * eleven should be able to see what the night charges without asking the host
+ * or opening the settlement screen they cannot reach.
+ *
+ * Silent when the night charges nothing, which is most nights. "Rake 0 ·
+ * Winners' cut 0%" is a line that says nothing, in a header whose whole job is
+ * to hold the two or three things that matter.
+ *
+ * Reads the night's own snapshot, never the club — the club may charge
+ * something this night does not, and the figure that matters is the one this
+ * night settles by.
+ */
+const HouseTake: React.FC<{
+  rules: PokerSession['settlementRules'];
+  formatAmount: (n: number) => string;
+}> = ({ rules, formatAmount }) => {
+  if (!rules) return null;
+  const { sessionRakeAmount: rake, winnersCutPercent: cut } = rules;
+  if (rake <= 0 && cut <= 0) return null;
+
+  return (
+    <div className="mt-1 flex items-baseline gap-2">
+      <span className="text-xs text-text-muted">House takes</span>
+      <span className="ml-auto text-xs text-text tabular-nums">
+        {[rake > 0 ? formatAmount(rake) : null, cut > 0 ? `${cut}% of winnings` : null]
+          .filter(Boolean)
+          .join(' · ')}
+      </span>
+    </div>
+  );
+};
 
 /**
  * The table maximum, on screen at all times.

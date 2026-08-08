@@ -153,6 +153,9 @@ export const SESSION_PATCH_EVENTS = [
   'club:settling-cancelled',
   'club:cashout-amended',
   'club:lobby-player-removed',
+  // Setting a night's rake or winners' cut decides what every player's chips
+  // are worth at the end. Nobody should learn that by refreshing.
+  'club:settlement-rules-set',
 ] as const;
 
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
@@ -1562,6 +1565,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // authoritative result the same way at settle time.
   // One source of truth for the club's rules, shared by the live-settle
   // preview and the back-dated one so the two can never drift apart.
+  /**
+   * The club's rules — for a night that has not started, and for back-dated
+   * records, which genuinely have no session to take rules from.
+   */
   const clubSettlementSettings: SettlementSettings = {
     sessionRakeAmount: club.sessionRakeAmount ?? 0,
     winnersCutPercent: club.winnersCutPercent ?? 0,
@@ -1576,8 +1583,40 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     roundingRule: club.roundingRule ?? 'NONE',
   };
 
+  /**
+   * What the LIVE night settles by — its own snapshot, never the club.
+   *
+   * The preview an admin approves has to be computed from the same rules the
+   * server will use, or they sign off on figures that are not the ones
+   * committed. Reading the club here would put that disagreement back exactly
+   * where the snapshot removed it: a settings change between kick-off and
+   * Confirm would show one set of numbers and write another.
+   *
+   * Null when the night has no rules yet. The screen says so and holds the
+   * Calculate button rather than quietly substituting the club's.
+   */
+  const sessionSettlementRules = activeSession?.settlementRules ?? null;
+  const liveSettlementSettings: SettlementSettings | null = sessionSettlementRules
+    ? {
+        sessionRakeAmount: sessionSettlementRules.sessionRakeAmount,
+        winnersCutPercent: sessionSettlementRules.winnersCutPercent,
+        rakeEnabled: sessionSettlementRules.rakeEnabled,
+        rakeMethod: sessionSettlementRules.rakeMethod as SettlementSettings['rakeMethod'],
+        rakeValue: sessionSettlementRules.rakeValue,
+        potEnabled: sessionSettlementRules.potEnabled,
+        mismatchStrategy: sessionSettlementRules.mismatchStrategy as SettlementSettings['mismatchStrategy'],
+        rakeOrder: sessionSettlementRules.rakeOrder as SettlementSettings['rakeOrder'],
+        winnerDefinition: sessionSettlementRules.winnerDefinition as SettlementSettings['winnerDefinition'],
+        winnerTopN: sessionSettlementRules.winnerTopN,
+        roundingRule: sessionSettlementRules.roundingRule as SettlementSettings['roundingRule'],
+      }
+    : null;
+
   const calculateSettlement = (): SettlementResult | null => {
     if (!activeSession) return null;
+    // No rules, no preview. Falling back to the club here would show the admin
+    // figures the server is going to refuse to commit.
+    if (!liveSettlementSettings) return null;
 
     const players = settlementUids.map(uid => ({
       userId: uid,
@@ -1589,7 +1628,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       manualWinner: manualWinnerInputs[uid],
     }));
 
-    return computeSettlement(players, clubSettlementSettings, {
+    return computeSettlement(players, liveSettlementSettings, {
+      // The pot as it stands NOW — a balance, not a rule, and deliberately not
+      // part of the night's snapshot.
       currentPotBalance: club.clubPotBalance ?? 0,
       mismatchAcknowledged,
     });
@@ -1948,6 +1989,56 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       if (!activeSession) return;
       applySession(await offlineSessionsApi.removeFromLobby(club.id, activeSession.id, userId));
     }, 'Please try again.');
+
+  /*
+   * Telling a night what it plays for — once, and never again.
+   *
+   * Two steps on purpose. The figures are typed, then restated with what they
+   * mean, because this is the only moment they can be set and a mistyped rake
+   * is locked in for the night. A toast afterwards would be telling somebody
+   * about a decision they can no longer take back.
+   */
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [rulesRake, setRulesRake] = useState('');
+  const [rulesCut, setRulesCut] = useState('');
+  const [rulesConfirming, setRulesConfirming] = useState(false);
+  const [rulesBusy, setRulesBusy] = useState(false);
+
+  const openRulesSheet = () => {
+    // Blank rather than pre-filled from the club: the club's figures are not
+    // what this night has been playing under, and offering them as a default
+    // invites accepting them without reading.
+    setRulesRake('');
+    setRulesCut('');
+    setRulesConfirming(false);
+    setRulesOpen(true);
+  };
+
+  const submitRules = async () => {
+    if (!activeSession || rulesBusy) return;
+    setRulesBusy(true);
+    try {
+      applySession(
+        await offlineSessionsApi.initSettlementRules(club.id, activeSession.id, {
+          sessionRakeAmount: Number(rulesRake),
+          winnersCutPercent: Number(rulesCut),
+        })
+      );
+      setRulesOpen(false);
+      pushToast(
+        'Settlement rules locked',
+        `Rake ${formatUnit(Number(rulesRake))} · Winners' cut ${Number(rulesCut)}%`,
+        'success'
+      );
+    } catch (err) {
+      // Carries the server's words: a second attempt comes back naming the
+      // rules the night already holds, which is the useful thing to read.
+      pushToast('Could not set the rules', err instanceof Error ? err.message : 'Please try again.', 'warning');
+      setRulesConfirming(false);
+    } finally {
+      setRulesBusy(false);
+    }
+  };
 
   /** Hand the table back. A mis-tap must not end somebody's evening. */
   const resumeNight = async () => {
@@ -2435,8 +2526,107 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   setSheetUid(currentUser.uid);
                 }}
                 feed={nightFeed}
+                onSetSettlementRules={isAdmin ? openRulesSheet : undefined}
               />
             )}
+
+            {/* The one moment a night's economics can be set. Two steps, and
+                the second one says out loud that there is no third. */}
+            <Sheet
+              open={rulesOpen}
+              onClose={() => setRulesOpen(false)}
+              title={rulesConfirming ? "Set tonight's settlement rules?" : "Tonight's settlement rules"}
+              description={
+                rulesConfirming
+                  ? undefined
+                  : 'This night began before rules were recorded against a session. Set them once — they cannot be changed afterwards.'
+              }
+              footer={
+                rulesConfirming ? (
+                  <>
+                    <Button variant="secondary" size="lg" fullWidth onClick={() => setRulesConfirming(false)}>
+                      Go back
+                    </Button>
+                    <Button variant="primary" size="lg" fullWidth loading={rulesBusy} onClick={submitRules}>
+                      Confirm rules
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    disabled={
+                      rulesRake === '' || rulesCut === '' ||
+                      Number(rulesRake) < 0 || Number(rulesCut) < 0 || Number(rulesCut) > 100
+                    }
+                    onClick={() => setRulesConfirming(true)}
+                  >
+                    Set rules
+                  </Button>
+                )
+              }
+            >
+              {rulesConfirming ? (
+                <div className="px-5 pb-2 space-y-3">
+                  <div className="p-4 bg-bg border border-line rounded-2xl space-y-1.5 font-mono tabular-nums text-sm">
+                    <div className="flex items-baseline gap-3">
+                      <span className="flex-1 text-text-muted">Rake</span>
+                      <span className="text-text font-semibold">{formatUnit(Number(rulesRake))}</span>
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="flex-1 text-text-muted">Winners' cut</span>
+                      <span className="text-text font-semibold">{Number(rulesCut)}%</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-warning leading-relaxed">
+                    These rules apply to this session only and cannot be changed after confirmation
+                    — not by another admin, and not by changing the club's settings. Everyone at the
+                    table is told.
+                  </p>
+                </div>
+              ) : (
+                <div className="px-5 pb-2 space-y-4">
+                  <div>
+                    <label className="text-xs text-text-muted" htmlFor="rules-rake">
+                      Rake for the night, in chips
+                    </label>
+                    <input
+                      id="rules-rake"
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={rulesRake}
+                      onChange={(e) => setRulesRake(e.target.value)}
+                      placeholder="0"
+                      className="mt-1 w-full furniture rounded-xl px-3 py-3 text-base font-mono tabular-nums text-text focus:border-accent outline-none"
+                    />
+                    <p className="mt-1 text-[11px] text-text-faint">
+                      Split equally across everyone at the table, winners and losers alike.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted" htmlFor="rules-cut">
+                      Winners' cut, as a percentage
+                    </label>
+                    <input
+                      id="rules-cut"
+                      type="number"
+                      min={0}
+                      max={100}
+                      inputMode="numeric"
+                      value={rulesCut}
+                      onChange={(e) => setRulesCut(e.target.value)}
+                      placeholder="0"
+                      className="mt-1 w-full furniture rounded-xl px-3 py-3 text-base font-mono tabular-nums text-text focus:border-accent outline-none"
+                    />
+                    <p className="mt-1 text-[11px] text-text-faint">
+                      Taken from each winner's profit. Losers are never charged it.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Sheet>
 
             {/* Picks a person, and nothing else. Choosing one opens their own
                 sheet, which opens on the bank chooser because they have no
@@ -3522,6 +3712,45 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 Close this and it stays on hold.
               </p>
 
+              {/* What this night is being settled BY, from its own snapshot.
+                  On screen before Confirm rather than buried in club settings,
+                  because these are the numbers that decide what everyone walks
+                  away with — and because the club's may no longer match. */}
+              {sessionSettlementRules ? (
+                <div className="p-3.5 bg-bg border border-line rounded-2xl">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-text-faint">
+                    This night's rules
+                  </p>
+                  <dl className="mt-2 space-y-1 text-[11px] font-mono tabular-nums">
+                    {[
+                      ['Rake', `${sessionSettlementRules.sessionRakeAmount.toLocaleString()} chips`],
+                      ["Winners' cut", `${sessionSettlementRules.winnersCutPercent}%`],
+                      ['Rake order', sessionSettlementRules.rakeOrder.replace(/_/g, ' ').toLowerCase()],
+                      ['Winner definition', sessionSettlementRules.winnerDefinition.replace(/_/g, ' ').toLowerCase()],
+                      ['Winners counted', String(sessionSettlementRules.winnerTopN)],
+                      ['Mismatch', sessionSettlementRules.mismatchStrategy.replace(/_/g, ' ').toLowerCase()],
+                      ['Rounding', sessionSettlementRules.roundingRule.replace(/_/g, ' ').toLowerCase()],
+                    ].map(([label, value]) => (
+                      <div key={label} className="flex items-baseline gap-3">
+                        <dt className="flex-1 min-w-0 truncate text-text-muted">{label}</dt>
+                        <dd className="shrink-0 text-text">{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="mt-2 text-[10px] text-text-faint leading-relaxed">
+                    Fixed when this night started. Changing the club's settings does not move them.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-warning/10 border border-warning/40 rounded-2xl">
+                  <p className="text-[11px] text-warning leading-relaxed">
+                    This night started before its rules were recorded, so it has none of its own.
+                    It cannot be settled until somebody sets its rake and winners' cut — the club's
+                    current settings are not used, because they may have changed since the night began.
+                  </p>
+                </div>
+              )}
+
               {/* Player Rows: Buy-in (editable) / Cash-out (editable) */}
               <div className="space-y-3">
                 {settlementUids.map(uid => {
@@ -3604,7 +3833,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               <button
                 onClick={() => { setCashoutCalculated(true); setConfirmingSettle(false); }}
-                disabled={!allCashOutsEntered}
+                disabled={!allCashOutsEntered || !liveSettlementSettings}
                 className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
                 <Scale className="w-4 h-4" /> Auto Calculate
@@ -3615,6 +3844,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <SettlementPreview
                   result={preview}
                   club={club}
+                  // The night's own rules, so the breakdown explains the very
+                  // figures above it rather than what the club charges today.
+                  settings={liveSettlementSettings ?? undefined}
                   formatAmount={formatVal}
                   formatSigned={formatSignedVal}
                   mismatchAcknowledgement={{
@@ -3639,7 +3871,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               {!confirmingSettle ? (
                 <button
                   onClick={() => setConfirmingSettle(true)}
-                  disabled={!cashoutCalculated || !allCashOutsEntered || (preview?.requiresManualResolution ?? false)}
+                  disabled={!cashoutCalculated || !allCashOutsEntered || !preview || preview.requiresManualResolution}
                   className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
                   Settle Session
