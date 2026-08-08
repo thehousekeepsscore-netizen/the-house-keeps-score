@@ -656,6 +656,8 @@ describe('correcting a banked buy-in', () => {
     const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
     expect(row.amount).toBe(9_000);
     expect(row.amount_previous).toBe(5_000);
+    // Uncapped club: 9,000 is a legal correction, and the point of the test is
+    // what the row remembers, not whether the ceiling let it through.
     expect(row.editedBy).toBe(priyaId);
     expect(row.editedAt).toBeInstanceOf(Date);
   });
@@ -728,7 +730,24 @@ describe('correcting a banked buy-in', () => {
     ).rejects.toThrow(/admin/i);
   });
 
+  /**
+   * A ceiling to be broken.
+   *
+   * The shared fixture club is UNCAPPED, where there is genuinely no maximum
+   * and a correction to any figure is legal — the first version of these tests
+   * asserted a rejection against it and failed for a reason that had nothing to
+   * do with the rule under test. Capped here, per test, so the assertion is
+   * about the ceiling rather than about the fixture.
+   */
+  async function capped(maxBuyIn: number) {
+    await prisma.club.update({
+      where: { id: clubId },
+      data: { buyInMode: 'MATCH_HIGHEST', maxBuyIn },
+    });
+  }
+
   it('REFUSES a correction that would break the table maximum', async () => {
+    await capped(10_000);
     /*
      * The loophole this closes: ask for the limit, have it approved, then have
      * a correction approved for ten times it. A correction that skipped the
@@ -749,6 +768,7 @@ describe('correcting a banked buy-in', () => {
   });
 
   it('leaves the original figure standing when that correction is refused', async () => {
+    await capped(10_000);
     const id = await banked(5_000);
     const ceiling = await getBuyInCeiling(sessionId, clubId);
     const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
@@ -766,6 +786,7 @@ describe('correcting a banked buy-in', () => {
   });
 
   it('checks the ceiling when it is APPROVED, not when it was asked for', async () => {
+    await capped(10_000);
     // The ceiling moves all night. A correction that was legal when typed and
     // is not when agreed must be refused — the figure that matters is the one
     // at the moment somebody signs off on it.
