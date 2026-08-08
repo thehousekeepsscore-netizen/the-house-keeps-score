@@ -1249,6 +1249,13 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
     const row = rows[0];
     if (!row) throw new HttpError(404, 'Session not found');
     if (row.status !== 'active') throw new HttpError(409, 'Session is already settled');
+    // The phases the diagram above already grants this transition, stated to the
+    // one gate that enforces them. This was the only mutation not declaring its
+    // phases, which read as "settling is legal everywhere" — including from the
+    // lobby, where a night that never started could be settled on the buy-ins
+    // players had put up while waiting. Both documented paths (settling, and the
+    // direct one from playing) behave exactly as before.
+    assertPhase(row, row.engineState, ['playing', 'settling']);
 
     const club = await tx.club.findUniqueOrThrow({ where: { id: row.clubId }, include: { admins: true } });
     const isAdmin = club.ownerId === requesterId || isSuperAdmin || club.admins.some((a) => a.userId === requesterId);

@@ -24,6 +24,7 @@ vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 const {
   requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn,
   amendCashOut, beginSettling, resumeNight, extendSession, removeFromLobby, startPlaying,
+  settleSession,
 } = await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -518,5 +519,77 @@ describe('rejoining mid-cash-out', () => {
     // Rejected: they are still seated, so there is nothing to rejoin.
     await decideCashOut(sessionId, clubId, ownerId, false, priyaId, false);
     expect((await stateNow()).activePlayerUids).toContain(priyaId);
+  });
+});
+
+/**
+ * Settling a night that never started.
+ *
+ * `settleSession` was the one mutation that did not declare the phases it is
+ * legal in — it only refused a session already settled. Everything else on this
+ * service goes through `assertPhase`, so the omission read as "settling is legal
+ * from anywhere", and the lobby is where that gets expensive: players put chips
+ * up while they wait, so there are real approved buy-ins sitting against a night
+ * nobody has played. Settling there books a full set of results — profits,
+ * losses, rake, a pot movement — for a game that never happened, and `settled`
+ * is terminal, so there is no way back out of it.
+ *
+ * The two phases the lifecycle diagram grants are unchanged and covered below,
+ * so this is a gate on the missing case rather than a narrowing of the rule.
+ */
+describe('settling a night that never started', () => {
+  const entries = () => ({
+    entries: [
+      { userId: ownerId, buyIn: 5_000, cashOut: 6_000 },
+      { userId: priyaId, buyIn: 5_000, cashOut: 4_000 },
+    ],
+  });
+
+  async function setPhase(state: Record<string, unknown>) {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          activePlayerUids: [ownerId, priyaId],
+          pendingSitInUids: [],
+          cashOuts: [],
+          ...state,
+        } as any,
+      },
+    });
+  }
+
+  it('refuses to settle from the lobby', async () => {
+    await setPhase({ startedPlayingAt: null });
+
+    await expect(settleSession(sessionId, ownerId, false, entries()))
+      .rejects.toThrow(/has not started/i);
+  });
+
+  it('books nothing at all when it refuses', async () => {
+    await setPhase({ startedPlayingAt: null });
+    await expect(settleSession(sessionId, ownerId, false, entries())).rejects.toThrow();
+
+    expect(await prisma.cashOutSettlement.count({ where: { clubId } })).toBe(0);
+    const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(session.status).toBe('active');
+    expect(session.endedAt).toBeNull();
+  });
+
+  it('still settles a night being played, which the lifecycle allows', async () => {
+    await setPhase({ startedPlayingAt: new Date().toISOString() });
+
+    await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
+    const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(session.status).not.toBe('active');
+  });
+
+  it('still settles a night frozen for settlement, which is the normal path', async () => {
+    await setPhase({ startedPlayingAt: new Date().toISOString() });
+    await beginSettling(sessionId, clubId, ownerId, false);
+
+    await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
+    const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect(session.status).not.toBe('active');
   });
 });
