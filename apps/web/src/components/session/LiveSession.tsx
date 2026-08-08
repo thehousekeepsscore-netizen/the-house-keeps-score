@@ -8,6 +8,10 @@ import { TheRoom } from './TheRoom';
 import { LiveFeed } from './LiveFeed';
 import { Lobby } from './Lobby';
 import { NightClockLine, NightClockBanner, useClock } from './NightClock';
+import { NightHistory } from './NightHistory';
+import { Sheet } from '../ui/Sheet';
+import { History } from 'lucide-react';
+import { unreadCount } from '../../lib/night-history';
 import { FeedEvent } from '../../lib/night-feed';
 
 /**
@@ -94,6 +98,13 @@ export interface LiveSessionProps {
   onResumeNight?: () => void;
   /** Admins only, in the lobby: take out somebody who said they were coming. */
   onRemoveFromLobby?: (userId: string) => void;
+  /**
+   * Corrections to a banked buy-in, both through the approval workflow rather
+   * than applied directly. Admins only; absent for players, which is what makes
+   * the history read-only for them.
+   */
+  onEditEntry?: (buyInId: string, currentAmount: number) => void;
+  onDeleteEntry?: (buyInId: string, amount: number) => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -174,10 +185,48 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onKeepPlaying,
   onResumeNight,
   onRemoveFromLobby,
+  onEditEntry,
+  onDeleteEntry,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
   const live = night.phase !== 'dark' && night.phase !== 'closed';
+
+  /*
+   * What this reader has already seen, per session and per person.
+   *
+   * Kept in localStorage rather than on the server: it is a property of this
+   * device's reader, two people share a phone at a poker table often enough to
+   * matter, and getting it wrong costs a dot rather than money. Keyed on both
+   * so neither inherits the other's.
+   */
+  const seenKey = session ? `history-seen:${session.id}:${currentUserId}` : null;
+  const [lastSeen, setLastSeen] = useState<string | null>(() =>
+    seenKey ? localStorage.getItem(seenKey) : null
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const unread = unreadCount(feed, lastSeen, currentUserId);
+
+  /*
+   * Corrections are a thing you do to a night in progress.
+   *
+   * Mirrors assertPhase(['lobby','playing']) on the server rather than
+   * restating it: once the table is frozen the figures are being agreed, and
+   * once it is settled they are a receipt. Offering a control the server will
+   * refuse is how a host learns a rule by being told no.
+   */
+  const correctable = !night.settling && night.phase !== 'closed' && night.phase !== 'dark';
+
+  const openHistory = () => {
+    setHistoryOpen(true);
+    // Marked on OPEN rather than on close: the list is on screen and has been
+    // seen. Waiting for the close would leave the dot up while the reader is
+    // looking straight at the thing it refers to.
+    const now = new Date().toISOString();
+    if (seenKey) localStorage.setItem(seenKey, now);
+    setLastSeen(now);
+  };
 
   /*
    * Four regions, and only one of them is elastic.
@@ -204,6 +253,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         formatAmount={formatAmount}
         live={live}
         clock={clock}
+        onOpenHistory={openHistory}
+        unread={unread}
       />
 
       {/* The scheduled game running out is a conversation, not an ending. A band
@@ -304,6 +355,35 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         live={live && night.startedPlayingAt !== null && clock.phase !== 'complete' && !night.settling}
         onSettleNight={onSettleNight}
       />
+
+      {/* Over the table rather than in it. The felt does not move, does not
+          resize and does not scroll when this opens — which is the whole
+          reason the feed became a sheet instead of a collapsible panel. */}
+      <Sheet
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Tonight"
+        description={
+          isAdmin
+            ? 'Every request, decision and correction, newest first.'
+            : 'Every request and decision, newest first.'
+        }
+      >
+        <NightHistory
+          events={feed}
+          nameOf={(uid) => nameOf(users, uid, currentUserId)}
+          formatAmount={formatAmount}
+          isAdmin={isAdmin && correctable}
+          onEdit={
+            onEditEntry &&
+            ((e) => onEditEntry(e.id.replace(/^buyin:/, ''), e.amount ?? 0))
+          }
+          onDelete={
+            onDeleteEntry &&
+            ((e) => onDeleteEntry(e.id.replace(/^buyin:/, ''), e.amount ?? 0))
+          }
+        />
+      </Sheet>
     </div>
   );
 };
@@ -365,7 +445,9 @@ const Header: React.FC<{
   formatAmount: (n: number) => string;
   live: boolean;
   clock: ReturnType<typeof useClock>;
-}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, clock }) => (
+  onOpenHistory?: () => void;
+  unread: number;
+}> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, clock, onOpenHistory, unread }) => (
   <header className="px-5 pt-4 pb-3 shrink-0">
     <div className="flex items-baseline gap-2 min-w-0">
       {session && (
@@ -386,6 +468,15 @@ const Header: React.FC<{
 
     {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
+    {/* Deliberately NOT gated on `live`. A night that has been settled is
+        exactly when somebody asks who approved what — the receipt is the
+        moment the history matters most, and hiding it there would mean the
+        record existed only while it was least needed. Corrections are refused
+        from here by the server and are not offered by the sheet. */}
+    {session && night.phase !== 'dark' && onOpenHistory && (
+      <HistoryButton unread={unread} onOpen={onOpenHistory} />
+    )}
+
     {/* Only when the host set a length. A night with no end has nothing to
         count towards, so it is shown no clock at all. */}
     <NightClockLine clock={clock} />
@@ -400,6 +491,45 @@ const Header: React.FC<{
 
     {night.phase === 'windingDown' && <WindingDownProgress night={night} />}
   </header>
+);
+
+/**
+ * The way into the night's history, and the only thing that survived the feed
+ * leaving the phone.
+ *
+ * A glyph rather than a labelled button, on purpose. The activity feed was
+ * worth having and was costing a third of a phone screen to say so; this costs
+ * a line. It sits under the maximum, right-aligned, in the header's own muted
+ * colour so it reads as part of the reference block above the felt rather than
+ * as a fourth thing competing with Buy chips and Settle night. Zone C is where
+ * actions live (LIVE-SESSION-INTERACTION-MODEL.md); this is not one.
+ *
+ * The dot is gold and small and carries no number under ten. "Something has
+ * happened" is the entire message — a precise count invites reading the count
+ * instead of opening the thing, and at a poker table the answer to "how many"
+ * is always "open it and see".
+ */
+const HistoryButton: React.FC<{ unread: number; onOpen: () => void }> = ({ unread, onOpen }) => (
+  <div className="mt-1.5 flex">
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={unread > 0 ? `Night history, ${unread} new` : 'Night history'}
+      className="ml-auto -mr-1 relative w-9 h-9 rounded-full flex items-center justify-center text-text-muted hover:text-text active:scale-95 transition cursor-pointer"
+    >
+      <History className="w-[18px] h-[18px]" />
+      {unread > 0 && (
+        <span
+          aria-hidden
+          className="absolute top-1.5 right-1.5 min-w-[7px] h-[7px] px-[3px] rounded-full bg-accent flex items-center justify-center"
+        >
+          {unread > 9 && (
+            <span className="text-[8px] font-bold leading-none text-accent-contrast">9+</span>
+          )}
+        </span>
+      )}
+    </button>
+  </div>
 );
 
 /**

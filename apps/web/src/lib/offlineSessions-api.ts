@@ -32,6 +32,7 @@ export interface ApiOfflineSession {
   timeLimitLiftedAt?: string | null;
   settlingAt?: string | null;
   remindAtEnd?: boolean;
+  entryChanges?: { id: string; buyInId: string; type: 'edit' | 'delete'; amount?: number; requestedBy: string; requestedAt: string }[];
 }
 
 export function toPokerSession(s: ApiOfflineSession): PokerSession {
@@ -64,6 +65,9 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
     settlingAt: s.settlingAt ?? null,
     remindAtEnd: s.remindAtEnd,
+    // Dropped here once already for sitInRequestedAt, with the result that a
+    // whole request type had no countdown. Mapped explicitly for that reason.
+    entryChanges: s.entryChanges ?? [],
   };
 }
 
@@ -274,4 +278,37 @@ export async function settleSession(clubId: string, sessionId: string, input: Se
     body: input,
   });
   return result.playerSummaries;
+}
+
+/**
+ * Ask for a banked buy-in to be corrected or withdrawn. Admins only.
+ *
+ * Does not change anything on its own: an approved buy-in is chips on the
+ * table, so undoing one goes through the same gate it came in by. Another
+ * admin decides, unless there is nobody else here.
+ */
+export async function requestEntryChange(
+  clubId: string,
+  sessionId: string,
+  input: { buyInId: string; type: 'edit' | 'delete'; amount?: number }
+): Promise<{ session: PokerSession }> {
+  const r = await apiFetch<{ session: ApiOfflineSession }>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/entry-changes`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+  return { session: toPokerSession(r.session) };
+}
+
+/** Agree or refuse a correction. Admins only. */
+export async function decideEntryChange(
+  clubId: string,
+  sessionId: string,
+  changeId: string,
+  approve: boolean
+): Promise<{ session: PokerSession }> {
+  const r = await apiFetch<{ session: ApiOfflineSession }>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/entry-changes/${changeId}/${approve ? 'approve' : 'reject'}`,
+    { method: 'POST' }
+  );
+  return { session: toPokerSession(r.session) };
 }

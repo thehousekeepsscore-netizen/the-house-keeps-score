@@ -64,7 +64,7 @@ export type SeatState =
   | 'countingOut'
   | 'cashedOut';
 
-export type QueueKind = 'buy-in' | 'sit-in' | 'cash-out';
+export type QueueKind = 'buy-in' | 'sit-in' | 'cash-out' | 'entry-change';
 
 /**
  * Mirrors REQUEST_TTL_MS in offlineSessions.service.ts. The server is the
@@ -322,6 +322,10 @@ export function deriveNight(input: NightInput): Night {
 
   const mine = (userId: string) => isAdmin || userId === currentUserId;
 
+  // Whose chips a correction is about. The requester is an admin; the row
+  // should say the player, because "Priya's buy-in" is the thing being decided.
+  const buyInOwner = (buyInId: string) => buyIns.find((r) => r.id === buyInId)?.userId;
+
   const queue: QueuedRequest[] = [
     ...pendingBuyIns.filter((r) => mine(r.userId)).map((r) => ({
       id: r.id,
@@ -351,6 +355,27 @@ export function deriveNight(input: NightInput): Night {
       amount: c.amount,
       requestedAt: c.requestedAt,
       msRemaining: msRemaining(c.requestedAt, now),
+    })),
+    /*
+     * Corrections to a banked buy-in, waiting on a second admin.
+     *
+     * Admin-only by construction rather than by `mine`: the subject of the
+     * correction is a player, but the question is not one they can answer, and
+     * putting "Aniket wants to change your buy-in to 4,000" in a player's queue
+     * offers them a decision the server will refuse.
+     *
+     * No msRemaining: unlike the other three this does not expire. A request
+     * that vanished after five minutes would silently leave the wrong figure
+     * standing, which is the outcome it exists to prevent.
+     */
+    ...(isAdmin ? (session.entryChanges ?? []) : []).map((c) => ({
+      id: `entry-change:${c.id}`,
+      kind: 'entry-change' as const,
+      userId: buyInOwner(c.buyInId) ?? c.requestedBy,
+      joining: false,
+      amount: c.amount,
+      requestedAt: c.requestedAt,
+      msRemaining: null,
     })),
   ].sort((a, b) => {
     // Oldest first. All three kinds share one TTL, so this is also
