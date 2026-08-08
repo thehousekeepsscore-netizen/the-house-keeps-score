@@ -84,6 +84,8 @@ export interface LiveSessionProps {
   onExtendSession?: () => void;
   /** Admins only: carry on with no limit for the rest of the night. One-way. */
   onKeepPlaying?: () => void;
+  /** Admins only: hand the table back, so the night carries on. */
+  onResumeNight?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -162,6 +164,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   starting,
   onExtendSession,
   onKeepPlaying,
+  onResumeNight,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -198,7 +201,28 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           above the felt rather than a dialog over it: at ten past eleven the
           host is dealing with the room, and an app that demands to be dealt
           with first has its priorities backwards. */}
-      {live && night.startedPlayingAt !== null && (
+      {/*
+        Frozen for settlement, and saying so.
+ 
+        The server refuses every mutation from here, so a screen that carried on
+        offering Approve and Buy chips would be offering controls it knows will
+        fail. It outranks the clock band because there is only ever one thing
+        asking for attention.
+      */}
+      {night.settling ? (
+        <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 furniture rounded-[var(--radius-lg)]">
+          <p className="text-sm text-text">Settling up</p>
+          <p className="mt-0.5 text-xs text-text-faint leading-relaxed">
+            The table is on hold while the figures are agreed. Nothing can be
+            bought or cashed out until it resumes.
+          </p>
+          {isAdmin && onResumeNight && (
+            <Button variant="secondary" size="sm" fullWidth className="mt-2" onClick={onResumeNight}>
+              Back to the table
+            </Button>
+          )}
+        </div>
+      ) : live && night.startedPlayingAt !== null && (
         <NightClockBanner
           clock={clock}
           isAdmin={isAdmin}
@@ -211,7 +235,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       {/* Lead with what needs a decision. This sits above the stage in every
           running phase, not just one, because a request does not care which
           phase the night is in. */}
-      {waiting.length > 0 && live && (
+      {waiting.length > 0 && live && !night.settling && (
         <div className="px-3 pb-3 shrink-0">
           <WaitingForYou rows={waiting} formatAmount={formatAmount} />
         </div>
@@ -251,7 +275,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           names, and the band is the one carrying the context. */}
       <SettleFooter
         isAdmin={isAdmin}
-        live={live && night.startedPlayingAt !== null && clock.phase !== 'complete'}
+        live={live && night.startedPlayingAt !== null && clock.phase !== 'complete' && !night.settling}
         onSettleNight={onSettleNight}
       />
     </div>
@@ -495,7 +519,11 @@ const Stage: React.FC<{
               users={users}
               onSelectPlayer={onSelectPlayer}
               formatAmount={formatAmount}
-              stud={studFor(isAdmin, night.mySeat !== null, onAddPlayer, onAskForChips)}
+              stud={
+              night.settling
+                ? undefined
+                : studFor(isAdmin, night.mySeat !== null, onAddPlayer, onAskForChips)
+            }
             />
 
             {night.mySeat && night.mySeat.state !== 'cashedOut' && (

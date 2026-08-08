@@ -118,6 +118,14 @@ export interface Night {
   phase: NightPhase;
   /** When the host started the night, if they have. Null in the lobby. */
   startedPlayingAt: string | null;
+  /**
+   * The table is frozen while its figures are agreed.
+   *
+   * Every mutation refuses on the server, so the screen has to say so rather
+   * than offer controls that will fail. Reversible: the host can hand the table
+   * back.
+   */
+  settling: boolean;
   /** Seated AND holding chips — the count the lobby gates "Start playing" on. */
   readyCount: number;
   /** Everyone in the room, ready or not. The denominator of "3 of 7 ready". */
@@ -181,6 +189,7 @@ export function deriveNight(input: NightInput): Night {
     return {
       phase: 'dark',
       startedPlayingAt: null,
+      settling: false,
       readyCount: 0,
       lobbyCount: 0,
       canStartPlaying: false,
@@ -407,6 +416,7 @@ export function deriveNight(input: NightInput): Night {
   return {
     phase,
     startedPlayingAt,
+    settling: Boolean(session.settlingAt),
     readyCount: readyUids.length,
     lobbyCount: lobbyUids.size,
     // Two, not everybody. Somebody is always still parking, and a night that

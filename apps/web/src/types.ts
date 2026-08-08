@@ -136,7 +136,12 @@ export interface PokerSession {
    * against the other two or shown a countdown.
    */
   sitInRequestedAt?: Record<string, string>;
-  cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
+  cashOuts?: {
+    userId: string; amount: number; status: 'pending' | 'confirmed';
+    requestedAt: string; confirmedBy?: string;
+    /** Set when an admin corrected an already-agreed count. */
+    amendedBy?: string; amendedAt?: string;
+  }[];
   /**
    * When the host said "alright, let's start", or null while the table is open
    * and people are still gathering.
@@ -163,6 +168,14 @@ export interface PokerSession {
    * minutes for the last two of them.
    */
   timeLimitLiftedAt?: string | null;
+  /**
+   * When the host started settling, and the table stopped moving.
+   *
+   * Figures cannot be agreed while they are still changing underneath. Nothing
+   * mutates from here until the night settles or the host hands it back —
+   * reversible on purpose, because a mis-tap must not hold a room hostage.
+   */
+  settlingAt?: string | null;
   /** Superseded by the grace period, which is a banner rather than an alert. */
   remindAtEnd?: boolean;
   startedBy: string;

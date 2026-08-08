@@ -32,6 +32,33 @@ const extendSchema = z.object({
   minutes: z.number().int().positive().max(24 * 60),
 });
 
+const amendSchema = z.object({
+  userId: z.string().min(1),
+  amount: z.number().int().nonnegative(),
+});
+
+/** Correcting a count that was already agreed. Admins only, until settlement. */
+export async function amendCashOut(req: Request, res: Response) {
+  const { userId, amount } = amendSchema.parse(req.body);
+  const session = await offlineSessionsService.amendCashOut(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, userId, amount);
+  return res.json(session);
+}
+
+/** Stop the table so the figures can be agreed. Reversible. Admins only. */
+export async function beginSettling(req: Request, res: Response) {
+  const session = await offlineSessionsService.beginSettling(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
+/** Give the table back. */
+export async function resumeNight(req: Request, res: Response) {
+  const session = await offlineSessionsService.resumeNight(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
 /** More time on the clock. Additive, unlimited, admins only. */
 export async function extendSession(req: Request, res: Response) {
   const { minutes } = extendSchema.parse(req.body);

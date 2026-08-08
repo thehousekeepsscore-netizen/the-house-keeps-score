@@ -498,3 +498,73 @@ describe('every player is the way in', () => {
     });
   });
 });
+
+/**
+ * Frozen for settlement.
+ *
+ * Figures cannot be agreed while they are still changing underneath, so the
+ * server refuses every mutation once a host starts settling. The screen has to
+ * match that: offering Approve and a brass stud that the server will reject is
+ * worse than offering nothing.
+ */
+describe('the table on hold', () => {
+  const settling = (over: Partial<LiveSessionProps> = {}) =>
+    renderScreen(
+      {
+        session: session({
+          activePlayerUids: ['host', 'priya'],
+          settlingAt: ago(1),
+        }),
+        waiting: [
+          {
+            id: 'q1', kind: 'buy-in', userId: 'priya', joining: false, amount: 3000,
+            requestedAt: ago(1), msRemaining: 4 * 60_000, name: 'Priya',
+            onApprove: vi.fn(), onDismiss: vi.fn(),
+          },
+        ],
+        ...over,
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(60),
+        },
+      ]
+    );
+
+  it('says the table is on hold rather than looking normal', () => {
+    settling();
+    expect(screen.getByText(/settling up/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing can be bought or cashed out/i)).toBeInTheDocument();
+  });
+
+  it('takes the approval queue away, because approving would be refused', () => {
+    settling();
+    expect(screen.queryByRole('button', { name: /^approve$/i })).not.toBeInTheDocument();
+  });
+
+  it('takes the chips control off the felt', () => {
+    settling();
+    expect(
+      screen.queryByRole('button', { name: /add a player|ask for chips|join the table/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers the host the way back, so a mis-tap does not end an evening', async () => {
+    const onResumeNight = vi.fn();
+    settling({ onResumeNight });
+    await userEvent.click(screen.getByRole('button', { name: /back to the table/i }));
+    expect(onResumeNight).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a player no way out of it, because it is not theirs to decide', () => {
+    settling({ isAdmin: false, onResumeNight: vi.fn() });
+    expect(screen.getByText(/settling up/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /back to the table/i })).not.toBeInTheDocument();
+  });
+
+  it('does not also show the settle footer, which would be the same tap twice', () => {
+    settling();
+    expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
+  });
+});

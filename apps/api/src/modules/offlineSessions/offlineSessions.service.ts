@@ -37,6 +37,15 @@ interface OfflineEngineState {
   /** Every extension, in the order granted. Additive and unlimited by design. */
   timeExtensions?: { minutes: number; at: string }[];
   /**
+   * When the host started settling, and the table stopped moving.
+   *
+   * Figures cannot be agreed while they are still changing underneath. From
+   * here nothing mutates — no buy-ins, no cash-outs, no approvals — until the
+   * night settles or the host hands the table back. Reversible on purpose: a
+   * mis-tap must not hold a room hostage.
+   */
+  settlingAt?: string | null;
+  /**
    * When the host chose to carry on with no limit.
    *
    * One-way for the rest of the night. It is what stops a game running three
@@ -149,6 +158,22 @@ async function mutateSessionState<T>(
     });
     return { session: serialize(updated as unknown as SessionRow), result };
   });
+}
+
+/**
+ * Nothing moves while the night is being settled.
+ *
+ * Settlement agrees a set of figures, and figures cannot be agreed while they
+ * are still changing underneath. A buy-in approved between the host opening the
+ * settle screen and pressing confirm is money nobody accounted for — settlement
+ * on moving ground.
+ *
+ * Every mutation calls this. Reading is untouched: players can still watch.
+ */
+function assertNotSettling(state: OfflineEngineState) {
+  if (state.settlingAt) {
+    throw new HttpError(409, 'This night is being settled — resume it to make changes');
+  }
 }
 
 /**
@@ -417,6 +442,7 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
 // from requesting/approving an actual buy-in.
 export async function joinSession(sessionId: string, userId: string) {
   const { session } = await mutateSessionState(sessionId, async (state) => {
+    assertNotSettling(state);
     const cleared = clearCashOutFor(state, userId);
     const activePlayerUids = Array.from(new Set([...(cleared.activePlayerUids || []), userId]));
     return { state: { ...cleared, activePlayerUids }, result: null };
@@ -430,6 +456,7 @@ export async function joinSession(sessionId: string, userId: string) {
 export async function requestSitIn(sessionId: string, clubId: string, userId: string) {
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    assertNotSettling(state);
     if ((state.activePlayerUids || []).includes(userId)) {
       throw new HttpError(409, 'You are already seated at this table');
     }
@@ -457,6 +484,8 @@ export async function decideSitIn(
   let expired = false;
 
   const { session } = await mutateSessionState(sessionId, async (state) => {
+    assertNotSettling(state);
+
     // Only ever act on someone who actually asked — otherwise an approve call
     // could seat an arbitrary user id that never requested a seat.
     if (!(state.pendingSitInUids || []).includes(userId)) {
@@ -581,6 +610,7 @@ export async function startPlaying(
     sessionId,
     async (state, tx, row) => {
       if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+      assertNotSettling(state);
       // Under the lock, so two hosts tapping together cannot both start a night
       // and stamp it with two different times.
       if (state.startedPlayingAt) throw new HttpError(409, 'This night has already started');
@@ -626,6 +656,7 @@ export async function extendSession(
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    assertNotSettling(state);
     if (!state.durationMinutes) throw new HttpError(409, 'This night has no time limit to extend');
     if (state.timeLimitLiftedAt) {
       throw new HttpError(409, 'This night is already running without a time limit');
@@ -658,6 +689,7 @@ export async function liftTimeLimit(
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    assertNotSettling(state);
     if (state.timeLimitLiftedAt) return { state, result: null };
     return { state: { ...state, timeLimitLiftedAt: new Date().toISOString() }, result: null };
   });
@@ -666,9 +698,104 @@ export async function liftTimeLimit(
   return session;
 }
 
+/**
+ * Correcting a count that was already agreed.
+ *
+ * The host reads 7,400 off a stack, approves it, and finds the last 200 chip
+ * under a card thirty seconds later. Before this there was nothing to be done
+ * about it: no pending cash-out existed to re-decide, requestCashOut refuses a
+ * second entry, and settlement treats a confirmed figure as the authority over
+ * the form — so a miscount was permanent from the moment it was agreed.
+ *
+ * Bounded by settlement, which is the natural edge. Once the night's figures are
+ * agreed they are a receipt, and a receipt that can be edited is not one.
+ *
+ * Carries the same second-pair-of-eyes rule as confirming it did, and for the
+ * same reason: this moves money, and an admin editing their own figure with
+ * nobody watching is exactly what that rule exists to prevent.
+ */
+export async function amendCashOut(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean,
+  userId: string, amount: number
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
+    assertNotSettling(state);
+
+    const entry = (state.cashOuts || []).find(
+      (c) => c.userId === userId && c.status === 'confirmed'
+    );
+    if (!entry) throw new HttpError(404, 'That player has no confirmed cash-out to correct');
+
+    if (userId === requesterId && hasAnotherAdminHere(club, requesterId, state)) {
+      throw new HttpError(403, 'Another Club Admin must correct your own count');
+    }
+
+    // The correction is recorded, not silent. A figure that changed after it was
+    // agreed is exactly the kind of thing an audit trail exists for.
+    const cashOuts = (state.cashOuts || []).map((c) =>
+      c.userId === userId && c.status === 'confirmed'
+        ? { ...c, amount, amendedBy: requesterId, amendedAt: new Date().toISOString() }
+        : c
+    );
+    return { state: { ...state, cashOuts }, result: null };
+  });
+
+  emitToClub(clubId, 'club:cashout-amended', { sessionId, userId, amount, session });
+  return session;
+}
+
+/**
+ * Stop the table so the figures can be agreed.
+ *
+ * Settlement is a conversation about a set of numbers, and it cannot happen
+ * while somebody is still buying chips. From here every mutation refuses until
+ * the night settles or the host hands the table back.
+ *
+ * Reversible, and that is not a detail: a host who taps this by accident at
+ * eleven o'clock has to be able to give the table back, or the app has ended
+ * somebody's evening on a mis-tap.
+ */
+export async function beginSettling(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
+    // Idempotent: two hosts tapping together should not stamp two times.
+    if (state.settlingAt) return { state, result: null };
+    return { state: { ...state, settlingAt: new Date().toISOString() }, result: null };
+  });
+
+  emitToClub(clubId, 'club:settling-started', { sessionId, session });
+  return session;
+}
+
+/** Give the table back. The other half of the freeze, and what makes it safe. */
+export async function resumeNight(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
+    return { state: { ...state, settlingAt: null }, result: null };
+  });
+
+  emitToClub(clubId, 'club:settling-cancelled', { sessionId, session });
+  return session;
+}
+
 export async function requestCashOut(sessionId: string, clubId: string, userId: string, amount: number) {
   const { session, result } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    assertNotSettling(state);
     if (!(state.activePlayerUids || []).includes(userId)) {
       throw new HttpError(409, 'That player is not seated at this table');
     }
@@ -710,6 +837,7 @@ export async function decideCashOut(
   let expired = false;
 
   const { session } = await mutateSessionState(sessionId, async (state) => {
+    assertNotSettling(state);
     const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
     if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
 
@@ -767,72 +895,80 @@ export async function decideCashOut(
  * own creation with nobody watching. The recipient is `userId`; the author is
  * `requestedBy`; they are only the same person when someone banks themselves.
  */
-/**
- * A rejoining player must put back at least what they took off the table.
- *
- * Only bites while a confirmed cash-out is still standing. Sitting back down
- * voids it (see decideSitIn), so an ordinary top-up later is unaffected.
- */
-async function assertBringsBackTheirStack(sessionId: string, userId: string, amount: number) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  const state = session.engineState as unknown as OfflineEngineState;
-  const stoodUpWith = (state.cashOuts || []).find(
-    (c) => c.userId === userId && c.status === 'confirmed'
-  );
-  if (!stoodUpWith) return;
-
-  if (amount < stoodUpWith.amount) {
-    throw new HttpError(
-      409,
-      `You stood up with ${stoodUpWith.amount}, so you cannot sit back down with less than that`
-    );
-  }
-}
 
 export async function requestBuyIn(
   sessionId: string, clubId: string, userId: string, amount: number,
   requestedBy: string = userId
 ) {
-  // Enforced here, not only in the UI — the cap was previously client-side
-  // only and any direct API call sailed past it.
-  await assertWithinBuyInCeiling(sessionId, clubId, amount);
-
   /*
-   * You cannot come back short of what you left with.
+   * Everything about one buy-in happens under the session lock.
    *
-   * The table-stakes rule every home game already plays by: a player who
-   * stands up with 7,200 and sits back down with 1,000 has taken 6,200 out of
-   * the night mid-game. Everyone else's money is still on the table; theirs is
-   * in their pocket. Poker calls it going south, and it is the one move that
-   * changes the economics of an evening without anybody losing a hand.
-   *
-   * The floor is their own confirmed cash-out, so it is a rule about their
-   * money rather than a limit somebody set for them. The normal way back is to
-   * sit down again with exactly those chips, which the sit-in path does without
-   * creating a buy-in at all — this guards every other route in.
+   * The "one pending request per player" check was read-then-write, which is
+   * exactly the shape that fails when an admin adds Priya at the same moment
+   * Priya taps Join: both calls looked, both found nothing pending, and the
+   * host was asked the same question twice about one seat.
    */
-  await assertBringsBackTheirStack(sessionId, userId, amount);
+  const { result: request } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
+    assertNotSettling(state);
 
-  // One pending buy-in per player per session, matching requestSitIn and
-  // requestCashOut. This was the only request endpoint without the rule, and
-  // its absence was not theoretical: a player whose screen appeared frozen
-  // pressed the button around twenty times and created around twenty rows,
-  // every one of which an admin then had to triage.
-  //
-  // Enforced on the server rather than by disabling the button, because a
-  // disabled button only helps a client that is behaving.
-  const pending = await prisma.buyInRequest.findFirst({
-    where: { sessionId, userId, status: 'pending' },
-    select: { id: true },
-  });
-  if (pending) {
-    throw new HttpError(409, 'You already have a buy-in request waiting for approval');
-  }
+    // Enforced here, not only in the UI — the cap was previously client-side
+    // only and any direct API call sailed past it.
+    await assertWithinBuyInCeiling(sessionId, clubId, amount, tx);
 
-  const request = await prisma.buyInRequest.create({
-    data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy },
+    /*
+     * You cannot come back short of what you left with.
+     *
+     * The table-stakes rule every home game already plays by: a player who
+     * stands up with 7,200 and sits back down with 1,000 has taken 6,200 out
+     * of the night mid-game. Everyone else's money is still on the table;
+     * theirs is in their pocket. Poker calls it going south.
+     *
+     * The floor is their own confirmed cash-out, so it is a rule about their
+     * money rather than a limit somebody set for them — and somebody who
+     * busted out has a floor of zero, which is the point.
+     */
+    const stoodUpWith = (state.cashOuts || []).find(
+      (c) => c.userId === userId && c.status === 'confirmed'
+    );
+    if (stoodUpWith && amount < stoodUpWith.amount) {
+      throw new HttpError(
+        409,
+        `You stood up with ${stoodUpWith.amount}, so you cannot sit back down with less than that`
+      );
+    }
+
+    // One pending buy-in per player per session. Its absence was not
+    // theoretical: a player whose screen appeared frozen pressed the button
+    // around twenty times and created around twenty rows, every one of which
+    // an admin then had to triage.
+    const pending = await tx.buyInRequest.findFirst({
+      where: { sessionId, userId, status: 'pending' },
+      select: { id: true },
+    });
+    if (pending) {
+      throw new HttpError(409, 'You already have a buy-in request waiting for approval');
+    }
+
+    const created = await tx.buyInRequest.create({
+      data: { sessionId, clubId, userId, amount, status: 'pending', requestedBy },
+    });
+
+    /*
+     * A buy-in supersedes a bare sit-in for the same person.
+     *
+     * They are different tables in the database and one person in the room.
+     * Approving a buy-in seats them anyway, so leaving the sit-in alongside it
+     * asks the host to make two decisions about one chair — and answering only
+     * one of them leaves a half-arrived player on the felt.
+     */
+    const pendingSitInUids = (state.pendingSitInUids || []).filter((u) => u !== userId);
+    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
+    delete sitInRequestedAt[userId];
+
+    return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: created };
   });
+
   emitToClub(clubId, 'club:buyin-requested', { sessionId, requestId: request.id, request });
   return request;
 }
@@ -870,6 +1006,7 @@ export async function decideBuyInRequest(
   const { session: updatedSession, result } = await mutateSessionState(
     sessionId,
     async (state, tx) => {
+      assertNotSettling(state);
       const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
       if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
       if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');

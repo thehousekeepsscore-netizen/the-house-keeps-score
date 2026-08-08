@@ -1978,6 +1978,40 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [extendOpen, setExtendOpen] = useState(false);
   const [clockBusy, setClockBusy] = useState(false);
 
+  /**
+   * Settling stops the table.
+   *
+   * Figures cannot be agreed while they are still changing underneath, so the
+   * server refuses every mutation from here. Reversible, which is what makes it
+   * safe to put behind a single tap.
+   */
+  const beginSettling = async () => {
+    if (!activeSession || clockBusy) return;
+    setClockBusy(true);
+    try {
+      applySession(await offlineSessionsApi.beginSettling(club.id, activeSession.id));
+      setSettlePlaceholderOpen(true);
+    } catch (err) {
+      pushToast('Could not settle', err instanceof Error ? err.message : 'Please try again.', 'warning');
+    } finally {
+      setClockBusy(false);
+    }
+  };
+
+  /** Hand the table back. A mis-tap must not end somebody's evening. */
+  const resumeNight = async () => {
+    if (!activeSession || clockBusy) return;
+    setClockBusy(true);
+    try {
+      applySession(await offlineSessionsApi.resumeNight(club.id, activeSession.id));
+      setSettlePlaceholderOpen(false);
+    } catch (err) {
+      pushToast('Could not resume', err instanceof Error ? err.message : 'Please try again.', 'warning');
+    } finally {
+      setClockBusy(false);
+    }
+  };
+
   /** More time. Additive, unlimited — the plan changed, which it always does. */
   const extendSession = async (minutes: number) => {
     if (!activeSession || clockBusy) return;
@@ -2438,11 +2472,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 starting={startingPlay}
                 onExtendSession={() => setExtendOpen(true)}
                 onKeepPlaying={keepPlaying}
+                onResumeNight={resumeNight}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
                 onSelectPlayer={(uid) => { setSheetAsksForChips(false); setSheetUid(uid); }}
                 ceiling={buyInCeiling}
-                onSettleNight={() => setSettlePlaceholderOpen(true)}
+                onSettleNight={beginSettling}
                 onAddPlayer={() => setAddPlayerOpen(true)}
                 onAskForChips={() => {
                   setSheetAsksForChips(true);
@@ -2518,12 +2553,17 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             <Sheet
               open={settlePlaceholderOpen}
               onClose={() => setSettlePlaceholderOpen(false)}
-              title="Settle night"
-              description="Not yet — settlement is the next thing being built."
+              title="Settling up"
+              description="The table is on hold — nothing can be bought or cashed out. Settlement itself is the next thing being built."
               footer={
-                <Button variant="secondary" size="lg" fullWidth onClick={() => setSettlePlaceholderOpen(false)}>
-                  Back to the table
-                </Button>
+                <>
+                  <Button variant="secondary" size="lg" fullWidth onClick={() => setSettlePlaceholderOpen(false)}>
+                    Leave it on hold
+                  </Button>
+                  <Button variant="primary" size="lg" fullWidth loading={clockBusy} onClick={resumeNight}>
+                    Back to the table
+                  </Button>
+                </>
               }
             />
 

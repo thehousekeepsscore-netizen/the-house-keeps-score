@@ -30,6 +30,7 @@ export interface ApiOfflineSession {
   durationMinutes?: number;
   timeExtensions?: { minutes: number; at: string }[];
   timeLimitLiftedAt?: string | null;
+  settlingAt?: string | null;
   remindAtEnd?: boolean;
 }
 
@@ -61,6 +62,7 @@ export function toPokerSession(s: ApiOfflineSession): PokerSession {
     durationMinutes: s.durationMinutes,
     timeExtensions: s.timeExtensions ?? [],
     timeLimitLiftedAt: s.timeLimitLiftedAt ?? null,
+    settlingAt: s.settlingAt ?? null,
     remindAtEnd: s.remindAtEnd,
   };
 }
@@ -133,6 +135,35 @@ export async function extendSession(
 ): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/extend`, { method: 'POST', body: { minutes } });
+  return toPokerSession(s);
+}
+
+/**
+ * Stop the table so the figures can be agreed. Reversible — admins only.
+ *
+ * Settlement is a conversation about a set of numbers, and it cannot happen
+ * while somebody is still buying chips.
+ */
+export async function beginSettling(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/begin-settling`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/** Give the table back. The other half of the freeze, and what makes it safe. */
+export async function resumeNight(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/resume`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/** Correcting a count that was already agreed. Admins only, until settlement. */
+export async function amendCashOut(
+  clubId: string, sessionId: string, userId: string, amount: number
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/amend`,
+    { method: 'POST', body: { userId, amount } });
   return toPokerSession(s);
 }
 

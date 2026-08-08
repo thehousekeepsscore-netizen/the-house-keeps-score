@@ -62,6 +62,8 @@ export const SessionPreview: React.FC = () => {
   const inLobby = params.get('lobby') === '1';
   // ?mins=N sets a length, so the clock and the time-up prompt are walkable.
   const durationMinutes = Number(params.get('mins')) || undefined;
+  // ?settling=1 freezes the table, the way pressing Settle night does.
+  const settling = params.get('settling') === '1';
   // ?started=N minutes ago, so running / grace / complete are all reachable.
   const startedAgo = Number(params.get('started')) || 196;
 
@@ -113,6 +115,7 @@ export const SessionPreview: React.FC = () => {
     durationMinutes,
     timeExtensions: [],
     timeLimitLiftedAt: null,
+    settlingAt: settling ? at(1) : null,
   };
 
   const buyIns: BuyInRequest[] = [
@@ -182,6 +185,7 @@ export const SessionPreview: React.FC = () => {
         onStartPlaying={() => { window.location.href = window.location.href.replace('lobby=1', 'lobby=0'); }}
         onExtendSession={() => {}}
         onKeepPlaying={() => {}}
+        onResumeNight={() => { window.location.href = window.location.href.replace('settling=1', 'settling=0'); }}
         onAddPlayer={() => setAddOpen(true)}
         onAskForChips={() => { setAsksChips(true); setPicked(me); }}
         feed={feed}
