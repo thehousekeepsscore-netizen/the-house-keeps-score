@@ -33,4 +33,11 @@ offlineSessionsRouter.post(
   '/:sessionId/buy-in-requests/:requestId/:decision(approve|reject)',
   asyncHandler(offlineSessionsController.decideBuyInRequest)
 );
+// The one sanctioned way to move a running night's economics. Admin only,
+// legal only while playing, and audited — see the service.
+offlineSessionsRouter.patch(
+  '/:sessionId/settlement-rules',
+  asyncHandler(offlineSessionsController.setSessionSettlementRules)
+);
+
 offlineSessionsRouter.post('/:sessionId/settle', asyncHandler(offlineSessionsController.settleSession));
