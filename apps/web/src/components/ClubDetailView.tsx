@@ -153,6 +153,10 @@ export const SESSION_PATCH_EVENTS = [
   'club:settling-cancelled',
   'club:cashout-amended',
   'club:lobby-player-removed',
+  // A host changing the night's rake or winners' cut mid-game changes what
+  // every player's chips are worth at the end. Nobody should learn that by
+  // refreshing.
+  'club:settlement-rules-changed',
 ] as const;
 
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
