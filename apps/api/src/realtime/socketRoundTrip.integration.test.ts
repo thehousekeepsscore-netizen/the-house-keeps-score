@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import { prisma } from '../lib/prisma.js';
@@ -213,5 +213,51 @@ describe('an event emitted on the server arrives at a connected client', () => {
     emitToClub(clubId, 'club:buyin-requested', { hello: 'table' });
 
     expect(await received).toBeNull();
+  });
+});
+
+/**
+ * A database that says no must not end the night.
+ *
+ * The API shut itself down in production over this. Socket.IO does not catch a
+ * rejection from an async handler, so when the connection pooler refused a
+ * connection — `FATAL: max clients reached in session mode`, a transient and
+ * entirely expected condition — the throw inside club:join became an
+ * unhandledRejection, and the process-level handler killed the server. Every
+ * reconnect retried the same join, so it restarted into the same failure.
+ *
+ * The test forces the same shape: the query behind the join rejects, and what
+ * is asserted is that the socket is told, and that the server is still there
+ * to tell the next one.
+ */
+describe('a join whose query fails', () => {
+  it('denies that one join instead of taking the server down', async () => {
+    const client = await open(memberId);
+    const boom = vi
+      .spyOn(prisma.club, 'findUnique')
+      .mockRejectedValueOnce(new Error('FATAL: max clients reached in session mode'));
+
+    const ack = await joinClub(client, clubId);
+
+    expect(ack).toEqual({ ok: false, error: 'Could not join right now' });
+    boom.mockRestore();
+  });
+
+  it('is still serving the next client afterwards', async () => {
+    const failing = await open(memberId);
+    const boom = vi
+      .spyOn(prisma.club, 'findUnique')
+      .mockRejectedValueOnce(new Error('FATAL: max clients reached in session mode'));
+    await joinClub(failing, clubId);
+    boom.mockRestore();
+
+    // The whole point: the process is alive, the room still works, and events
+    // still arrive. Before the guard, there was nothing here to connect to.
+    const client = await open(memberId);
+    expect(await joinClub(client, clubId)).toEqual({ ok: true });
+
+    const received = nextEvent(client, 'club:buyin-requested');
+    emitToClub(clubId, 'club:buyin-requested', { hello: 'still here' });
+    expect(await received).toEqual({ hello: 'still here' });
   });
 });

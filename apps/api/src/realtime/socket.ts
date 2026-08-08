@@ -68,26 +68,61 @@ export function initSocket(httpServer: HttpServer): Server {
       socket.emit('room:denied', { room });
     };
 
-    socket.on('session:join', async (sessionId: string, ack?: (r: unknown) => void) => {
-      if (typeof sessionId !== 'string') return;
-      // A session is only as private as its club, so the club's rule governs.
-      const session = await prisma.pokerSession.findUnique({
-        where: { id: sessionId },
-        select: { clubId: true },
-      });
-      if (!session || !(await canJoinClub(session.clubId, data))) return deny(`session:${sessionId}`, ack);
-      socket.join(`session:${sessionId}`);
-      ack?.({ ok: true });
-    });
+    /*
+     * Socket.IO does not catch a rejection from an async handler.
+     *
+     * Express routes have asyncHandler for exactly this; these had nothing, so
+     * a throw inside a join went nowhere, became an unhandledRejection, and the
+     * process-level handler in index.ts shut the API down. One failed query
+     * took the whole server with it — and because every reconnect retries the
+     * join, the restart walked straight back into the same query, which is a
+     * crash loop rather than an incident.
+     *
+     * The failure that found it was `FATAL: max clients reached in session
+     * mode` — the database refusing a connection under load. That is a
+     * transient, entirely expected condition, and the right response to it is
+     * to refuse this one join, not to end the night for everybody at the table.
+     *
+     * A join that fails for an unknown reason is denied rather than silently
+     * dropped: the client already handles a denial, and a promise that neither
+     * resolves nor rejects leaves it waiting forever for a room it will never
+     * be in.
+     */
+    const guard =
+      <A>(handler: (arg: A, ack?: (r: unknown) => void) => Promise<void>) =>
+      (arg: A, ack?: (r: unknown) => void) => {
+        handler(arg, ack).catch((err) => {
+          console.error('[socket] join failed:', err);
+          ack?.({ ok: false, error: 'Could not join right now' });
+        });
+      };
+
+    socket.on(
+      'session:join',
+      guard(async (sessionId: string, ack) => {
+        if (typeof sessionId !== 'string') return;
+        // A session is only as private as its club, so the club's rule governs.
+        const session = await prisma.pokerSession.findUnique({
+          where: { id: sessionId },
+          select: { clubId: true },
+        });
+        if (!session || !(await canJoinClub(session.clubId, data))) return deny(`session:${sessionId}`, ack);
+        socket.join(`session:${sessionId}`);
+        ack?.({ ok: true });
+      })
+    );
     socket.on('session:leave', (sessionId: string) => {
       if (typeof sessionId === 'string') socket.leave(`session:${sessionId}`);
     });
-    socket.on('club:join', async (clubId: string, ack?: (r: unknown) => void) => {
-      if (typeof clubId !== 'string') return;
-      if (!(await canJoinClub(clubId, data))) return deny(`club:${clubId}`, ack);
-      socket.join(`club:${clubId}`);
-      ack?.({ ok: true });
-    });
+    socket.on(
+      'club:join',
+      guard(async (clubId: string, ack) => {
+        if (typeof clubId !== 'string') return;
+        if (!(await canJoinClub(clubId, data))) return deny(`club:${clubId}`, ack);
+        socket.join(`club:${clubId}`);
+        ack?.({ ok: true });
+      })
+    );
     // Leaving needs no check: a socket can only leave a room it is in, and
     // leaving a room it is not in is a no-op.
     socket.on('club:leave', (clubId: string) => {
