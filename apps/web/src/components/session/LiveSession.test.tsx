@@ -778,6 +778,30 @@ describe('the night history', () => {
     expect(onEditEntry.mock.calls[0][0]).not.toMatch(/^buyin:/);
   });
 
+  it('survives settlement — the receipt is when it matters most', () => {
+    const rows = [banked('host', 'b1'), banked('priya', 'b2')];
+    const settled = session({ status: 'settled', activePlayerUids: [], startedPlayingAt: ago(200) });
+    renderScreen({ session: settled, feed: deriveFeed({ session: settled, buyIns: rows, now: NOW }) }, rows);
+
+    expect(screen.getByRole('button', { name: /night history/i })).toBeInTheDocument();
+  });
+
+  it('offers no corrections once the table is frozen', () => {
+    const rows = [banked('host', 'b1'), banked('priya', 'b2')];
+    const frozen = session({
+      activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(90), settlingAt: ago(1),
+    });
+    renderScreen(
+      { session: frozen, feed: deriveFeed({ session: frozen, buyIns: rows, now: NOW }), onEditEntry: vi.fn() },
+      rows
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+    // The server refuses these from here; offering them teaches the rule by
+    // refusal, which is the worst way to learn one.
+    expect(screen.queryByRole('button', { name: /^correct$/i })).not.toBeInTheDocument();
+  });
+
   it('does not offer to correct something already removed', () => {
     const rows = [
       banked('priya', 'b2', { deletedBy: 'host', deletedAt: ago(5) }),

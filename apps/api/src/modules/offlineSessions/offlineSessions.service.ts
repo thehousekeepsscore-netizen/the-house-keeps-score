@@ -1584,6 +1584,24 @@ export async function decideEntryChange(
     if (!target) throw new HttpError(404, 'Buy-in not found');
     if (target.deletedAt) throw new HttpError(409, 'This buy-in has already been removed');
 
+    /*
+     * A correction is a buy-in, and answers to the same ceiling.
+     *
+     * Without this it is a backdoor around the table maximum: ask for the
+     * limit, have it approved, then have a correction approved for ten times
+     * it. The rule is not "the original was once legal", it is "this amount is
+     * legal now" — which is why this runs at APPROVAL rather than at request,
+     * exactly as decideBuyInRequest does. The ceiling moves all night, and the
+     * figure that matters is the one when somebody agrees to it.
+     *
+     * Checked against the same helper rather than a second implementation:
+     * validateBuyIn and validateCorrection would diverge, and the first
+     * divergence would be a hole exactly like this one.
+     */
+    if (change.type === 'edit' && change.amount !== undefined) {
+      await assertWithinBuyInCeiling(sessionId, club.id, change.amount, tx);
+    }
+
     const now = new Date();
     const applied = await tx.buyInRequest.update({
       where: { id: change.buyInId },

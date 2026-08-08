@@ -24,7 +24,7 @@ vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 const {
   requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn,
   amendCashOut, beginSettling, resumeNight, extendSession, removeFromLobby, startPlaying,
-  settleSession, requestEntryChange, decideEntryChange,
+  settleSession, requestEntryChange, decideEntryChange, getBuyInCeiling,
 } = await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -726,6 +726,60 @@ describe('correcting a banked buy-in', () => {
     await expect(
       requestEntryChange(sessionId, clubId, priyaId, false, { buyInId: id, type: 'delete' })
     ).rejects.toThrow(/admin/i);
+  });
+
+  it('REFUSES a correction that would break the table maximum', async () => {
+    /*
+     * The loophole this closes: ask for the limit, have it approved, then have
+     * a correction approved for ten times it. A correction that skipped the
+     * ceiling check was a backdoor around the one rule the buy-in flow exists
+     * to enforce.
+     */
+    const id = await banked(5_000);
+    const ceiling = await getBuyInCeiling(sessionId, clubId);
+    const overTheTop = (ceiling ?? 5_000) * 10;
+
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: overTheTop,
+    });
+
+    await expect(
+      decideEntryChange(sessionId, clubId, priyaId, true, change.id, true)
+    ).rejects.toThrow(/exceeds the current table maximum/i);
+  });
+
+  it('leaves the original figure standing when that correction is refused', async () => {
+    const id = await banked(5_000);
+    const ceiling = await getBuyInCeiling(sessionId, clubId);
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: (ceiling ?? 5_000) * 10,
+    });
+
+    await expect(
+      decideEntryChange(sessionId, clubId, priyaId, true, change.id, true)
+    ).rejects.toThrow();
+
+    // Nothing half-applied: the money is exactly where it was.
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.amount).toBe(5_000);
+    expect(row.editedBy).toBeNull();
+  });
+
+  it('checks the ceiling when it is APPROVED, not when it was asked for', async () => {
+    // The ceiling moves all night. A correction that was legal when typed and
+    // is not when agreed must be refused — the figure that matters is the one
+    // at the moment somebody signs off on it.
+    const id = await banked(5_000);
+    const ceiling = await getBuyInCeiling(sessionId, clubId);
+
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: (ceiling ?? 5_000) * 10,
+    });
+    // Requesting is allowed to succeed; approving is where it is caught.
+    expect(change.amount).toBe((ceiling ?? 5_000) * 10);
+    await expect(
+      decideEntryChange(sessionId, clubId, priyaId, true, change.id, true)
+    ).rejects.toThrow(/table maximum/i);
   });
 
   it('refuses to correct anything once the table is frozen', async () => {

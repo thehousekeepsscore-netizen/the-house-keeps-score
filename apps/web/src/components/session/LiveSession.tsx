@@ -208,6 +208,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const unread = unreadCount(feed, lastSeen, currentUserId);
 
+  /*
+   * Corrections are a thing you do to a night in progress.
+   *
+   * Mirrors assertPhase(['lobby','playing']) on the server rather than
+   * restating it: once the table is frozen the figures are being agreed, and
+   * once it is settled they are a receipt. Offering a control the server will
+   * refuse is how a host learns a rule by being told no.
+   */
+  const correctable = !night.settling && night.phase !== 'closed' && night.phase !== 'dark';
+
   const openHistory = () => {
     setHistoryOpen(true);
     // Marked on OPEN rather than on close: the list is on screen and has been
@@ -363,7 +373,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           events={feed}
           nameOf={(uid) => nameOf(users, uid, currentUserId)}
           formatAmount={formatAmount}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin && correctable}
           onEdit={
             onEditEntry &&
             ((e) => onEditEntry(e.id.replace(/^buyin:/, ''), e.amount ?? 0))
@@ -458,7 +468,12 @@ const Header: React.FC<{
 
     {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
-    {live && onOpenHistory && (
+    {/* Deliberately NOT gated on `live`. A night that has been settled is
+        exactly when somebody asks who approved what — the receipt is the
+        moment the history matters most, and hiding it there would mean the
+        record existed only while it was least needed. Corrections are refused
+        from here by the server and are not offered by the sheet. */}
+    {session && night.phase !== 'dark' && onOpenHistory && (
       <HistoryButton unread={unread} onOpen={onOpenHistory} />
     )}
 
