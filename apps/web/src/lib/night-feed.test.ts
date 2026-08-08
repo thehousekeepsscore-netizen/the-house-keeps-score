@@ -344,3 +344,71 @@ describe('why the timer changed', () => {
     expect(lines(feed)[0]).toBe('Session continued without a time limit');
   });
 });
+
+/**
+ * A feed that reshuffles is a feed nobody trusts.
+ *
+ * Events are derived, so two of them can carry the same second — a buy-in and a
+ * cash-out land together often enough. Without a stable tie-break the order
+ * follows whatever the input happened to be, and the story rearranges itself
+ * between one render and the next for no visible reason.
+ */
+describe('ordering is stable', () => {
+  const sameSecond = {
+    session: session({
+      startedPlayingAt: ago(200),
+      cashOuts: [{ userId: 'sam', amount: 5000, status: 'confirmed' as const, requestedAt: ago(30) }],
+    }),
+    buyIns: [
+      buyIn({ id: 'b1', userId: 'priya', amount: 3000, createdAt: ago(30) }),
+      buyIn({ id: 'b2', userId: 'arjun', amount: 4000, createdAt: ago(30) }),
+    ],
+    now: NOW,
+  };
+
+  it('gives the same order every time it is derived', () => {
+    const once = deriveFeed(sameSecond).map((e) => e.id);
+    const again = deriveFeed(sameSecond).map((e) => e.id);
+    const reversed = deriveFeed({ ...sameSecond, buyIns: [...sameSecond.buyIns].reverse() })
+      .map((e) => e.id);
+
+    expect(again).toEqual(once);
+    // Even the input order must not matter — the same night is the same story.
+    expect(reversed).toEqual(once);
+  });
+});
+
+/**
+ * Extensions, individually while that stays readable.
+ *
+ * A night extended twice is a story. A night extended six times is six
+ * near-identical lines pushing everything else off the feed.
+ */
+describe('a night extended over and over', () => {
+  const extended = (count: number) =>
+    deriveFeed({
+      session: session({
+        startedPlayingAt: ago(300),
+        durationMinutes: 60,
+        timeExtensions: Array.from({ length: count }, (_, i) => ({
+          minutes: 30,
+          at: ago(100 - i * 10),
+        })),
+      }),
+      buyIns: [],
+      now: NOW,
+    });
+
+  it('names each one while there are only a couple', () => {
+    const lines2 = lines(extended(2));
+    expect(lines2.filter((l) => /extended by 30 minutes/i.test(l))).toHaveLength(2);
+    expect(lines2.some((l) => /in total/i.test(l))).toBe(false);
+  });
+
+  it('collapses the older ones once there are more', () => {
+    const lines5 = lines(extended(5));
+    // The two most recent stay individual; the other three become one line.
+    expect(lines5.filter((l) => /extended by 30 minutes/i.test(l))).toHaveLength(2);
+    expect(lines5).toContain('Extended 3 more times, by 1 hour 30 minutes in total');
+  });
+});

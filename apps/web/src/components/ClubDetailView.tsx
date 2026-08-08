@@ -1998,6 +1998,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   };
 
+  /**
+   * Take somebody out of the lobby who said they were coming and went home.
+   *
+   * The server refuses anyone holding chips, so the worst a mis-tap can do is
+   * remove a name that had nothing at stake — and they can rejoin.
+   */
+  const removeFromLobby = (userId: string) =>
+    runSheet(async () => {
+      if (!activeSession) return;
+      applySession(await offlineSessionsApi.removeFromLobby(club.id, activeSession.id, userId));
+    }, 'Please try again.');
+
   /** Hand the table back. A mis-tap must not end somebody's evening. */
   const resumeNight = async () => {
     if (!activeSession || clockBusy) return;
@@ -2473,6 +2485,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onExtendSession={() => setExtendOpen(true)}
                 onKeepPlaying={keepPlaying}
                 onResumeNight={resumeNight}
+                onRemoveFromLobby={removeFromLobby}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
                 onSelectPlayer={(uid) => { setSheetAsksForChips(false); setSheetUid(uid); }}

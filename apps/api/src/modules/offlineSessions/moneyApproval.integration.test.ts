@@ -18,7 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
-const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession, requestSitIn, decideSitIn, extendSession, liftTimeLimit } =
+const { requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, startPlaying, startSession, requestSitIn, decideSitIn, extendSession, liftTimeLimit, beginSettling } =
   await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -365,13 +365,48 @@ describe('going south', () => {
  * long from asking the same question every five minutes.
  */
 describe('the clock is a plan, not a deadline', () => {
+  /**
+   * A timed night that is actually being PLAYED.
+   *
+   * The fixture used to stop at "table open", and extending it worked — which it
+   * should never have: the clock counts from the moment play starts, so a night
+   * that has not started has no clock to extend. The state machine caught it.
+   */
   async function timedNight(minutes = 120) {
     await demoteTheOtherAdmin();
     await prisma.pokerSession.deleteMany({ where: { clubId } });
     const s: any = await startSession(clubId, ownerId, false, {
       sessionType: 'OFFLINE', sessionName: 'Timed Night', durationMinutes: minutes,
     } as any);
-    return s;
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: {
+        engineState: { ...s, startedPlayingAt: null, activePlayerUids: [ownerId, playerId] } as any,
+      },
+    });
+    for (const uid of [ownerId, playerId]) {
+      const req = await requestBuyIn(s.id, clubId, uid, 5_000);
+      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+    }
+    return startPlaying(s.id, clubId, ownerId, false) as any;
+  }
+
+  /** Rewinds the start so the scheduled time has already run out. */
+  async function overrun(s: any, byMinutes = 1) {
+    const state = (await prisma.pokerSession.findUnique({ where: { id: s.id } }))!
+      .engineState as any;
+    const scheduled =
+      state.durationMinutes +
+      (state.timeExtensions || []).reduce((sum: number, e: any) => sum + e.minutes, 0);
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: {
+        engineState: {
+          ...state,
+          startedPlayingAt: new Date(Date.now() - (scheduled + byMinutes) * 60_000).toISOString(),
+        } as any,
+      },
+    });
   }
 
   it('records the length the host planned for', async () => {
@@ -383,7 +418,10 @@ describe('the clock is a plan, not a deadline', () => {
 
   it('adds each extension rather than replacing the plan', async () => {
     const s = await timedNight(120);
+    await overrun(s);
     await extendSession(s.id, clubId, ownerId, false, 30);
+    // Running again, so it has to run out again before more time is accepted.
+    await overrun(s);
     const after: any = await extendSession(s.id, clubId, ownerId, false, 60);
 
     // The ORIGINAL stays put so the night's story can still say what was
@@ -394,7 +432,10 @@ describe('the clock is a plan, not a deadline', () => {
 
   it('never caps how many times a night can be extended', async () => {
     const s = await timedNight(60);
-    for (let i = 0; i < 6; i++) await extendSession(s.id, clubId, ownerId, false, 30);
+    for (let i = 0; i < 6; i++) {
+      await overrun(s);
+      await extendSession(s.id, clubId, ownerId, false, 30);
+    }
     const after = (await prisma.pokerSession.findUnique({ where: { id: s.id } }))!.engineState as any;
     expect(after.timeExtensions).toHaveLength(6);
   });
@@ -416,10 +457,21 @@ describe('the clock is a plan, not a deadline', () => {
   });
 
   it('refuses to extend a night that never had a limit', async () => {
+    const s = await timedNight(120);
+    await overrun(s);
+    await liftTimeLimit(s.id, clubId, ownerId, false);
+    await expect(extendSession(s.id, clubId, ownerId, false, 30)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('refuses to extend a night that has not started', async () => {
+    // The clock counts from the moment play begins, so there is nothing to add
+    // to before then.
     await demoteTheOtherAdmin();
     await prisma.pokerSession.deleteMany({ where: { clubId } });
     const s: any = await startSession(clubId, ownerId, false, {
-      sessionType: 'OFFLINE', sessionName: 'Open Night',
+      sessionType: 'OFFLINE', sessionName: 'Open Night', durationMinutes: 120,
     } as any);
     await expect(extendSession(s.id, clubId, ownerId, false, 30)).rejects.toMatchObject({
       status: 409,
@@ -428,6 +480,7 @@ describe('the clock is a plan, not a deadline', () => {
 
   it('is not a thing a player can do', async () => {
     const s = await timedNight(120);
+    await overrun(s);
     await expect(extendSession(s.id, clubId, playerId, false, 30)).rejects.toMatchObject({
       status: 403,
     });
@@ -441,5 +494,120 @@ describe('the clock is a plan, not a deadline', () => {
     const first: any = await liftTimeLimit(s.id, clubId, ownerId, false);
     const second: any = await liftTimeLimit(s.id, clubId, ownerId, false);
     expect(second.timeLimitLiftedAt).toBe(first.timeLimitLiftedAt);
+  });
+});
+
+/**
+ * One extension per grace period.
+ *
+ * Two admins looking at the same grace banner both tap Extend: one adds thirty
+ * minutes, the other an hour, and the night quietly gains an hour and a half
+ * nobody chose. The first accepted extension puts the clock back into play, and
+ * a clock that is running has nothing to rescue.
+ */
+describe('the extension race', () => {
+  async function overrunNight(minutes = 120) {
+    await demoteTheOtherAdmin();
+    await prisma.pokerSession.deleteMany({ where: { clubId } });
+    const s: any = await startSession(clubId, ownerId, false, {
+      sessionType: 'OFFLINE', sessionName: 'Overrun', durationMinutes: minutes,
+    } as any);
+    await prisma.pokerSession.update({
+      where: { id: s.id },
+      data: {
+        engineState: {
+          ...s,
+          // Started long enough ago that the scheduled time has run out.
+          startedPlayingAt: new Date(Date.now() - (minutes + 1) * 60_000).toISOString(),
+          activePlayerUids: [ownerId, playerId],
+        } as any,
+      },
+    });
+    return s;
+  }
+
+  it('accepts the first extension once the time has run out', async () => {
+    const s = await overrunNight(120);
+    const after: any = await extendSession(s.id, clubId, ownerId, false, 30);
+    expect(after.timeExtensions.map((e: any) => e.minutes)).toEqual([30]);
+  });
+
+  it('refuses the second, because the night is running again', async () => {
+    const s = await overrunNight(120);
+    await extendSession(s.id, clubId, ownerId, false, 30);
+    await expect(extendSession(s.id, clubId, ownerId, false, 60)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('gives one winner when two admins tap in the same instant', async () => {
+    // The whole point. Without the rule this night gains 90 minutes.
+    const s = await overrunNight(120);
+    const results = await Promise.all([
+      extendSession(s.id, clubId, ownerId, false, 30).then(() => 'ok', () => 'no'),
+      extendSession(s.id, clubId, ownerId, false, 60).then(() => 'ok', () => 'no'),
+    ]);
+    expect(results.filter((r) => r === 'ok')).toHaveLength(1);
+
+    const state = (await prisma.pokerSession.findUnique({ where: { id: s.id } }))!
+      .engineState as any;
+    expect(state.timeExtensions).toHaveLength(1);
+  });
+});
+
+/**
+ * Settlement cannot begin on unresolved money.
+ *
+ * Freezing the table with a request still in the queue freezes the QUESTION too:
+ * the chips are neither in the night nor out of it. Auto-rejecting decides
+ * somebody's buy-in for them; auto-approving creates money on the way into the
+ * ledger; leaving it pending settles figures with an open question on top.
+ */
+describe('settling with a queue', () => {
+  it('refuses while a buy-in is waiting', async () => {
+    await requestBuyIn(sessionId, clubId, playerId, 3_000);
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('refuses while a cash-out is waiting', async () => {
+    await requestCashOut(sessionId, clubId, playerId, 7_000);
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('refuses while somebody is waiting for a chair', async () => {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          startedPlayingAt: new Date().toISOString(),
+          activePlayerUids: [ownerId, adminId],
+          pendingSitInUids: [playerId],
+          sitInRequestedAt: { [playerId]: new Date().toISOString() },
+          cashOuts: [],
+        } as any,
+      },
+    });
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it('counts them, so the host knows how much is left to clear', async () => {
+    await requestBuyIn(sessionId, clubId, playerId, 3_000);
+    await requestCashOut(sessionId, clubId, adminId, 5_000);
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toMatchObject({
+      message: expect.stringContaining('2 requests'),
+    });
+  });
+
+  it('begins once the queue is empty', async () => {
+    const req = await requestBuyIn(sessionId, clubId, playerId, 3_000);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    const after: any = await beginSettling(sessionId, clubId, ownerId, false);
+    expect(after.settlingAt).toBeTruthy();
   });
 });

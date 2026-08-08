@@ -161,19 +161,59 @@ async function mutateSessionState<T>(
 }
 
 /**
- * Nothing moves while the night is being settled.
+ * THE SESSION LIFECYCLE, stated once instead of implied in nineteen places.
  *
- * Settlement agrees a set of figures, and figures cannot be agreed while they
- * are still changing underneath. A buy-in approved between the host opening the
- * settle screen and pressing confirm is money nobody accounted for — settlement
- * on moving ground.
+ *     lobby ──startPlaying──▶ playing ──beginSettling──▶ settling
+ *                               │  ▲                        │
+ *                               │  └──── resumeNight ────────┘
+ *                               │                            │
+ *                               └────── settleSession ───────┴──▶ settled
  *
- * Every mutation calls this. Reading is untouched: players can still watch.
+ * Four phases and five transitions. Everything else is illegal, and illegal by
+ * construction rather than by review: every mutation declares the phases it is
+ * legal in, and `assertPhase` is the only thing that decides. Adding an endpoint
+ * without naming its phases does not compile.
+ *
+ * THE CLOCK IS NOT IN HERE, deliberately. Running, grace and complete are states
+ * of a timer, not of a session: nothing is locked in any of them, players buy in
+ * and stand up throughout, and the only thing that changes is what the screen
+ * says. Folding them into this diagram would suggest the grace period restricts
+ * something. It restricts nothing.
+ *
+ * `settled` is terminal. There is no transition out of it, which is the whole
+ * point of a receipt.
  */
-function assertNotSettling(state: OfflineEngineState) {
-  if (state.settlingAt) {
-    throw new HttpError(409, 'This night is being settled — resume it to make changes');
-  }
+export type SessionPhase = 'lobby' | 'playing' | 'settling' | 'settled';
+
+export function sessionPhase(status: string, state: OfflineEngineState): SessionPhase {
+  if (status !== 'active') return 'settled';
+  if (state.settlingAt) return 'settling';
+  // `undefined` is a session created before the lobby existed. Those are being
+  // played right now — see the note on startedPlayingAt.
+  if (state.startedPlayingAt === null) return 'lobby';
+  return 'playing';
+}
+
+const PHASE_REFUSAL: Record<SessionPhase, string> = {
+  lobby: 'The night has not started yet',
+  playing: 'The night is still being played',
+  settling: 'This night is being settled — resume it to make changes',
+  settled: 'This night has already been settled',
+};
+
+/**
+ * The one gate. Refuses with the reason the CURRENT phase gives, not with a
+ * generic "cannot do that" — a host who is told "resume it to make changes"
+ * knows what to press next.
+ */
+function assertPhase(
+  row: SessionRow,
+  state: OfflineEngineState,
+  allowed: SessionPhase[]
+) {
+  const phase = sessionPhase(row.status, state);
+  if (!allowed.includes(phase)) throw new HttpError(409, PHASE_REFUSAL[phase]);
+  return phase;
 }
 
 /**
@@ -441,8 +481,8 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
 // bank yet — mirrors the original app's plain join-table action, separate
 // from requesting/approving an actual buy-in.
 export async function joinSession(sessionId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state) => {
-    assertNotSettling(state);
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    assertPhase(row, state, ['lobby', 'playing']);
     const cleared = clearCashOutFor(state, userId);
     const activePlayerUids = Array.from(new Set([...(cleared.activePlayerUids || []), userId]));
     return { state: { ...cleared, activePlayerUids }, result: null };
@@ -455,8 +495,7 @@ export async function joinSession(sessionId: string, userId: string) {
 // admin who started the session.
 export async function requestSitIn(sessionId: string, clubId: string, userId: string) {
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['lobby', 'playing']);
     if ((state.activePlayerUids || []).includes(userId)) {
       throw new HttpError(409, 'You are already seated at this table');
     }
@@ -483,8 +522,8 @@ export async function decideSitIn(
 
   let expired = false;
 
-  const { session } = await mutateSessionState(sessionId, async (state) => {
-    assertNotSettling(state);
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    assertPhase(row, state, ['lobby', 'playing']);
 
     // Only ever act on someone who actually asked — otherwise an approve call
     // could seat an arbitrary user id that never requested a seat.
@@ -609,8 +648,7 @@ export async function startPlaying(
   const { session, result: startedPlayingAt } = await mutateSessionState(
     sessionId,
     async (state, tx, row) => {
-      if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-      assertNotSettling(state);
+      assertPhase(row, state, ['lobby']);
       // Under the lock, so two hosts tapping together cannot both start a night
       // and stamp it with two different times.
       if (state.startedPlayingAt) throw new HttpError(409, 'This night has already started');
@@ -655,11 +693,31 @@ export async function extendSession(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['playing']);
     if (!state.durationMinutes) throw new HttpError(409, 'This night has no time limit to extend');
     if (state.timeLimitLiftedAt) {
       throw new HttpError(409, 'This night is already running without a time limit');
+    }
+
+    /*
+     * One extension per grace period.
+     *
+     * Two admins looking at the same grace banner both tap Extend: one adds
+     * thirty minutes, the other adds an hour, and the night quietly gains an
+     * hour and a half that nobody chose. The first accepted extension puts the
+     * clock back into play, and a clock that is running has nothing to rescue.
+     *
+     * So an extension is only accepted when the scheduled time has actually run
+     * out. Adding more time to a night that is still counting down is not a
+     * rescue, it is a second opinion — and if the host wants a longer night than
+     * they planned, the grace period is five minutes away.
+     */
+    const scheduled =
+      state.durationMinutes +
+      (state.timeExtensions || []).reduce((sum, e) => sum + e.minutes, 0);
+    const endsAt = Date.parse(state.startedPlayingAt!) + scheduled * 60_000;
+    if (Date.now() < endsAt) {
+      throw new HttpError(409, 'The night is still running — there is nothing to extend yet');
     }
 
     const timeExtensions = [
@@ -688,8 +746,7 @@ export async function liftTimeLimit(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['playing']);
     if (state.timeLimitLiftedAt) return { state, result: null };
     return { state: { ...state, timeLimitLiftedAt: new Date().toISOString() }, result: null };
   });
@@ -722,8 +779,7 @@ export async function amendCashOut(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['lobby', 'playing']);
 
     const entry = (state.cashOuts || []).find(
       (c) => c.userId === userId && c.status === 'confirmed'
@@ -759,14 +815,111 @@ export async function amendCashOut(
  * eleven o'clock has to be able to give the table back, or the app has ended
  * somebody's evening on a mis-tap.
  */
+/**
+ * Taking somebody out of the lobby who is not coming.
+ *
+ * Rahul says he's in, gets marked ready, and then goes home without pressing
+ * anything. Nothing else removes him: he is seated on the server, so the ready
+ * count includes him and "4 of 6 ready" is describing a room that has five
+ * people in it. The host needs a way to say he left.
+ *
+ * REFUSES ANYONE HOLDING CHIPS, and that is the load-bearing part. Somebody with
+ * an approved buy-in has money in the night; making them vanish would delete it
+ * from the ledger with no cash-out and no record. That is standing up, not being
+ * removed, and it goes through the count like everybody else's.
+ *
+ * Their pending requests go with them — a request from somebody who has left is
+ * a question with nobody to answer for it.
+ */
+export async function removeFromLobby(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean, userId: string
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    assertPhase(row, state, ['lobby']);
+
+    const banked = await tx.buyInRequest.aggregate({
+      where: { sessionId, userId, status: 'approved' },
+      _sum: { amount: true },
+    });
+    if ((banked._sum.amount ?? 0) > 0) {
+      throw new HttpError(
+        409,
+        'That player already has chips — they need to stand up and be counted out'
+      );
+    }
+
+    const seated = (state.activePlayerUids || []).includes(userId);
+    const waiting = (state.pendingSitInUids || []).includes(userId);
+    const pending = await tx.buyInRequest.count({
+      where: { sessionId, userId, status: 'pending' },
+    });
+    if (!seated && !waiting && pending === 0) {
+      throw new HttpError(404, 'That player is not in this lobby');
+    }
+
+    // A question with nobody left to answer for it.
+    await tx.buyInRequest.updateMany({
+      where: { sessionId, userId, status: 'pending' },
+      data: { status: 'rejected', approvedBy: requesterId },
+    });
+
+    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
+    delete sitInRequestedAt[userId];
+
+    return {
+      state: {
+        ...state,
+        activePlayerUids: (state.activePlayerUids || []).filter((u) => u !== userId),
+        pendingSitInUids: (state.pendingSitInUids || []).filter((u) => u !== userId),
+        sitInRequestedAt,
+      },
+      result: null,
+    };
+  });
+
+  emitToClub(clubId, 'club:lobby-player-removed', { sessionId, userId, session });
+  return session;
+}
+
 export async function beginSettling(
   sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
 ) {
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
+  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    assertPhase(row, state, ['playing']);
+
+    /*
+     * Settlement cannot begin on unresolved money.
+     *
+     * Freezing the table with a request still in the queue freezes the QUESTION
+     * too: the chips are neither in the night nor out of it, and there is no
+     * good answer left. Auto-rejecting would decide somebody's buy-in for them
+     * without telling them; auto-approving would create money on the way into
+     * the ledger; leaving it pending means settling figures with an open
+     * question sitting on top of them.
+     *
+     * So the host clears the queue first. That is one extra tap on a screen
+     * where the queue is already the thing above the table.
+     */
+    const pendingBuyIns = await tx.buyInRequest.count({
+      where: { sessionId, status: 'pending' },
+    });
+    const pendingSitIns = (state.pendingSitInUids || []).length;
+    const pendingCashOuts = (state.cashOuts || []).filter((c) => c.status === 'pending').length;
+    const waiting = pendingBuyIns + pendingSitIns + pendingCashOuts;
+    if (waiting > 0) {
+      throw new HttpError(
+        409,
+        waiting === 1
+          ? 'One request is still waiting — decide it before settling'
+          : `${waiting} requests are still waiting — decide them before settling`
+      );
+    }
     // Idempotent: two hosts tapping together should not stamp two times.
     if (state.settlingAt) return { state, result: null };
     return { state: { ...state, settlingAt: new Date().toISOString() }, result: null };
@@ -784,7 +937,7 @@ export async function resumeNight(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This night has already been settled');
+    assertPhase(row, state, ['settling']);
     return { state: { ...state, settlingAt: null }, result: null };
   });
 
@@ -794,8 +947,7 @@ export async function resumeNight(
 
 export async function requestCashOut(sessionId: string, clubId: string, userId: string, amount: number) {
   const { session, result } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['lobby', 'playing']);
     if (!(state.activePlayerUids || []).includes(userId)) {
       throw new HttpError(409, 'That player is not seated at this table');
     }
@@ -836,8 +988,8 @@ export async function decideCashOut(
 
   let expired = false;
 
-  const { session } = await mutateSessionState(sessionId, async (state) => {
-    assertNotSettling(state);
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    assertPhase(row, state, ['lobby', 'playing']);
     const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
     if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
 
@@ -909,8 +1061,7 @@ export async function requestBuyIn(
    * host was asked the same question twice about one seat.
    */
   const { result: request } = await mutateSessionState(sessionId, async (state, tx, row) => {
-    if (row.status !== 'active') throw new HttpError(409, 'This session has already been settled');
-    assertNotSettling(state);
+    assertPhase(row, state, ['lobby', 'playing']);
 
     // Enforced here, not only in the UI — the cap was previously client-side
     // only and any direct API call sailed past it.
@@ -1005,8 +1156,8 @@ export async function decideBuyInRequest(
    */
   const { session: updatedSession, result } = await mutateSessionState(
     sessionId,
-    async (state, tx) => {
-      assertNotSettling(state);
+    async (state, tx, row) => {
+      assertPhase(row, state, ['lobby', 'playing']);
       const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
       if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
       if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');

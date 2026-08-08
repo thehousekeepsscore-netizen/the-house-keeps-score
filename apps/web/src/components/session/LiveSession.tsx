@@ -86,6 +86,8 @@ export interface LiveSessionProps {
   onKeepPlaying?: () => void;
   /** Admins only: hand the table back, so the night carries on. */
   onResumeNight?: () => void;
+  /** Admins only, in the lobby: take out somebody who said they were coming. */
+  onRemoveFromLobby?: (userId: string) => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -165,6 +167,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onExtendSession,
   onKeepPlaying,
   onResumeNight,
+  onRemoveFromLobby,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -258,6 +261,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           feed={feed}
           onStartPlaying={onStartPlaying}
           starting={starting}
+          onRemoveFromLobby={onRemoveFromLobby}
         />
       </div>
 
@@ -462,9 +466,10 @@ const Stage: React.FC<{
   feed: FeedEvent[];
   onStartPlaying?: () => void;
   starting?: boolean;
+  onRemoveFromLobby?: (userId: string) => void;
 }> = ({
   night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount,
-  onAddPlayer, onAskForChips, feed, onStartPlaying, starting,
+  onAddPlayer, onAskForChips, feed, onStartPlaying, starting, onRemoveFromLobby,
 }) => {
   // The feed speaks in the second person wherever it is about the viewer, which
   // is what makes it their view of the night rather than a system log.
@@ -487,6 +492,7 @@ const Stage: React.FC<{
           formatAmount={formatAmount}
           onStartPlaying={onStartPlaying}
           starting={starting}
+          onRemoveFromLobby={onRemoveFromLobby}
         />
       );
     case 'ready':

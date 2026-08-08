@@ -568,3 +568,50 @@ describe('the table on hold', () => {
     expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The lobby ghost.
+ *
+ * Rahul says he's in, gets marked ready, then goes home without pressing
+ * anything. Nothing else takes him out, so "4 of 6 ready" describes a room with
+ * five people in it.
+ */
+describe('taking somebody out of the lobby', () => {
+  const lobby = (over: Partial<LiveSessionProps> = {}) =>
+    renderScreen(
+      {
+        session: session({ activePlayerUids: ['host', 'priya', 'arjun'], startedPlayingAt: null }),
+        onRemoveFromLobby: vi.fn(),
+        ...over,
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'arjun', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'arjun', createdAt: ago(9),
+        },
+      ]
+    );
+
+  it('offers it for somebody with nothing at stake', async () => {
+    const { onRemoveFromLobby } = lobby();
+    await userEvent.click(screen.getByRole('button', { name: /remove priya/i }));
+    expect(onRemoveFromLobby).toHaveBeenCalledWith('priya');
+  });
+
+  it('does NOT offer it for somebody holding chips', () => {
+    // Removing them would erase money from the night with no cash-out and no
+    // record. That is standing up, and it goes through the count.
+    lobby();
+    expect(screen.queryByRole('button', { name: /remove arjun/i })).not.toBeInTheDocument();
+  });
+
+  it('does not offer it for the admin themselves', () => {
+    lobby();
+    expect(screen.queryByRole('button', { name: /remove you/i })).not.toBeInTheDocument();
+  });
+
+  it('offers it to nobody when the viewer is a player', () => {
+    lobby({ isAdmin: false, currentUserId: 'priya' });
+    expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
+  });
+});

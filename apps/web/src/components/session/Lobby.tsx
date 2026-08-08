@@ -31,6 +31,14 @@ export interface LobbyProps {
   onSelectPlayer: (userId: string) => void;
   onStartPlaying?: () => void;
   starting?: boolean;
+  /**
+   * Admins only: take somebody out who said they were coming and went home.
+   *
+   * Offered only for people with no chips. Somebody holding an approved buy-in
+   * has money in the night, and removing them would erase it with no cash-out
+   * and no record — that is standing up, not being removed.
+   */
+  onRemoveFromLobby?: (userId: string) => void;
 }
 
 /** The four states of getting ready, in the order they happen. */
@@ -63,6 +71,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   onSelectPlayer,
   onStartPlaying,
   starting = false,
+  onRemoveFromLobby,
 }) => {
   const seatOf = new Map([...night.seats, ...night.room].map((s) => [s.userId, s]));
 
@@ -77,8 +86,13 @@ export const Lobby: React.FC<LobbyProps> = ({
     const isMe = uid === currentUserId;
     const name = isMe ? 'You' : users[uid]?.displayName || 'Player';
 
+    // Nothing at stake, so nothing is lost by taking them out. Somebody holding
+    // chips has to stand up and be counted like anybody else.
+    const removable =
+      isAdmin && !isMe && Boolean(onRemoveFromLobby) && Boolean(seat) && !ready;
+
     return (
-      <li key={uid}>
+      <li key={uid} className="flex items-center gap-1">
         <button
           type="button"
           onClick={() => onSelectPlayer(uid)}
@@ -111,6 +125,17 @@ export const Lobby: React.FC<LobbyProps> = ({
             <span className="text-[15px] text-accent tabular-nums shrink-0">{figure}</span>
           )}
         </button>
+
+        {removable && (
+          <button
+            type="button"
+            onClick={() => onRemoveFromLobby?.(uid)}
+            aria-label={`Remove ${name} from the lobby`}
+            className="shrink-0 w-11 h-11 grid place-items-center rounded-full text-text-faint active:opacity-60 transition-opacity duration-[var(--motion-state)]"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">×</span>
+          </button>
+        )}
       </li>
     );
   };

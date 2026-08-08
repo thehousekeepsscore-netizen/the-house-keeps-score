@@ -45,6 +45,8 @@ export type FeedKind =
   | 'timer-started'
   /** More time on the clock. */
   | 'timer-extended'
+  /** Several earlier extensions, collapsed so they stop crowding the story. */
+  | 'timer-extended-many'
   /** The scheduled time ran out — which ends nothing. */
   | 'timer-reached'
   /** The host chose to carry on with no limit. */
@@ -60,6 +62,8 @@ export interface FeedEvent {
   at: string;
   userId?: string;
   amount?: number;
+  /** How many events this line stands for, when it stands for more than one. */
+  count?: number;
 }
 
 export interface FeedInput {
@@ -191,9 +195,31 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
       amount: session.durationMinutes,
     });
 
-    for (const [i, ext] of (session.timeExtensions ?? []).entries()) {
+    /*
+     * Extensions, individually while that stays readable.
+     *
+     * A night extended twice is a story. A night extended six times is six
+     * near-identical lines pushing everything else off the feed, and the thing
+     * anybody actually wants from them is "this night has been going a while".
+     * Past two, the older ones collapse into one line carrying the total.
+     */
+    const exts = session.timeExtensions ?? [];
+    const RECENT = 2;
+    const recent = exts.slice(-RECENT);
+    const older = exts.slice(0, -RECENT);
+
+    if (older.length > 0) {
       events.push({
-        id: `timer:ext:${i}`,
+        id: 'timer:ext:earlier',
+        kind: 'timer-extended-many',
+        at: older[older.length - 1].at,
+        amount: older.reduce((sum, e) => sum + e.minutes, 0),
+        count: older.length,
+      });
+    }
+    for (const [i, ext] of recent.entries()) {
+      events.push({
+        id: `timer:ext:${older.length + i}`,
         kind: 'timer-extended',
         at: ext.at,
         amount: ext.minutes,
@@ -227,7 +253,11 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
       if (d !== 0) return d;
       if (a.kind === 'ceiling' && b.kind !== 'ceiling') return -1;
       if (b.kind === 'ceiling' && a.kind !== 'ceiling') return 1;
-      return 0;
+      // A buy-in and a cash-out can land in the same second. Falling back to 0
+      // leaves the order to whatever the input happened to be, so the feed can
+      // reshuffle between one render and the next for no reason anybody can see.
+      // The id is stable and unique, so this is arbitrary but never changes.
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     })
     .slice(0, limit);
 }
@@ -237,6 +267,7 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
 const ICON: Record<FeedKind, string> = {
   'timer-started': '⏱',
   'timer-extended': '⏱',
+  'timer-extended-many': '⏱',
   'timer-reached': '🏁',
   'timer-lifted': '▶',
   joined: '👤',
@@ -285,6 +316,11 @@ export function feedLine(
       return { icon, text: `Session started (${durationPhrase(n)} timer)` };
     case 'timer-extended':
       return { icon, text: `Session extended by ${minutesPhrase(n)}` };
+    case 'timer-extended-many':
+      return {
+        icon,
+        text: `Extended ${event.count} more times, by ${minutesPhrase(n)} in total`,
+      };
     case 'timer-reached':
       return { icon, text: 'Scheduled time reached' };
     case 'timer-lifted':
@@ -296,9 +332,14 @@ export function feedLine(
 
 /** "30 minutes", "1 hour" — how an extension reads in a sentence. */
 function minutesPhrase(minutes: number): string {
-  if (minutes % 60 !== 0) return `${minutes} minutes`;
-  const h = minutes / 60;
-  return h === 1 ? '1 hour' : `${h} hours`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const hours = h === 1 ? '1 hour' : `${h} hours`;
+  const mins = m === 1 ? '1 minute' : `${m} minutes`;
+  // "90 minutes" is fine for one extension and poor for a total: four half-hours
+  // read as "2 hours", not as "120 minutes".
+  if (h === 0) return mins;
+  return m === 0 ? hours : `${hours} ${mins}`;
 }
 
 /** "2 sec ago" — coarse on purpose, because the feed is glanced at, not read. */

@@ -45,6 +45,16 @@ export async function amendCashOut(req: Request, res: Response) {
   return res.json(session);
 }
 
+const removeSchema = z.object({ userId: z.string().min(1) });
+
+/** Taking somebody out of the lobby who is not coming. Admins only. */
+export async function removeFromLobby(req: Request, res: Response) {
+  const { userId } = removeSchema.parse(req.body);
+  const session = await offlineSessionsService.removeFromLobby(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, userId);
+  return res.json(session);
+}
+
 /** Stop the table so the figures can be agreed. Reversible. Admins only. */
 export async function beginSettling(req: Request, res: Response) {
   const session = await offlineSessionsService.beginSettling(

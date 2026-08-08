@@ -23,7 +23,7 @@ vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
 const {
   requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn,
-  amendCashOut, beginSettling, resumeNight, extendSession,
+  amendCashOut, beginSettling, resumeNight, extendSession, removeFromLobby, startPlaying,
 } = await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -210,10 +210,20 @@ describe('freezing the table to settle', () => {
   });
 
   it('refuses approvals too, not just requests', async () => {
-    // The dangerous half. A request that cannot be created is obvious; one
-    // already in the queue being waved through mid-settlement is not.
+    /*
+     * Defence in depth, and it can only be reached by forcing the state.
+     *
+     * Settlement now refuses to begin with anything in the queue, so a pending
+     * request and a frozen table cannot coexist through any normal path. The
+     * guard still has to hold: two rules protecting one invariant is the point,
+     * because the first one is a check and the second one is the rule.
+     */
     const req = await requestBuyIn(sessionId, clubId, priyaId, 1_000);
-    await beginSettling(sessionId, clubId, ownerId, false);
+    const state = await stateNow();
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: { engineState: { ...state, settlingAt: new Date().toISOString() } as any },
+    });
 
     await expect(
       decideBuyInRequest(sessionId, ownerId, false, req.id, true)
@@ -246,10 +256,14 @@ describe('freezing the table to settle', () => {
     expect(req.amount).toBe(1_000);
   });
 
-  it('is idempotent, so two hosts tapping together stamp one time', async () => {
-    const first: any = await beginSettling(sessionId, clubId, ownerId, false);
-    const second: any = await beginSettling(sessionId, clubId, ownerId, false);
-    expect(second.settlingAt).toBe(first.settlingAt);
+  it('refuses a second attempt rather than silently restamping', async () => {
+    // The state machine has no settling → settling transition, and the refusal
+    // says what to press instead. Quietly succeeding would have moved the
+    // timestamp under a host who thought nothing happened.
+    await beginSettling(sessionId, clubId, ownerId, false);
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toMatchObject({
+      status: 409,
+    });
   });
 
   it('is not a thing a player can start or stop', async () => {
@@ -318,5 +332,191 @@ describe('two doors to one seat', () => {
     expect(
       await prisma.buyInRequest.count({ where: { sessionId, userId: priyaId, status: 'pending' } })
     ).toBe(1);
+  });
+});
+
+/**
+ * Starting the night never approves anything.
+ *
+ * Four ready, two still waiting on a buy-in, and the host says go. The two who
+ * are waiting do not become spectators and are not waved through: their requests
+ * carry on through the queue exactly as they were, and they sit down when
+ * somebody approves them. Late arrivals are the normal case, not an exception.
+ */
+describe('starting with a queue still open', () => {
+  async function lobbyWithPending() {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          startedPlayingAt: null,
+          activePlayerUids: [ownerId, priyaId],
+          pendingSitInUids: [],
+          cashOuts: [],
+        } as any,
+      },
+    });
+    // Two ready.
+    for (const uid of [ownerId, priyaId]) {
+      const req = await requestBuyIn(sessionId, clubId, uid, 5_000);
+      await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    }
+    // And one still asking.
+    return requestBuyIn(sessionId, clubId, priyaId, 3_000);
+  }
+
+  it('leaves the pending request exactly as it was', async () => {
+    const pending = await lobbyWithPending();
+    await startPlaying(sessionId, clubId, ownerId, false);
+
+    const row = await prisma.buyInRequest.findUnique({ where: { id: pending.id } });
+    expect(row?.status).toBe('pending');
+    expect(row?.approvedBy).toBeNull();
+  });
+
+  it('still approves it normally afterwards', async () => {
+    const pending = await lobbyWithPending();
+    await startPlaying(sessionId, clubId, ownerId, false);
+    await decideBuyInRequest(sessionId, ownerId, false, pending.id, true);
+
+    const row = await prisma.buyInRequest.findUnique({ where: { id: pending.id } });
+    expect(row?.status).toBe('approved');
+  });
+});
+
+/**
+ * Taking somebody out of the lobby who is not coming.
+ *
+ * Rahul says he's in, gets marked ready, then goes home without pressing
+ * anything. Nothing else removes him, so the ready count describes a room with
+ * one more person in it than is actually there.
+ */
+describe('the lobby ghost', () => {
+  async function lobby() {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          startedPlayingAt: null,
+          activePlayerUids: [ownerId, priyaId],
+          pendingSitInUids: [],
+          cashOuts: [],
+        } as any,
+      },
+    });
+  }
+
+  it('takes a seated player with no chips out of the count', async () => {
+    await lobby();
+    await removeFromLobby(sessionId, clubId, ownerId, false, priyaId);
+    expect((await stateNow()).activePlayerUids).not.toContain(priyaId);
+  });
+
+  it('takes their unanswered request with them', async () => {
+    // A question with nobody left to answer for it.
+    await lobby();
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 3_000);
+    await removeFromLobby(sessionId, clubId, ownerId, false, priyaId);
+    expect((await prisma.buyInRequest.findUnique({ where: { id: req.id } }))?.status).toBe('rejected');
+  });
+
+  it('REFUSES anyone holding chips, because that would delete money', async () => {
+    // Somebody with an approved buy-in has money in the night. Making them
+    // vanish erases it with no cash-out and no record — that is standing up, and
+    // it goes through the count like everybody else's.
+    await lobby();
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+
+    await expect(
+      removeFromLobby(sessionId, clubId, ownerId, false, priyaId)
+    ).rejects.toMatchObject({ status: 409 });
+    expect((await stateNow()).activePlayerUids).toContain(priyaId);
+  });
+
+  it('is a lobby action only — a running night has cash-outs for this', async () => {
+    await expect(
+      removeFromLobby(sessionId, clubId, ownerId, false, priyaId)
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('is not a thing a player can do', async () => {
+    await lobby();
+    await expect(
+      removeFromLobby(sessionId, clubId, priyaId, false, ownerId)
+    ).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+/**
+ * Pending money does not move the visible state of the game.
+ *
+ * A request is a question, not a bank. Two things fall out of that, and the
+ * first is stronger than expected: a request ABOVE the ceiling is refused
+ * outright, so it never becomes a pending row at all. The ceiling is checked
+ * when somebody asks, not when somebody agrees.
+ *
+ * The second is the one worth guarding: a request at the ceiling sits there
+ * pending without moving it, so one unapproved request can never change what
+ * everybody else is allowed to take.
+ */
+describe('the ceiling ignores what is only asked for', () => {
+  it('refuses a request above the current maximum instead of queueing it', async () => {
+    const { getBuyInCeiling } = await import('./offlineSessions.service.js');
+    await prisma.club.update({
+      where: { id: clubId },
+      data: { buyInMode: 'MATCH_HIGHEST', maxBuyIn: 10_000 },
+    });
+
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 10_000);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    expect(await getBuyInCeiling(sessionId, clubId)).toBe(10_000);
+
+    await expect(requestBuyIn(sessionId, clubId, ownerId, 15_000)).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(
+      await prisma.buyInRequest.count({ where: { sessionId, status: 'pending' } })
+    ).toBe(0);
+  });
+
+  it('leaves the maximum alone while a request at it is still waiting', async () => {
+    const { getBuyInCeiling } = await import('./offlineSessions.service.js');
+    await prisma.club.update({
+      where: { id: clubId },
+      data: { buyInMode: 'MATCH_HIGHEST', maxBuyIn: 10_000 },
+    });
+
+    const first = await requestBuyIn(sessionId, clubId, priyaId, 4_000);
+    await decideBuyInRequest(sessionId, ownerId, false, first.id, true);
+    expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
+
+    // Asked for, not agreed: the table maximum must not move on a question.
+    const asked = await requestBuyIn(sessionId, clubId, ownerId, 4_000);
+    expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
+
+    await decideBuyInRequest(sessionId, ownerId, false, asked.id, true);
+    expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
+  });
+});
+
+/**
+ * Rejoining while a count is still pending.
+ *
+ * Their intent is already on the table: they asked to stand up with a figure
+ * nobody has agreed to. Letting them sit back down at the same time asks the
+ * host two contradictory questions about one person.
+ */
+describe('rejoining mid-cash-out', () => {
+  it('is refused, because they have not left yet', async () => {
+    await requestCashOut(sessionId, clubId, priyaId, 7_000);
+    await expect(requestSitIn(sessionId, clubId, priyaId)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('works once the count is resolved either way', async () => {
+    await requestCashOut(sessionId, clubId, priyaId, 7_000);
+    // Rejected: they are still seated, so there is nothing to rejoin.
+    await decideCashOut(sessionId, clubId, ownerId, false, priyaId, false);
+    expect((await stateNow()).activePlayerUids).toContain(priyaId);
   });
 });

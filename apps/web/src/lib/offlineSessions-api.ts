@@ -150,6 +150,21 @@ export async function beginSettling(clubId: string, sessionId: string): Promise<
   return toPokerSession(s);
 }
 
+/**
+ * Taking somebody out of the lobby who is not coming.
+ *
+ * Refused for anyone holding chips — that is standing up, and it goes through
+ * the count like everybody else's.
+ */
+export async function removeFromLobby(
+  clubId: string, sessionId: string, userId: string
+): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/remove-from-lobby`,
+    { method: 'POST', body: { userId } });
+  return toPokerSession(s);
+}
+
 /** Give the table back. The other half of the freeze, and what makes it safe. */
 export async function resumeNight(clubId: string, sessionId: string): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
