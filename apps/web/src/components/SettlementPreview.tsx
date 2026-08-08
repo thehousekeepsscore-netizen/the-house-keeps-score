@@ -98,11 +98,35 @@ export function SettlementPreview({
               tone={p.netResult >= 0 ? 'good' : 'bad'}
               strong
             />
+            {/* The whole arithmetic, per player, in the order it happened:
+                what they put in, what they took off the table, the difference,
+                and then each deduction that moved it. The bold figure above is
+                the end of this sum — without the first three lines it is a
+                number the admin has to take on trust, and "why do I owe that?"
+                is the question this screen exists to answer at 1am. */}
+            <Row indent label="Total buy-ins" amount={formatAmount(p.totalBuyIn)} />
+            <Row indent label="Final cash-out" amount={formatAmount(p.cashOut)} />
+            <Row indent label="Profit / loss" amount={formatSigned(p.grossProfit)} />
             {p.mismatchDeduction !== 0 && (
               <Row indent label="Mismatch share" amount={formatSigned(-p.mismatchDeduction)} />
             )}
+            {/* One line, because the engine keeps one number: a winner's cut and
+                this player's share of the flat session rake are summed into
+                `rakeDeduction` and cannot be separated back out here. Labelled
+                for whichever charges are actually switched on rather than
+                claiming to be only the cut. */}
             {p.rakeDeduction !== 0 && (
-              <Row indent label={`Winners' cut${cutPercent > 0 ? ` (${cutPercent}%)` : ''}`} amount={formatSigned(-p.rakeDeduction)} />
+              <Row
+                indent
+                label={
+                  cutPercent > 0 && flatRake > 0
+                    ? `Winners' cut (${cutPercent}%) + rake share`
+                    : flatRake > 0
+                      ? 'Session rake share'
+                      : `Winners' cut${cutPercent > 0 ? ` (${cutPercent}%)` : ''}`
+                }
+                amount={formatSigned(-p.rakeDeduction)}
+              />
             )}
           </div>
         ))}

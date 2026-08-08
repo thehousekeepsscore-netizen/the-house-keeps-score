@@ -1899,7 +1899,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const [sheetUid, setSheetUid] = useState<string | null>(null);
   const [sheetBusy, setSheetBusy] = useState(false);
-  const [settlePlaceholderOpen, setSettlePlaceholderOpen] = useState(false);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
   // Set only by the stud on the felt, which already means chips — so the sheet
   // opens on the amount rather than on a menu offering to ask the same thing.
@@ -1920,9 +1919,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     if (!activeSession || clockBusy) return;
     setClockBusy(true);
     try {
-      applySession(await offlineSessionsApi.beginSettling(club.id, activeSession.id));
-      setSettlePlaceholderOpen(true);
+      // Already frozen — the host closed the screen and came back to it. The
+      // server refuses beginSettling from `settling` (it is legal only from
+      // `playing`), so asking a second time would refuse the host entry to the
+      // very screen the freeze exists to open.
+      if (!activeSession.settlingAt) {
+        applySession(await offlineSessionsApi.beginSettling(club.id, activeSession.id));
+      }
+      openCashoutModal();
     } catch (err) {
+      // Carries the server's own words, which are the useful part here: the
+      // refusal a host actually hits is "two requests are still waiting —
+      // decide them before settling", and that names the next tap.
       pushToast('Could not settle', err instanceof Error ? err.message : 'Please try again.', 'warning');
     } finally {
       setClockBusy(false);
@@ -1947,7 +1955,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setClockBusy(true);
     try {
       applySession(await offlineSessionsApi.resumeNight(club.id, activeSession.id));
-      setSettlePlaceholderOpen(false);
+      // Handing the table back and leaving the settlement screen open would
+      // offer to commit figures for a night that is running again.
+      setShowCashoutModal(false);
     } catch (err) {
       pushToast('Could not resume', err instanceof Error ? err.message : 'Please try again.', 'warning');
     } finally {
@@ -2186,16 +2196,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         },
         // Actions rather than tabs — they open a modal, so they never read as
         // selected. Kept in the same array so both layouts stay in step.
-        {
-          key: 'cashout',
-          label: 'Cashout',
-          desktopLabel: 'Cash Out',
-          Icon: Sliders,
-          badge: 0,
-          visible: isAdmin && !!activeSession,
-          isAction: true,
-          onSelect: openCashoutModal,
-        },
+        // The "Cashout" action that used to sit here is gone. It opened the
+        // settlement screen directly, which skipped the freeze — the host
+        // counted chips into a form while the table carried on buying in
+        // behind it, and every figure they typed could go stale before they
+        // pressed Confirm. Settling now has one door, on the felt, in both
+        // states it can be in: "Settle night" in the footer while the night
+        // runs, "Count the chips" in the band once it is frozen. Two controls
+        // a nav apart, both reading "Settle Night", is the on-screen-twice
+        // defect PRODUCT-BRIEF §14 names.
+
         {
           key: 'profile',
           label: 'Profile',
@@ -2213,7 +2223,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       canSeeLeaderboard,
       isAdmin,
       activeSession,
-      openCashoutModal,
+      beginSettling,
     ]
   );
 
@@ -2487,26 +2497,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               }}
             />
 
-            {/* The footer's destination, until the settlement flow lands. It
-                exists so "Settle night" is already in the place it will always
-                be — moving a control people have learned costs more than
-                shipping it early pointing at a placeholder. */}
-            <Sheet
-              open={settlePlaceholderOpen}
-              onClose={() => setSettlePlaceholderOpen(false)}
-              title="Settling up"
-              description="The table is on hold — nothing can be bought or cashed out. Settlement itself is the next thing being built."
-              footer={
-                <>
-                  <Button variant="secondary" size="lg" fullWidth onClick={() => setSettlePlaceholderOpen(false)}>
-                    Leave it on hold
-                  </Button>
-                  <Button variant="primary" size="lg" fullWidth loading={clockBusy} onClick={resumeNight}>
-                    Back to the table
-                  </Button>
-                </>
-              }
-            />
+            {/* "Settle night" now opens the settlement screen itself — the
+                placeholder that stood here held the control's position until
+                there was somewhere real to send it. */}
 
             {/* TAB: MERGED ACTIVE SESSION & BUY-INS */}
 
@@ -3499,7 +3492,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
               <div>
                 <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
-                  <Sliders className="w-4 h-4" /> Cashout
+                  <Sliders className="w-4 h-4" /> Settle night
                 </h3>
                 <p className="text-[11px] text-text-muted mt-0.5">{activeSession.sessionName}</p>
               </div>
@@ -3519,6 +3512,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   {settlementError}
                 </div>
               )}
+
+              {/* Says the thing that makes the figures below trustworthy. A host
+                  counting a stack needs to know the numbers cannot move while
+                  they count, and closing this screen does not thaw the table —
+                  the band on the felt is where the night gets handed back. */}
+              <p className="text-[11px] text-text-muted text-center leading-relaxed">
+                The table is frozen — nobody can buy in or cash out while you count.
+                Close this and it stays on hold.
+              </p>
 
               {/* Player Rows: Buy-in (editable) / Cash-out (editable) */}
               <div className="space-y-3">
@@ -3605,7 +3607,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 disabled={!allCashOutsEntered}
                 className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
               >
-                <Scale className="w-4 h-4" /> Calculate
+                <Scale className="w-4 h-4" /> Auto Calculate
               </button>
 
               {/* Settlement Summary — only revealed after Calculate */}

@@ -60,7 +60,13 @@ export interface LiveSessionProps {
    * to discover is a limit people find out about by being refused.
    */
   ceiling: number | null;
-  /** Admins only, and always available — settlement itself lands in the next PR. */
+  /**
+   * Admins only: take me to settlement.
+   *
+   * One callback for both doors — the footer while the night runs, and the
+   * frozen band once it does not — because they mean the same thing. The
+   * caller freezes the table first if it is not frozen already.
+   */
   onSettleNight?: () => void;
   /** Admins only. Opens the pick-a-person sheet; the amount is asked for after. */
   onAddPlayer?: () => void;
@@ -219,10 +225,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             The table is on hold while the figures are agreed. Nothing can be
             bought or cashed out until it resumes.
           </p>
-          {isAdmin && onResumeNight && (
-            <Button variant="secondary" size="sm" fullWidth className="mt-2" onClick={onResumeNight}>
-              Back to the table
-            </Button>
+          {/* The way back IN, which the freeze had no door for: the footer
+              hides while settling — correctly, since the night is not being
+              played — so a host who closed the settlement screen was left
+              looking at a frozen table with only the option to unfreeze it.
+              Counting a room's chips takes more than one sitting at the screen.
+              `onSettleNight` skips the freeze when one is already stamped, so
+              this is the same control as the footer, not a second meaning. */}
+          {isAdmin && (
+            <div className="mt-2 flex gap-2">
+              {onResumeNight && (
+                <Button variant="secondary" size="sm" fullWidth onClick={onResumeNight}>
+                  Back to the table
+                </Button>
+              )}
+              {onSettleNight && (
+                <Button variant="primary" size="sm" fullWidth onClick={onSettleNight}>
+                  Count the chips
+                </Button>
+              )}
+            </div>
           )}
         </div>
       ) : live && night.startedPlayingAt !== null && (
