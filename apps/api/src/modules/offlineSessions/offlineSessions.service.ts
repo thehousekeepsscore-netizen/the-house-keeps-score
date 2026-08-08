@@ -6,6 +6,7 @@ import * as clubsService from '../clubs/clubs.service.js';
 import * as notificationsService from '../notifications/notifications.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from './settlementEngine.js';
 import { AUDIT_SCHEMA_VERSION } from '../clubRecords/auditMeta.js';
+import { randomUUID } from 'node:crypto';
 
 // Offline and Lazy Dealer sessions don't run the automated poker engine —
 // they're a lightweight buy-in/cash-out wrapper (the same one the Firestore
@@ -74,6 +75,29 @@ interface OfflineEngineState {
   // until an admin confirms the count, then their seat is freed and the amount
   // is carried into settlement as their cash-out.
   cashOuts?: { userId: string; amount: number; status: 'pending' | 'confirmed'; requestedAt: string; confirmedBy?: string }[];
+  /*
+   * Corrections to a banked buy-in, waiting on a second admin.
+   *
+   * A buy-in that has been approved is money on the table, so changing or
+   * withdrawing one is the same class of act as approving it in the first
+   * place — and it goes through the same gate: another admin has to agree,
+   * unless there is no other admin here. Applying it directly would make
+   * "nobody gives themselves chips" trivially avoidable, since an admin could
+   * approve a small buy-in and then quietly correct it upward.
+   *
+   * Transient, like the other two request types, and dies with the session.
+   * The OUTCOME is permanent and lives on BuyInRequest (previousAmount,
+   * editedBy/At, deletedBy/At) — this is only the question, not the answer.
+   */
+  entryChanges?: {
+    id: string;
+    buyInId: string;
+    type: 'edit' | 'delete';
+    /** The proposed new amount. Absent for a withdrawal. */
+    amount?: number;
+    requestedBy: string;
+    requestedAt: string;
+  }[];
   assignedDealerUid?: string;
   assignedDealerName?: string;
   smallBlind?: number;
@@ -1187,7 +1211,14 @@ export async function decideBuyInRequest(
       // two simultaneous presses wins.
       const claimed = await tx.buyInRequest.updateMany({
         where: { id: requestId, status: 'pending' },
-        data: { status: approve ? 'approved' : 'rejected', approvedBy: requesterId },
+        // approvedAt is stamped here rather than derived from anything later:
+        // this is the moment the decision is taken, and the gap between it and
+        // createdAt (when the player asked) is what the history needs to show.
+        data: {
+          status: approve ? 'approved' : 'rejected',
+          approvedBy: requesterId,
+          approvedAt: new Date(),
+        },
       });
       if (claimed.count === 0) throw new HttpError(409, 'This request has already been decided');
 
@@ -1442,4 +1473,143 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
   });
 
   return result.settlement;
+}
+
+/**
+ * Ask for a banked buy-in to be corrected or withdrawn.
+ *
+ * Deliberately NOT an admin editing a number. An approved buy-in is chips on
+ * the table, so changing one is the same act as putting them there, and it
+ * goes through the same gate: another admin agrees, unless there is no other
+ * admin here. Without that, "nobody gives themselves chips" is avoidable in
+ * two taps — approve a modest buy-in, then correct it upward alone.
+ *
+ * The request is recorded; nothing moves until somebody decides it.
+ */
+export async function requestEntryChange(
+  sessionId: string,
+  clubId: string,
+  requesterId: string,
+  isSuperAdmin: boolean,
+  input: { buyInId: string; type: 'edit' | 'delete'; amount?: number }
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  if (input.type === 'edit') {
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new HttpError(400, 'A corrected buy-in needs an amount above zero');
+    }
+  }
+
+  const { session, result } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    const target = await tx.buyInRequest.findUnique({ where: { id: input.buyInId } });
+    if (!target || target.sessionId !== sessionId) throw new HttpError(404, 'Buy-in not found');
+    if (target.status !== 'approved') {
+      // A pending request is decided by approving or rejecting it, and a
+      // rejected one never became money. Neither needs correcting.
+      throw new HttpError(409, 'Only an approved buy-in can be corrected');
+    }
+    if (target.deletedAt) throw new HttpError(409, 'This buy-in has already been removed');
+
+    const open = state.entryChanges || [];
+    // One open question per entry. Two admins proposing different corrections
+    // to one buy-in would leave whoever decides them applying both, in the
+    // order they happened to be pressed.
+    if (open.some((c) => c.buyInId === input.buyInId)) {
+      throw new HttpError(409, 'This buy-in already has a correction waiting');
+    }
+    if (input.type === 'edit' && input.amount === target.amount) {
+      throw new HttpError(400, 'That is the amount it already is');
+    }
+
+    const change = {
+      id: randomUUID(),
+      buyInId: input.buyInId,
+      type: input.type,
+      ...(input.type === 'edit' ? { amount: Number(input.amount) } : {}),
+      requestedBy: requesterId,
+      requestedAt: new Date().toISOString(),
+    };
+    return { state: { ...state, entryChanges: [...open, change] }, result: change };
+  });
+
+  emitToClub(clubId, 'club:entry-change-requested', { sessionId, session, change: result });
+  return { session, change: result };
+}
+
+/**
+ * Agree or refuse a correction.
+ *
+ * The same authorship rule as every other approval on this table, for the same
+ * reason: the escape hatch is being alone, not being senior. Applying an edit
+ * keeps the old figure on the row rather than overwriting it, because a
+ * correction whose previous value is gone is indistinguishable from the
+ * original having always said that.
+ */
+export async function decideEntryChange(
+  sessionId: string,
+  clubId: string,
+  requesterId: string,
+  isSuperAdmin: boolean,
+  changeId: string,
+  approve: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  type EntryChange = NonNullable<OfflineEngineState['entryChanges']>[number];
+  type Decided = { change: EntryChange; applied: Prisma.BuyInRequestGetPayload<{}> | null };
+
+  const { session, result } = await mutateSessionState<Decided>(sessionId, async (state, tx, row) => {
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    const open = state.entryChanges || [];
+    const change = open.find((c) => c.id === changeId);
+    if (!change) throw new HttpError(404, 'That correction has already been decided');
+
+    if (approve && change.requestedBy === requesterId && hasAnotherAdminHere(club, requesterId, state)) {
+      throw new HttpError(403, 'Another Club Admin must approve your own correction');
+    }
+
+    const remaining = open.filter((c) => c.id !== changeId);
+    if (!approve) {
+      return { state: { ...state, entryChanges: remaining }, result: { change, applied: null } };
+    }
+
+    const target = await tx.buyInRequest.findUnique({ where: { id: change.buyInId } });
+    if (!target) throw new HttpError(404, 'Buy-in not found');
+    if (target.deletedAt) throw new HttpError(409, 'This buy-in has already been removed');
+
+    const now = new Date();
+    const applied = await tx.buyInRequest.update({
+      where: { id: change.buyInId },
+      data:
+        change.type === 'delete'
+          ? { deletedBy: requesterId, deletedAt: now }
+          : {
+              // The old figure is kept, not replaced. Only the FIRST correction
+              // sets it: a buy-in corrected twice should still show what the
+              // player originally put up, not the intermediate guess.
+              amount: change.amount,
+              amount_previous: target.amount_previous ?? target.amount,
+              editedBy: requesterId,
+              editedAt: now,
+            },
+    });
+
+    return { state: { ...state, entryChanges: remaining }, result: { change, applied } };
+  });
+
+  emitToClub(clubId, 'club:entry-change-decided', {
+    sessionId,
+    session,
+    change: result.change,
+    approved: approve,
+    buyIn: result.applied,
+  });
+  return { session, ...result };
 }

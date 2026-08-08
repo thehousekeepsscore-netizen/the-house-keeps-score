@@ -1,9 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LiveSession, LiveSessionProps } from './LiveSession';
 import { deriveNight } from '../../lib/night-state';
+import { deriveFeed } from '../../lib/night-feed';
 import { Club, PokerSession, BuyInRequest } from '../../types';
 
 /**
@@ -686,5 +687,108 @@ describe('every phase renders', () => {
     expect(screen.getByText(/this night is settled/i)).toBeInTheDocument();
     // Nothing to settle twice.
     expect(screen.queryByRole('button', { name: /settle night/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The history icon, and what it replaced.
+ *
+ * The activity feed was worth having and was costing a third of a 375x667
+ * viewport to say so. It is now a glyph in the header and a sheet behind it —
+ * which means the felt must not move when it opens, and the dot must not
+ * report the reader's own taps back to them.
+ */
+describe('the night history', () => {
+  const banked = (uid: string, id: string, over: Record<string, unknown> = {}): BuyInRequest => ({
+    id, sessionId: 's1', clubId: 'c1', userId: uid, userDisplayName: '',
+    amount: 5000, status: 'approved', requestedBy: uid, createdAt: ago(60), ...over,
+  } as BuyInRequest);
+
+  /**
+   * A real feed, not the harness default.
+   *
+   * renderScreen passes `feed: []` for every other test in this file, because
+   * the felt does not read it. The history sheet is the one thing that does,
+   * so these derive it exactly as the club screen does.
+   */
+  const live = (buyIns: BuyInRequest[] = []) => {
+    const s = session({ activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(90) });
+    return { session: s, feed: deriveFeed({ session: s, buyIns, now: NOW }) };
+  };
+
+  it('offers a way in from the header', () => {
+    const rows = [banked('host', 'b1'), banked('priya', 'b2')];
+    renderScreen(live(rows), rows);
+
+    expect(screen.getByRole('button', { name: /night history/i })).toBeInTheDocument();
+  });
+
+  it('keeps the felt exactly where it was when the sheet opens', () => {
+    const rows = [banked('host', 'b1'), banked('priya', 'b2')];
+    renderScreen(live(rows), rows);
+    const felt = screen.getByRole('group', { name: /at the table/i });
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+
+    // Still mounted, still the same node — not re-rendered underneath the sheet.
+    expect(screen.getByRole('group', { name: /at the table/i })).toBe(felt);
+  });
+
+  it('shows the ledger, including who approved what', () => {
+    const rows = [
+      banked('priya', 'b2', { requestedBy: 'priya', approvedBy: 'host' }),
+      banked('host', 'b1'),
+    ];
+    renderScreen(live(rows), rows);
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+
+    // Both players have a line; this is about Priya's, which the host approved.
+    expect(screen.getByText('Priya requested Buy-in')).toBeInTheDocument();
+    expect(screen.getByText(/Approved by You/i)).toBeInTheDocument();
+  });
+
+  it('says nothing has happened rather than showing an empty list', () => {
+    renderScreen(live([]), []);
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+    expect(screen.getByText(/nothing has happened yet/i)).toBeInTheDocument();
+  });
+
+  it('gives a player no way to correct anything', () => {
+    const rows = [banked('priya', 'b2'), banked('host', 'b1')];
+    renderScreen({ ...live(rows), isAdmin: false, currentUserId: 'priya' }, rows);
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+
+    expect(screen.queryByRole('button', { name: /^correct$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^remove$/i })).not.toBeInTheDocument();
+  });
+
+  it('offers an admin a correction that asks rather than applies', () => {
+    const onEditEntry = vi.fn();
+    const rows = [banked('priya', 'b2'), banked('host', 'b1')];
+    renderScreen({ ...live(rows), onEditEntry }, rows);
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^correct$/i })[0]);
+
+    expect(onEditEntry).toHaveBeenCalled();
+    // The id handed back is the buy-in row, not the feed's prefixed key.
+    expect(onEditEntry.mock.calls[0][0]).not.toMatch(/^buyin:/);
+  });
+
+  it('does not offer to correct something already removed', () => {
+    const rows = [
+      banked('priya', 'b2', { deletedBy: 'host', deletedAt: ago(5) }),
+      banked('host', 'b1'),
+    ];
+    renderScreen({ ...live(rows), onEditEntry: vi.fn() }, rows);
+
+    fireEvent.click(screen.getByRole('button', { name: /night history/i }));
+
+    // One correctable row left — the host's. Priya's is a record, not an entry.
+    expect(screen.getAllByRole('button', { name: /^correct$/i })).toHaveLength(1);
+    expect(screen.getByText(/buy-in removed/i)).toBeInTheDocument();
   });
 });

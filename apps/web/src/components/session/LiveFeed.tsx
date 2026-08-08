@@ -52,7 +52,19 @@ export const LiveFeed: React.FC<{
   return (
     <section
       aria-label="Tonight, as it happens"
-      className="flex-1 min-h-0 flex flex-col px-4 pt-3"
+      /*
+       * Gone from phones, unchanged above them.
+       *
+       * It was worth having and was costing a third of a 375x667 viewport to
+       * say so, which on the shortest phone in real use pushed the felt — the
+       * hero of this screen — into a strip. The History icon in the header
+       * carries it there instead, and carries more than it did: the sheet
+       * shows who approved what, which the story deliberately never said.
+       *
+       * A tablet has the room, so it keeps the glance-and-know feed that made
+       * the bottom half of the screen worth looking at in the first place.
+       */
+      className="hidden sm:flex flex-1 min-h-0 flex-col px-4 pt-3"
     >
       <div className="shrink-0 flex items-center gap-3 pb-2">
         <span className="h-px flex-1 bg-line" />

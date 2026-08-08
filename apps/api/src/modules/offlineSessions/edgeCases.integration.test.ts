@@ -24,7 +24,7 @@ vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 const {
   requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn,
   amendCashOut, beginSettling, resumeNight, extendSession, removeFromLobby, startPlaying,
-  settleSession,
+  settleSession, requestEntryChange, decideEntryChange,
 } = await import('./offlineSessions.service.js');
 
 let clubId = '';
@@ -591,5 +591,149 @@ describe('settling a night that never started', () => {
     await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
     expect(session.status).not.toBe('active');
+  });
+});
+
+/**
+ * Correcting a buy-in that is already money.
+ *
+ * An approved buy-in is chips on the table, so changing one is the same act as
+ * putting them there — and it goes through the same gate. Without that, "nobody
+ * gives themselves chips" is avoidable in two taps: approve a modest buy-in
+ * alone, then quietly correct it upward.
+ *
+ * The outcome is deliberately not a clean overwrite. A correction keeps the old
+ * figure and a removal keeps the row, because a buy-in that changed without
+ * trace and a buy-in that vanished are the two things an audit trail exists to
+ * make impossible.
+ */
+describe('correcting a banked buy-in', () => {
+  async function banked(amount = 5_000) {
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          startedPlayingAt: new Date().toISOString(),
+          activePlayerUids: [ownerId, priyaId],
+          pendingSitInUids: [],
+          cashOuts: [],
+        } as any,
+      },
+    });
+    const req = await requestBuyIn(sessionId, clubId, priyaId, amount);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    return req.id;
+  }
+
+  it('stamps when a buy-in was decided, not only who by', async () => {
+    const id = await banked();
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+
+    expect(row.approvedBy).toBe(ownerId);
+    expect(row.approvedAt).toBeInstanceOf(Date);
+    // The decision is its own event: asked at one time, agreed at another.
+    expect(row.approvedAt!.getTime()).toBeGreaterThanOrEqual(row.createdAt.getTime());
+  });
+
+  it('changes nothing until somebody decides it', async () => {
+    const id = await banked();
+    await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: 9_000,
+    });
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.amount).toBe(5_000);
+    expect(row.editedBy).toBeNull();
+  });
+
+  it('keeps the original figure when the correction is agreed', async () => {
+    const id = await banked();
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: 9_000,
+    });
+    await decideEntryChange(sessionId, clubId, priyaId, true, change.id, true);
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.amount).toBe(9_000);
+    expect(row.amount_previous).toBe(5_000);
+    expect(row.editedBy).toBe(priyaId);
+    expect(row.editedAt).toBeInstanceOf(Date);
+  });
+
+  it('remembers what a player ORIGINALLY put up across two corrections', async () => {
+    const id = await banked();
+    for (const amount of [9_000, 7_000]) {
+      const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+        buyInId: id, type: 'edit', amount,
+      });
+      await decideEntryChange(sessionId, clubId, priyaId, true, change.id, true);
+    }
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.amount).toBe(7_000);
+    // Not 9,000 — the intermediate guess is not what she bought in for.
+    expect(row.amount_previous).toBe(5_000);
+  });
+
+  it('leaves the buy-in alone when the correction is refused', async () => {
+    const id = await banked();
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'edit', amount: 9_000,
+    });
+    await decideEntryChange(sessionId, clubId, priyaId, true, change.id, false);
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.amount).toBe(5_000);
+    expect(row.editedBy).toBeNull();
+  });
+
+  it('keeps a removed buy-in as a record rather than deleting the row', async () => {
+    const id = await banked();
+    const { change } = await requestEntryChange(sessionId, clubId, ownerId, false, {
+      buyInId: id, type: 'delete',
+    });
+    await decideEntryChange(sessionId, clubId, priyaId, true, change.id, true);
+
+    const row = await prisma.buyInRequest.findUnique({ where: { id } });
+    expect(row).not.toBeNull();
+    expect(row!.deletedBy).toBe(priyaId);
+    expect(row!.deletedAt).toBeInstanceOf(Date);
+    // Still approved, still 5,000 — it is struck, not rewritten.
+    expect(row!.amount).toBe(5_000);
+  });
+
+  it('refuses a second correction while one is still waiting', async () => {
+    const id = await banked();
+    await requestEntryChange(sessionId, clubId, ownerId, false, { buyInId: id, type: 'edit', amount: 9_000 });
+
+    await expect(
+      requestEntryChange(sessionId, clubId, ownerId, false, { buyInId: id, type: 'edit', amount: 6_000 })
+    ).rejects.toThrow(/already has a correction waiting/i);
+  });
+
+  it('refuses to correct a buy-in nobody approved', async () => {
+    await banked();
+    const pending = await requestBuyIn(sessionId, clubId, priyaId, 1_000);
+
+    await expect(
+      requestEntryChange(sessionId, clubId, ownerId, false, { buyInId: pending.id, type: 'edit', amount: 2_000 })
+    ).rejects.toThrow(/only an approved buy-in/i);
+  });
+
+  it('is not a thing a player can ask for', async () => {
+    const id = await banked();
+
+    await expect(
+      requestEntryChange(sessionId, clubId, priyaId, false, { buyInId: id, type: 'delete' })
+    ).rejects.toThrow(/admin/i);
+  });
+
+  it('refuses to correct anything once the table is frozen', async () => {
+    const id = await banked();
+    await beginSettling(sessionId, clubId, ownerId, false);
+
+    await expect(
+      requestEntryChange(sessionId, clubId, ownerId, false, { buyInId: id, type: 'edit', amount: 9_000 })
+    ).rejects.toThrow(/being settled/i);
   });
 });
