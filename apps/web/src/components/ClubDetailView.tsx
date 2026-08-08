@@ -1821,6 +1821,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     return 'Quick actions';
   })();
 
+  /**
+   * Who is at this table, for the self-approval rule.
+   *
+   * Presence, not roster: an admin who has cashed out and driven home cannot be
+   * the second pair of eyes, and counting them is what deadlocks a night that
+   * the owner opened and then left. Mirrors hasAnotherAdminHere on the server.
+   *
+   * MUST STAY ABOVE actionQueue, which reads it inside its callback. useMemo
+   * runs that callback during the render it is declared in, so with this
+   * declaration below it the read landed in the temporal dead zone and threw
+   * "Cannot access 'whoIsHere' before initialization" — taking the whole club
+   * screen into the ErrorBoundary for any admin with a pending buy-in, on the
+   * old layout as well as the new one. It reached production.
+   */
+  const whoIsHere = useMemo<WhoIsHere>(() => ({
+    ownerUid: club.ownerUid ?? club.createdBy,
+    adminUids: club.adminUids ?? [],
+    seatedUids: activeSession?.activePlayerUids ?? [],
+    pendingSitInUids: activeSession?.pendingSitInUids ?? [],
+    cashedOutUids: (activeSession?.cashOuts ?? [])
+      .filter((c) => c.status === 'confirmed')
+      .map((c) => c.userId),
+  }), [club.ownerUid, club.createdBy, club.adminUids, activeSession]);
+
   const actionQueue = useMemo<QueueItem[]>(() => {
     if (!isAdmin || !activeSession) return [];
     const buyIns: QueueItem[] = visiblePendingBuyIns.map((req) => {
@@ -1877,22 +1901,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * "who is waiting" pure and testable, and keeps the permission rules next to
    * the other permission rules.
    */
-  /**
-   * Who is at this table, for the self-approval rule.
-   *
-   * Presence, not roster: an admin who has cashed out and driven home cannot be
-   * the second pair of eyes, and counting them is what deadlocks a night that
-   * the owner opened and then left. Mirrors hasAnotherAdminHere on the server.
-   */
-  const whoIsHere = useMemo<WhoIsHere>(() => ({
-    ownerUid: club.ownerUid ?? club.createdBy,
-    adminUids: club.adminUids ?? [],
-    seatedUids: activeSession?.activePlayerUids ?? [],
-    pendingSitInUids: activeSession?.pendingSitInUids ?? [],
-    cashedOutUids: (activeSession?.cashOuts ?? [])
-      .filter((c) => c.status === 'confirmed')
-      .map((c) => c.userId),
-  }), [club.ownerUid, club.createdBy, club.adminUids, activeSession]);
+
 
   const waitingForYou = useMemo<WaitingRow[]>(() => {
     if (!activeSession) return [];
