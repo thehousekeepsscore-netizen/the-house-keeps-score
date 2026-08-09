@@ -573,9 +573,11 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // Anchored: the header now carries "House takes" too, and this is about
     // the preview's own breakdown.
     expect(screen.getByText(/^House take$/)).toBeInTheDocument();
-    // Flat 1,000 across two players, plus 5% of the winner's 3,000 profit.
+    // 1,000 a seat from two players, plus 5% of the winner's 3,000 profit.
     // Neither line exists if the preview is reading the club, which charges 0.
-    expect(screen.getByText(/^Session rake \(flat\)$/)).toBeInTheDocument();
+    // The label restates the arithmetic — rate × heads — so a host can see
+    // where 2,000 came from rather than being handed the total.
+    expect(screen.getByText(/^Session rake × 2 players$/)).toBeInTheDocument();
     expect(screen.getByText(/^Winners' cut \(5%\)$/)).toBeInTheDocument();
   });
 });

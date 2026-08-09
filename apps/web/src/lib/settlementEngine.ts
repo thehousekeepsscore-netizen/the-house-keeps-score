@@ -42,11 +42,21 @@ export type RoundingRule = 'NONE' | 'NEAREST_1' | 'NEAREST_5' | 'NEAREST_10';
  *
  * History:
  *   1 — initial versioned release
+ *   2 — sessionRakeAmount became a per-player seat fee. It was a total for the
+ *       night split across whoever played, so the same setting produced
+ *       different per-head charges depending on how many sat down. Nights
+ *       settled under version 1 keep their figures; this only decides what a
+ *       night settled from here on is charged.
  */
-export const SETTLEMENT_ENGINE_VERSION = 1;
+export const SETTLEMENT_ENGINE_VERSION = 2;
 
 export interface SettlementSettings {
-  /** Flat house fee for the session. Charged to no individual player. */
+  /**
+   * Seat fee, charged to EVERY player who sat down.
+   *
+   * A table of five with this at 1,000 collects 5,000. It was a total for the
+   * night divided among the players until engine version 2 — see computeRake.
+   */
   sessionRakeAmount?: number;
   /** Percentage of each winner's profit. */
   winnersCutPercent?: number;
@@ -305,8 +315,8 @@ function applyExcessToWinners(
 
 function computeRake(players: WorkingPlayer[], settings: SettlementSettings, steps: SettlementStepLog[]): number {
   // Two independent charges, either or both of which may be zero:
-  //   sessionRakeAmount — flat fee for the night, sourced from no single
-  //                       player, so it never touches anyone's rakeDeduction
+  //   sessionRakeAmount — seat fee, charged to every player who sat down, so a
+  //                       table of five collects five times it
   //   winnersCutPercent — % of each winner's profit *at this point in the
   //                       pipeline*, so a mismatch already applied is respected
   // Both fund the Club Pot. Legacy rakeMethod/rakeValue are no longer read;
@@ -327,23 +337,25 @@ function computeRake(players: WorkingPlayer[], settings: SettlementSettings, ste
 
   const flat = settings.sessionRakeAmount ?? 0;
   if (flat > 0 && players.length > 0) {
-    // Split equally across everyone at the table, winners and losers alike —
-    // it's a table fee for the night, not a tax on profit. Charging it to the
-    // pot without deducting it from anyone would mint money the players never
-    // paid, leaving sum(nets) + pot != 0.
-    const share = flat / players.length;
-    let assigned = 0;
-    players.forEach((p, i) => {
-      // Give the last player the remainder so the shares total exactly `flat`
-      // even when it doesn't divide evenly (e.g. 200 across 3).
-      const owed = i === players.length - 1
-        ? Math.round((flat - assigned) * 100) / 100
-        : Math.round(share * 100) / 100;
-      assigned = Math.round((assigned + owed) * 100) / 100;
-      p.rakeDeduction = Math.round((p.rakeDeduction + owed) * 100) / 100;
+    // PER PLAYER, not split. Everyone at the table pays the same seat fee,
+    // winners and losers alike — it is the cost of a chair for the night, not a
+    // tax on profit, so it does not scale down as more people sit down.
+    //
+    // This was a total for the night until engine version 2, divided among
+    // however many played. A host who set 1,000 expecting each player to pay it
+    // saw 1,000 come off the table in total, and 200 each once five people sat
+    // down — the charge got cheaper the busier the game, which is backwards for
+    // a seat fee.
+    //
+    // No remainder handling any more: nothing is divided, so nothing rounds.
+    players.forEach((p) => {
+      p.rakeDeduction = Math.round((p.rakeDeduction + flat) * 100) / 100;
     });
-    total += flat;
-    steps.push({ step: 'Rake', detail: `Session rake: flat ${flat} for the night, split equally across ${players.length} players (${Math.round(share * 100) / 100} each).` });
+    total += flat * players.length;
+    steps.push({
+      step: 'Rake',
+      detail: `Session rake: ${flat} per player from ${players.length} player(s) — ${flat * players.length} in total.`,
+    });
   }
 
   return total;
@@ -430,7 +442,7 @@ export function computeSettlement(
       p.remaining -= p.rakeDeduction;
     });
     // Post-rounding resum. The flat session rake is already folded into each
-    // player's rakeDeduction (split equally in computeRake), so adding
+    // player's rakeDeduction (charged per player in computeRake), so adding
     // sessionRakeAmount again here would double-count it in the pot.
     totalRakeCollected = working.reduce((s, p) => s + p.rakeDeduction, 0);
   };
