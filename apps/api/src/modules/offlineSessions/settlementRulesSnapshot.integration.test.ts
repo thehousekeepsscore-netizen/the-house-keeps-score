@@ -24,6 +24,8 @@ const {
   settleSession, initSettlementRules, beginSettling,
 } = await import('./offlineSessions.service.js');
 
+const { requestSessionChange } = await import('../clubRecords/clubRecords.service.js');
+
 let clubId = '';
 let sessionId = '';
 let ownerId = '';
@@ -400,5 +402,73 @@ describe('the next night', () => {
     sessionId = await playANight();
 
     expect(await snapshotOf(sessionId)).toMatchObject(RAKED);
+  });
+});
+
+/**
+ * Correcting a settled night must not restate what it charged.
+ *
+ * applySessionChange re-runs the engine, so whatever it is handed decides the
+ * money all over again. It read the CLUB, which is the other half of the hole
+ * the snapshot closed in settleSession: a night settled at 1,000 a seat came
+ * back free the moment somebody fixed a typo in a cash-out, because the club
+ * charges nothing.
+ *
+ * Driven through the real request/approve flow rather than by calling the
+ * private applier, so the authorisation and staging around it are exercised too.
+ */
+describe('editing a settled night', () => {
+  let settlementId = '';
+
+  beforeEach(async () => {
+    await seed(RAKED);
+    sessionId = await playANight();
+    await settleSession(sessionId, ownerId, false, entries());
+    settlementId = (await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } })).id;
+    // The club stops charging AFTER the night settled — the exact drift.
+    await changeClubTo(NO_RAKE as typeof RAKED);
+  });
+
+  /**
+   * Corrects one cash-out by 500, leaving everything else as settled.
+   *
+   * The owner is the requester, so this applies straight away rather than
+   * staging a pending change — which is the path a host actually takes.
+   */
+  async function editCashOutBy500() {
+    const record = await prisma.cashOutSettlement.findUniqueOrThrow({ where: { id: settlementId } });
+    const summaries = (record.playerSummaries as { userId: string; cashOut: number }[]).map((p) =>
+      p.userId === priyaId ? { ...p, cashOut: p.cashOut + 500 } : p
+    );
+    return requestSessionChange(clubId, ownerId, 'Host', false, {
+      sessionId: settlementId,
+      sourceType: 'cashout',
+      requestType: 'edit_session',
+      updatedPlayerSummaries: summaries,
+    } as never);
+  }
+
+  it('applies immediately for the owner, rather than staging', async () => {
+    // Guards the harness: a staged change would leave the record untouched and
+    // every assertion below would pass against an edit that never happened.
+    expect(await editCashOutBy500()).toMatchObject({ status: 'applied' });
+  });
+
+  it('keeps charging what the night charged, not what the club charges now', async () => {
+    await editCashOutBy500();
+
+    const after = await prisma.cashOutSettlement.findUniqueOrThrow({ where: { id: settlementId } });
+    // Two players at 1,000 a seat. Reading the club would have produced 0 —
+    // the night would have become free retroactively.
+    expect(after.rakeCollected).toBeGreaterThanOrEqual(2_000);
+  });
+
+  it('does not silently zero the rake', async () => {
+    const before = await prisma.cashOutSettlement.findUniqueOrThrow({ where: { id: settlementId } });
+    await editCashOutBy500();
+    const after = await prisma.cashOutSettlement.findUniqueOrThrow({ where: { id: settlementId } });
+
+    expect(before.rakeCollected).toBeGreaterThan(0);
+    expect(after.rakeCollected).toBeGreaterThan(0);
   });
 });
