@@ -729,7 +729,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-medium text-text-muted uppercase">
-                    Session rake — flat amount
+                    Session rake — per player
                   </label>
                   <input
                     type="number"
@@ -740,10 +740,17 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     className="w-full furniture rounded-xl px-3 py-2.5 text-sm font-mono font-medium text-text focus:border-accent outline-none"
                     placeholder="0"
                   />
+                  {/* Chips AND rupees, and the total for a plausible table.
+                      The engine is chip-based and never applies the ratio, so a
+                      host thinking in rupees has to do the conversion in their
+                      head — which is exactly how a rake meant to be ₹1,000 a
+                      head gets entered as 1,000 chips and charges ₹200. */}
                   <p className="text-[10px] text-text-muted">
                     {sessionRake > 0
-                      ? `${sessionRake.toLocaleString()} Chips once per session — charged to the table, not to any one player.`
-                      : 'Charged once per session, regardless of who wins. 0 for none.'}
+                      ? `${sessionRake.toLocaleString()} Chips from every player who sat down${
+                          enableDevaluation ? ` (₹${Math.round(sessionRake / devaluationFactor).toLocaleString()} each)` : ''
+                        } — a table of five collects ${(sessionRake * 5).toLocaleString()}.`
+                      : 'Charged to every player, winners and losers alike. 0 for none.'}
                   </p>
                 </div>
 
@@ -771,7 +778,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
 
                 {(sessionRake > 0 || winnersCutPercent > 0) && (
                   <p className="text-[10px] text-accent font-medium pt-1 border-t border-line">
-                    {[sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per session` : null,
+                    {[sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per player` : null,
                       winnersCutPercent > 0 ? `${winnersCutPercent}% of winnings` : null]
                       .filter(Boolean).join(' + ')} → Club Pot
                   </p>
@@ -788,10 +795,15 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   <li>Maximum capacity: <strong>50 Players</strong></li>
                   <li>Maximum admins: <strong>2 Admins</strong> (plus you as Owner)</li>
                   <li>Join system: Players send a request that only the Club Owner can approve</li>
+                  <li className="text-warning">
+                    <strong>Fixed at creation:</strong> the currency ratio, buy-in limit, rake and
+                    winners&apos; cut cannot be changed afterwards — a club that wants different
+                    rules is a new club
+                  </li>
                   <li>Currency ratio: <strong>{enableDevaluation ? `${devaluationFactor} Chips = ₹1 INR` : '1 Chip = ₹1 INR (Standard)'}</strong></li>
                   <li>Buy-in limit: <strong>{buyInMode === 'UNCAPPED' ? 'No limit' : 'Match the biggest bank'}</strong></li>
                   <li>Rake: <strong>{[
-                    sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per session` : null,
+                    sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per player` : null,
                     winnersCutPercent > 0 ? `${winnersCutPercent}% winners' cut` : null,
                   ].filter(Boolean).join(' + ') || 'None'}</strong></li>
                 </ul>
