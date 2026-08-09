@@ -4,6 +4,7 @@ import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from '../offlineSessions/settlementEngine.js';
 import { AUDIT_SCHEMA_VERSION } from './auditMeta.js';
+import { Prisma } from '@prisma/client';
 
 interface HistoricalPlayerStat {
   userName: string;
@@ -548,6 +549,45 @@ function settlementSettingsFor(club: {
  * Runs in one transaction so a record can never end up edited with the pot
  * un-adjusted, or vice versa.
  */
+/**
+ * The rules a recorded night should be re-settled by.
+ *
+ * A settled session carries the rules it was played under on its engineState,
+ * and those are the only honest input to recomputing it. The club's current
+ * settings describe a different night.
+ *
+ * Two cases genuinely have nothing else to use and fall back to the club:
+ * back-dated records, which were never a session at all, and sessions settled
+ * before snapshots existed. That fallback is safe in a way the live one was
+ * not — a club's settlement rules are frozen at creation
+ * (IMMUTABLE_CLUB_RULES), so what the club says now is what it said then.
+ * Should that freeze ever be relaxed, this becomes the same hole again and
+ * wants the same refusal settleSession gives.
+ */
+async function settlementRulesForRecord(
+  tx: Prisma.TransactionClient,
+  recordId: string,
+  sourceType: StagedChange['sourceType'],
+  club: Parameters<typeof settlementSettingsFor>[0]
+): Promise<SettlementSettings> {
+  if (sourceType !== 'cashout') return settlementSettingsFor(club);
+
+  const settlement = await tx.cashOutSettlement.findUnique({
+    where: { id: recordId },
+    select: { sessionId: true },
+  });
+  if (!settlement) return settlementSettingsFor(club);
+
+  const session = await tx.pokerSession.findUnique({
+    where: { id: settlement.sessionId },
+    select: { engineState: true },
+  });
+  const snapshot = (session?.engineState as { settlementRules?: SettlementSettings } | null)
+    ?.settlementRules;
+
+  return snapshot ?? settlementSettingsFor(club);
+}
+
 async function applySessionChange(
   clubId: string,
   recordId: string,
@@ -591,6 +631,22 @@ async function applySessionChange(
     }
 
     const club = await tx.club.findUniqueOrThrow({ where: { id: clubId } });
+
+    /*
+     * Re-settle by the rules the night was PLAYED under, not the club's.
+     *
+     * This re-runs the engine, so whatever it is handed decides the money all
+     * over again. Reading the club here was the other half of the hole the
+     * session snapshot closed in settleSession: a night settled at 1,000 a seat
+     * would quietly come back as free the moment somebody corrected a typo in
+     * a cash-out, because the club charges nothing.
+     *
+     * A back-dated record has no session and never did — it was typed in from
+     * a notebook — so the club is the only source it can have, and that is
+     * correct for it rather than a fallback.
+     */
+    const rules = await settlementRulesForRecord(tx, recordId, staged.sourceType, club);
+
     const result = computeSettlement(
       entries.map((e: any, i: number) => ({
         userId: e.userId || `unlinked:${i}:${e.userName ?? e.userDisplayName}`,
@@ -598,7 +654,7 @@ async function applySessionChange(
         buyIn: Number(e.totalBuyIn || 0),
         cashOut: Number(e.cashOut || 0),
       })),
-      settlementSettingsFor(club),
+      rules,
       { currentPotBalance: club.clubPotBalance }
     );
 
