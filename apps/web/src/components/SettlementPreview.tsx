@@ -126,8 +126,8 @@ export function SettlementPreview({
               <Row indent label="Mismatch share" amount={formatSigned(-p.mismatchDeduction)} />
             )}
             {/* One line, because the engine keeps one number: a winner's cut and
-                this player's share of the flat session rake are summed into
-                `rakeDeduction` and cannot be separated back out here. Labelled
+                this player's session rake are summed into `rakeDeduction` and
+                cannot be separated back out here. Labelled
                 for whichever charges are actually switched on rather than
                 claiming to be only the cut. */}
             {p.rakeDeduction !== 0 && (
@@ -135,9 +135,9 @@ export function SettlementPreview({
                 indent
                 label={
                   cutPercent > 0 && flatRake > 0
-                    ? `Winners' cut (${cutPercent}%) + rake share`
+                    ? `Winners' cut (${cutPercent}%) + session rake`
                     : flatRake > 0
-                      ? 'Session rake share'
+                      ? 'Session rake'
                       : `Winners' cut${cutPercent > 0 ? ` (${cutPercent}%)` : ''}`
                 }
                 amount={formatSigned(-p.rakeDeduction)}
@@ -158,9 +158,10 @@ export function SettlementPreview({
         </div>
       </div>
 
-      {/* House take, split by source. The flat session rake is charged to the
-          table rather than any one player, so it has no per-player row above
-          and would otherwise be invisible. */}
+      {/* House take, by source. The session rake is a seat fee charged to every
+          player, and it is folded into each of their rakeDeduction figures
+          above — so this restates it as rate × heads, the only place the total
+          and how it was reached are both visible. */}
       {showHouseTake && (
         <div className="space-y-1 text-[11px] font-mono tabular-nums pt-1 border-t border-line">
           {cutPercent > 0 && (
@@ -169,7 +170,16 @@ export function SettlementPreview({
               amount={formatAmount(Math.max(0, result.totalRakeCollected - flatRake))}
             />
           )}
-          {flatRake > 0 && <Row label="Session rake (flat)" amount={formatAmount(flatRake)} />}
+          {flatRake > 0 && (
+            <Row
+              // "× N players" rather than the rate spelled out: formatAmount
+              // carries its own unit, so folding it in reads as
+              // "(1,000 Chips × 2)" — the per-seat figure is already on every
+              // player's own row above.
+              label={`Session rake × ${result.players.length} ${result.players.length === 1 ? 'player' : 'players'}`}
+              amount={formatAmount(flatRake * result.players.length)}
+            />
+          )}
           <div className="pt-1 border-t border-line">
             <Row label="House take" amount={formatAmount(result.totalRakeCollected)} tone="accent" strong />
           </div>

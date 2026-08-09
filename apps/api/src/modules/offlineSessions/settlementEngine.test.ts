@@ -81,10 +81,36 @@ describe('money is conserved', () => {
     expect(r.players.filter((p) => !p.isWinner).every((p) => p.rakeDeduction === 0)).toBe(true);
   });
 
-  it('splits a flat session rake across every player, winners and losers alike', () => {
+  it('charges the session rake to every player, winners and losers alike', () => {
     const r = computeSettlement(table(['A', 2000, 3000], ['B', 2000, 2000], ['C', 2000, 1000]), rules({ sessionRakeAmount: 300 }));
-    expect(r.totalRakeCollected).toBeCloseTo(300, 6);
-    expect(r.players.every((p) => p.rakeDeduction > 0)).toBe(true);
+
+    // 300 EACH, not 300 split three ways. A seat fee is what a chair costs for
+    // the night; it does not get cheaper because more people sat down.
+    expect(r.players.every((p) => p.rakeDeduction === 300)).toBe(true);
+    expect(r.totalRakeCollected).toBeCloseTo(900, 6);
+    expectBooksBalance(r);
+  });
+
+  it('scales with the table, so the same setting means the same to each player', () => {
+    const three = computeSettlement(table(['A', 2000, 3000], ['B', 2000, 2000], ['C', 2000, 1000]), rules({ sessionRakeAmount: 300 }));
+    const two = computeSettlement(table(['A', 2000, 2500], ['B', 2000, 1500]), rules({ sessionRakeAmount: 300 }));
+
+    // The defect this replaced: under a total-for-the-night rake, a player at a
+    // busy table paid less than the same player at a quiet one, for the same
+    // configured figure and without anybody choosing that.
+    expect(two.players.every((p) => p.rakeDeduction === 300)).toBe(true);
+    expect(three.totalRakeCollected).toBeCloseTo(900, 6);
+    expect(two.totalRakeCollected).toBeCloseTo(600, 6);
+    expectBooksBalance(two);
+  });
+
+  it('divides nothing, so an awkward figure needs no rounding', () => {
+    // 100 across 3 used to land on 33.33 each with the remainder pushed onto
+    // the last player. Nobody divides now, so the arithmetic is exact.
+    const r = computeSettlement(table(['A', 2000, 3000], ['B', 2000, 2000], ['C', 2000, 1000]), rules({ sessionRakeAmount: 100 }));
+
+    expect(r.players.map((p) => p.rakeDeduction)).toEqual([100, 100, 100]);
+    expect(r.totalRakeCollected).toBe(300);
     expectBooksBalance(r);
   });
 });

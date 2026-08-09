@@ -2589,7 +2589,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="px-5 pb-2 space-y-4">
                   <div>
                     <label className="text-xs text-text-muted" htmlFor="rules-rake">
-                      Rake for the night, in chips
+                      Rake per player, in chips
                     </label>
                     <input
                       id="rules-rake"
@@ -2602,7 +2602,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       className="mt-1 w-full furniture rounded-xl px-3 py-3 text-base font-mono tabular-nums text-text focus:border-accent outline-none"
                     />
                     <p className="mt-1 text-[11px] text-text-faint">
-                      Split equally across everyone at the table, winners and losers alike.
+                      Charged to every player who sat down, winners and losers alike.
+                      {rulesRake !== '' && Number(rulesRake) > 0 && settlementUids.length > 0 && (
+                        <> {settlementUids.length} players tonight, so{' '}
+                          <strong className="text-text">
+                            {formatUnit(Number(rulesRake) * settlementUids.length)}
+                          </strong>{' '}
+                          in total.
+                        </>
+                      )}
                     </p>
                   </div>
                   <div>

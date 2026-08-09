@@ -145,10 +145,10 @@ describe('a night that started raked stays raked', () => {
     await settleSession(sessionId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
-    // Owner's 5,000 profit → 5% = 250, plus the flat 1,000 split across two.
+    // Owner's 5,000 profit → 5% = 250, plus 1,000 EACH from two players.
     // Asserted on rakeCollected alone: totalWinnersCut is hard-coded to 0 in
     // settleSession, kept only so old history rows keep their shape.
-    expect(settled.rakeCollected).toBe(1_250);
+    expect(settled.rakeCollected).toBe(2_250);
   });
 });
 
@@ -242,7 +242,8 @@ describe('a night that predates snapshots', () => {
     await settleSession(sessionId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
-    expect(settled.rakeCollected).toBe(1_250);
+    // 1,000 a seat from two players, plus 5% of the winner's 5,000.
+    expect(settled.rakeCollected).toBe(2_250);
   });
 
   it('records the rules that decided it, on the settlement record', async () => {
