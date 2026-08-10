@@ -388,8 +388,25 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   }, []);
 
   // Cash-out settlement inputs: { userId: amount }
-  const [cashOutInputs, setCashOutInputs] = useState<Record<string, number>>({});
-  const [buyInInputs, setBuyInInputs] = useState<Record<string, number>>({});
+  /*
+   * The RAW text of each field, not a number.
+   *
+   * These held numbers and coerced on every keystroke, which breaks a
+   * controlled numeric input in two ways a host hits while counting chips.
+   * Clearing a field gave Number('') === 0, so the box refilled itself with a
+   * zero that could not be deleted — and then typing 5000 in front of it read
+   * back as 50000, a tenfold error in a figure nobody would look at twice.
+   * Typing after it showed 05000.
+   *
+   * Worse, that phantom zero counted as an entered cash-out: `uid in
+   * cashOutInputs` was true, so Auto Calculate unlocked and would settle a
+   * player at nothing they had agreed to.
+   *
+   * Text in, coerced once where the arithmetic happens. An empty string stays
+   * empty, and "not filled in yet" stays distinguishable from "zero".
+   */
+  const [cashOutInputs, setCashOutInputs] = useState<Record<string, string>>({});
+  const [buyInInputs, setBuyInInputs] = useState<Record<string, string>>({});
   const [manualWinnerInputs, setManualWinnerInputs] = useState<Record<string, boolean>>({});
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
   const [settlementError, setSettlementError] = useState('');
@@ -727,8 +744,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       let changed = false;
       const next = { ...prev };
       locked.forEach(([uid, amt]) => {
-        if (next[uid] !== amt) {
-          next[uid] = amt;
+        // Compared as text, because that is what the field holds now. An
+        // admin amending a confirmed count mid-settlement lands here, and the
+        // locked figure is the authority over anything typed.
+        const asText = String(amt);
+        if (next[uid] !== asText) {
+          next[uid] = asText;
           changed = true;
         }
       });
@@ -1691,7 +1712,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   }, [JSON.stringify(pastRows), pastDate]);
 
   const preview = calculateSettlement();
-  const allCashOutsEntered = activeSession ? settlementUids.every(uid => uid in cashOutInputs) : false;
+  /**
+   * Every player has a figure — a real one, not a blank box.
+   *
+   * `uid in cashOutInputs` was the whole test, so a field the host had cleared
+   * still counted: the key was there holding a coerced 0. Auto Calculate
+   * unlocked and settled somebody at zero they never agreed to. A blank is
+   * "not counted yet" and must hold the gate shut.
+   */
+  const enteredAmount = (v: string | undefined) =>
+    v !== undefined && v.trim() !== '' && Number.isFinite(Number(v));
+  const allCashOutsEntered = activeSession
+    ? settlementUids.every(uid => enteredAmount(cashOutInputs[uid]))
+    : false;
 
   // Opens the Cashout table pre-populated with each player's approved
   // buy-in total (still editable from there to correct any discrepancy).
@@ -1710,12 +1743,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('No live session', 'There is nothing running right now.', 'warning');
       return;
     }
-    const initialBuyIns: Record<string, number> = {};
+    const initialBuyIns: Record<string, string> = {};
     settlementUids.forEach(uid => {
-      initialBuyIns[uid] = activeSessionBuyIns.filter(r => r.userId === uid).reduce((sum, r) => sum + r.amount, 0);
+      initialBuyIns[uid] = String(
+        activeSessionBuyIns.filter(r => r.userId === uid).reduce((sum, r) => sum + r.amount, 0)
+      );
     });
     setBuyInInputs(initialBuyIns);
-    setCashOutInputs({ ...confirmedCashOutByUid });
+    setCashOutInputs(
+      Object.fromEntries(Object.entries(confirmedCashOutByUid).map(([uid, amount]) => [uid, String(amount)]))
+    );
     setManualWinnerInputs({});
     setMismatchAcknowledged(false);
     setSettlementError('');
@@ -3790,7 +3827,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             type="number"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
-                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
                             className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                           />
                         </div>
@@ -3818,7 +3855,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               type="number"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
-                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: Number(e.target.value) }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
                               placeholder="Enter cash-out"
                               className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                             />
