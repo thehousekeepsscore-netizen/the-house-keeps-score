@@ -581,3 +581,79 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     expect(screen.getByText(/^Winners' cut \(5%\)$/)).toBeInTheDocument();
   });
 });
+
+/**
+ * Typing figures into the settlement screen.
+ *
+ * Both of these were found at a table, mid-count, which is the worst possible
+ * place: the fields hold money and the host is reading a stack of chips, not
+ * auditing an input component.
+ */
+describe('entering figures', () => {
+  it('does not leave a 0 behind when a field is cleared', async () => {
+    await openSettlement();
+    const cashOut = amountFields()[1];
+
+    fireEvent.change(cashOut, { target: { value: '5000' } });
+    fireEvent.change(cashOut, { target: { value: '' } });
+
+    // Number('') is 0, so coercing on every keystroke refilled the box with a
+    // zero that could not be deleted — and 5000 typed in front of it read back
+    // as 50000.
+    expect((cashOut as HTMLInputElement).value).toBe('');
+  });
+
+  it('keeps what was typed, without a leading zero', async () => {
+    await openSettlement();
+    const cashOut = amountFields()[1];
+
+    fireEvent.change(cashOut, { target: { value: '0' } });
+    fireEvent.change(cashOut, { target: { value: '5000' } });
+
+    expect((cashOut as HTMLInputElement).value).toBe('5000');
+  });
+
+  it('holds Auto Calculate shut while a field is blank', async () => {
+    await openSettlement();
+
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+
+    // The bug: a cleared field kept its key, so `uid in cashOutInputs` stayed
+    // true and this settled somebody at a zero they never agreed to.
+    fireEvent.change(amountFields()[3], { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeDisabled();
+  });
+
+  it('treats a deliberate zero as a real figure', async () => {
+    // Losing every chip is the most ordinary thing at a table. A typed 0 must
+    // count, even though a blank does not.
+    await openSettlement();
+
+    fireEvent.change(amountFields()[1], { target: { value: '10000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '0' } });
+
+    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+  });
+
+  it('sends the figures as numbers, not as the text that was typed', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await findPreview();
+    fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
+
+    await waitFor(() => {
+      expect(offlineSessionsApi.settleSession).toHaveBeenCalledWith('c1', 's1',
+        expect.objectContaining({
+          entries: expect.arrayContaining([
+            expect.objectContaining({ userId: 'host', cashOut: 8000 }),
+            expect.objectContaining({ userId: 'priya', cashOut: 2000 }),
+          ]),
+        }));
+    });
+  });
+});
