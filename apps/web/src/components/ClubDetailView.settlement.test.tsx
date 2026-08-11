@@ -525,7 +525,10 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // Not on the settlement screen: opening that freezes the table, and the
     // server refuses to set rules once it is frozen.
     expect(await screen.findByText(/no settlement rules yet/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /set tonight's rules/i })).toBeInTheDocument();
+    // "Set rules", not "Set tonight's rules": the band went from four lines to
+    // one so it would stop clipping the bottom row of seats, and the button
+    // shortened with it.
+    expect(screen.getByRole('button', { name: /^set rules$/i })).toBeInTheDocument();
   });
 
 
@@ -538,7 +541,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // The server refuses a second attempt, so a control still on screen would
     // be offering something that cannot happen.
     expect(screen.queryByText(/no settlement rules yet/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /set tonight's rules/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^set rules$/i })).not.toBeInTheDocument();
   });
 
   it('tells everyone at the table, players included', async () => {

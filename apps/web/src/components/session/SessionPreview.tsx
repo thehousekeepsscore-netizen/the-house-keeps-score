@@ -167,7 +167,16 @@ export const SessionPreview: React.FC = () => {
     : [];
 
   return (
-    <div className="min-h-screen bg-bg text-text">
+    /*
+       The club screen's own shell, not a taller one.
+
+       This was min-h-screen, which has no ceiling — so the felt could take
+       whatever height it liked and the harness always looked correct while the
+       real screen, which is h-[100dvh] overflow-hidden, clipped it. A debug
+       view whose flex chain differs from production cannot be used to judge a
+       layout, which is the one thing it exists for.
+    */
+    <div className="h-[100dvh] overflow-hidden flex flex-col bg-bg text-text">
       <LiveSession
         club={club}
         session={session}

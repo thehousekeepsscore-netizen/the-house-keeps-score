@@ -275,15 +275,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         not an administrative detail to them.
       */}
       {live && !night.settling && !session?.settlementRules && night.startedPlayingAt !== null && (
-        <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40">
-          <p className="text-sm text-text">No settlement rules yet</p>
-          <p className="mt-0.5 text-xs text-text-muted leading-relaxed">
-            This night began before rules were recorded against a session, so it has none of
-            its own. They have to be set before it can be settled.
+        <div className="shrink-0 mx-3 mb-2 px-3 py-2 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40 flex items-center gap-3">
+          {/* One line and a button, side by side. The full explanation ran to
+              four lines above the felt and cost 110px — enough to clip the
+              bottom row of seats on a 375x812 screen. Why a night has no rules
+              matters far less than that it needs some, and the sheet says the
+              rest at the moment it is actually being answered. */}
+          <p className="min-w-0 flex-1 text-xs text-text leading-snug">
+            <span className="text-text font-medium">No settlement rules yet.</span>{' '}
+            <span className="text-text-muted">Set them before this night can be settled.</span>
           </p>
           {isAdmin && onSetSettlementRules && (
-            <Button variant="primary" size="sm" fullWidth className="mt-2" onClick={onSetSettlementRules}>
-              Set tonight's rules
+            <Button variant="primary" size="sm" className="shrink-0" onClick={onSetSettlementRules}>
+              Set rules
             </Button>
           )}
         </div>
