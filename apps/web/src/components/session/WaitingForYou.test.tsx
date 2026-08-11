@@ -94,8 +94,9 @@ describe('the queue never moves the table', () => {
     const { container } = render(<WaitingForYou rows={rows(5)} formatAmount={fmt} />);
     const list = container.querySelector('ul')!;
     expect(list.className).toMatch(/overflow-y-auto/);
-    // Two cards' worth, and no more, whatever arrives.
-    expect(list.style.maxHeight).toBe('152px');
+    // Two cards' worth, and no more, whatever arrives. 64 a row since the
+    // queue was compacted — the padding went, the type sizes did not.
+    expect(list.style.maxHeight).toBe('128px');
   });
 
   it('does not cap itself when everything already fits', () => {

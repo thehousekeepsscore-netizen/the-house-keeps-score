@@ -275,15 +275,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         not an administrative detail to them.
       */}
       {live && !night.settling && !session?.settlementRules && night.startedPlayingAt !== null && (
-        <div className="shrink-0 mx-3 mb-3 px-4 py-2.5 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40">
-          <p className="text-sm text-text">No settlement rules yet</p>
-          <p className="mt-0.5 text-xs text-text-muted leading-relaxed">
-            This night began before rules were recorded against a session, so it has none of
-            its own. They have to be set before it can be settled.
+        <div className="shrink-0 mx-3 mb-2 px-3 py-2 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40 flex items-center gap-3">
+          {/* One line and a button, side by side. The full explanation ran to
+              four lines above the felt and cost 110px — enough to clip the
+              bottom row of seats on a 375x812 screen. Why a night has no rules
+              matters far less than that it needs some, and the sheet says the
+              rest at the moment it is actually being answered. */}
+          <p className="min-w-0 flex-1 text-xs text-text leading-snug">
+            <span className="text-text font-medium">No settlement rules yet.</span>{' '}
+            <span className="text-text-muted">Set them before this night can be settled.</span>
           </p>
           {isAdmin && onSetSettlementRules && (
-            <Button variant="primary" size="sm" fullWidth className="mt-2" onClick={onSetSettlementRules}>
-              Set tonight's rules
+            <Button variant="primary" size="sm" className="shrink-0" onClick={onSetSettlementRules}>
+              Set rules
             </Button>
           )}
         </div>
@@ -298,10 +302,27 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         </div>
       )}
 
-      {/* The elastic region. Each phase decides what inside it scrolls — the
-          feed while a night runs, the guest list while people are arriving —
-          because a scroller nested in a scroller eats the gesture. */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      {/*
+        The elastic region, and the one that must never spill.
+
+        The felt sits in a shrink-0 box inside this, so when the queue grows
+        this region's share of the screen shrinks and the table does not — it
+        overflowed, and rendered straight over the footer beneath. The footer's
+        translucent background is why that read as the Settle button sitting on
+        top of the table rather than as a layout bug.
+
+        overflow-y-auto is the whole fix, and it is deliberately not
+        overflow-hidden: clipping would cut the bottom row of seats off instead.
+        The table keeps its natural size at every screen and player count; when
+        there is genuinely not enough room — eighteen players and three
+        approvals on the shortest phone — the region scrolls and everything
+        below it stays where it is.
+
+        Each phase still decides what scrolls INSIDE it, because a scroller
+        nested in a scroller eats the gesture; this one only engages when the
+        content genuinely exceeds the space.
+      */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain">
         <Stage
           night={night}
           club={club}
@@ -424,11 +445,14 @@ const Header: React.FC<{
         count towards, so it is shown no clock at all. */}
     <NightClockLine clock={clock} />
 
+    {/* A status line, not a paragraph. The old copy explained the consequence
+        in a full sentence and wrapped to two lines on a 375px screen, pushing
+        the felt down to say something the dot and one word already say. It
+        stays in the header's own rhythm, beside the other reference figures. */}
     {connection !== 'live' && (
-      <p role="status" className="mt-1.5 text-xs text-warning">
-        {connection === 'offline'
-          ? "You're offline — this table may be out of date."
-          : 'Reconnecting — this table may be out of date.'}
+      <p role="status" className="mt-1 flex items-center gap-1.5 text-xs text-warning">
+        <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
+        {connection === 'offline' ? 'Offline — may be out of date' : 'Reconnecting…'}
       </p>
     )}
 

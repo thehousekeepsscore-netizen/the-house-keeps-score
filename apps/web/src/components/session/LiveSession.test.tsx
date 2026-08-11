@@ -99,7 +99,20 @@ describe('zone A — identity and vitals', () => {
 
   it('warns that the table may be stale when the socket drops', () => {
     renderScreen({ connection: 'reconnecting' });
-    expect(screen.getByRole('status')).toHaveTextContent(/out of date/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/reconnecting/i);
+  });
+
+  it('says it in one line, because it sits above the felt', () => {
+    // The old copy explained the consequence in a full sentence and wrapped to
+    // two lines on a 375px screen, pushing the table down to say something the
+    // dot and one word already say.
+    renderScreen({ connection: 'offline' });
+    expect(screen.getByRole('status')).toHaveTextContent(/^Offline — may be out of date$/);
+  });
+
+  it('says nothing at all while the socket is fine', () => {
+    renderScreen({ connection: 'live' });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
 
@@ -744,5 +757,55 @@ describe('the house take line', () => {
     expect(screen.queryByText(/house takes/i)).not.toBeInTheDocument();
     // That night gets the band asking for them instead.
     expect(screen.getByText(/no settlement rules yet/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The felt keeps its own space.
+ *
+ * The table sits in a shrink-0 box inside the elastic region. When the queue
+ * grew, that region's share of the screen shrank and the table did not — so it
+ * overflowed and rendered over the footer beneath it. The footer is
+ * translucent, which is why it read as the Settle button sitting on top of the
+ * table rather than as a layout fault.
+ *
+ * HONEST LIMIT: jsdom has no layout engine, so none of this can measure an
+ * overlap. What it pins is the mechanism — the region scrolls rather than
+ * spills, and the table is not the thing that gives way. Whether it LOOKS
+ * right on a 375px screen is a question for a browser, and this file cannot
+ * answer it.
+ */
+describe('the felt is never the thing that gives way', () => {
+  const busy = () =>
+    renderScreen(
+      { session: session({ activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(60) }) },
+      []
+    );
+
+  it('lets the elastic region scroll instead of overflowing the footer', () => {
+    busy();
+    // renderScreen returns the props it built, not the RTL result — so the
+    // tree is reached through the document rather than a container handle.
+    //
+    // Selected by the behaviour rather than by a class tuple, so re-ordering
+    // utility classes does not silently make this assert nothing.
+    const stage = [...document.body.querySelectorAll('div')].find(
+      (d) => d.className.includes('flex-1') && d.className.includes('overflow-y-auto')
+    );
+
+    expect(stage, 'the elastic region should scroll rather than spill').toBeDefined();
+    // Not hidden: clipping would cut the bottom row of seats off instead of
+    // letting the host reach them.
+    expect(stage?.className).not.toMatch(/overflow-hidden/);
+  });
+
+  it('keeps the table itself unshrinkable', () => {
+    busy();
+    const felt = screen.getByRole('group', { name: /at the table/i });
+
+    // Whatever else moves, the felt sits in a shrink-0 box — the hero does not
+    // absorb the cost of a busy queue.
+    const unshrinkable = felt.closest('div.shrink-0');
+    expect(unshrinkable, 'the felt should sit inside a shrink-0 container').not.toBeNull();
   });
 });
