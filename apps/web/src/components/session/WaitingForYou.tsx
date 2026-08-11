@@ -46,7 +46,15 @@ export interface WaitingRow extends QueuedRequest {
 }
 
 /** One row, and the region shows exactly two of them. Keep in step with the CSS. */
-const CARD_H = 76;
+/*
+ * A row's height, and the queue's whole vertical cost.
+ *
+ * 76 with the caption above it put a single pending request over 100px on the
+ * felt's doorstep — and the felt is what people are looking at. 64 keeps both
+ * lines at their existing sizes (15px name and figure, 12px tag) and takes the
+ * padding instead, which is what was actually spare.
+ */
+const CARD_H = 64;
 const VISIBLE_CARDS = 2;
 
 /** A tag, not a sentence. Same row in the database, different person to talk to. */
@@ -95,7 +103,7 @@ export const WaitingForYou: React.FC<{
       aria-label={`${rows.length} waiting for you`}
       className="furniture rounded-[var(--radius-lg)] overflow-hidden shrink-0"
     >
-      <h2 className="px-4 pt-2.5 pb-1 text-[10px] uppercase tracking-[0.18em] text-text-muted">
+      <h2 className="px-4 pt-2 pb-0.5 text-[10px] uppercase tracking-[0.18em] text-text-muted">
         Waiting for you
       </h2>
 
@@ -142,7 +150,7 @@ export const WaitingForYou: React.FC<{
               </div>
 
               {row.blockedReason ? (
-                <p className="w-[104px] shrink-0 text-right text-xs text-warning leading-tight">
+                <p className="max-w-[132px] shrink-0 text-right text-xs text-warning leading-tight">
                   {row.blockedReason}
                 </p>
               ) : (
