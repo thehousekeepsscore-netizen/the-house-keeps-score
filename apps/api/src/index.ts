@@ -7,7 +7,6 @@ import { describeSeedCredentialRisk } from "./lib/seedGuard.js";
 import { initSocket, disconnectAllSockets } from "./realtime/socket.js";
 // STOPPED alongside the Virtual Table route unmount in app.ts — see below.
 // import { sweepExpiredTurns } from "./modules/sessions/sessions.service.js";
-import { expireStaleRequests } from "./modules/offlineSessions/offlineSessions.service.js";
 
 const httpServer = createServer(app);
 initSocket(httpServer);
@@ -24,12 +23,8 @@ initSocket(httpServer);
 //   sweepExpiredTurns().catch((err) => console.error("Turn timeout sweep failed:", err));
 // }, 1000);
 
-// Auto-reject buy-in/sit-in/cash-out requests left un-actioned past their TTL.
-// The decide* paths enforce the deadline exactly on their own; this only keeps
-// the admin's queue honest and pushes the update to open clients.
-const sweepTimer = setInterval(() => {
-  expireStaleRequests().catch((err) => console.error("Stale request sweep failed:", err));
-}, 15_000);
+// A request waits until somebody decides it. The five-minute auto-reject sweep
+// that used to run here is gone — see the note in offlineSessions.service.ts.
 
 /**
  * Startup summary.
@@ -116,7 +111,6 @@ async function shutdown(signal: string) {
   // Do not let the backstop itself hold the event loop open.
   forceExit.unref();
 
-  clearInterval(sweepTimer);
 
   try {
     disconnectAllSockets();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveNight, msRemaining, REQUEST_TTL_MS, NightInput } from './night-state';
+import { deriveNight, waitingMs, REQUEST_TTL_MS, NightInput } from './night-state';
 import { PokerSession, BuyInRequest } from '../types';
 
 /**
@@ -386,16 +386,19 @@ describe('the queue', () => {
       session: session({ activePlayerUids: ['a'] }),
       buyIns: [buyIn({ userId: 'a', status: 'pending', createdAt: ago(4) })],
     });
-    // Four minutes gone of a five-minute window.
-    expect(night.queue[0].msRemaining).toBe(60_000);
+    // Four minutes waited. Nothing counts down any more — requests live until
+    // somebody decides them.
+    expect(night.queue[0].waitingMs).toBe(4 * 60_000);
   });
 
-  it('floors the countdown at zero rather than going negative', () => {
+  it('keeps counting up rather than stopping at any deadline', () => {
     const night = derive({
       session: session({ activePlayerUids: ['a'] }),
       buyIns: [buyIn({ userId: 'a', status: 'pending', createdAt: ago(9) })],
     });
-    expect(night.queue[0].msRemaining).toBe(0);
+    // Nine minutes. Under the old five-minute window this was 0 and the
+    // request was about to be auto-rejected; it is simply nine minutes old now.
+    expect(night.queue[0].waitingMs).toBe(9 * 60_000);
   });
 
   it('sorts a request with no timestamp last instead of first', () => {
@@ -411,21 +414,27 @@ describe('the queue', () => {
       buyIns: [buyIn({ userId: 'a', status: 'pending', createdAt: ago(1) })],
     });
     expect(night.queue.map((q) => q.kind)).toEqual(['buy-in', 'sit-in']);
-    expect(night.queue[1].msRemaining).toBeNull();
+    expect(night.queue[1].waitingMs).toBeNull();
   });
 });
 
-describe('msRemaining', () => {
+describe('waitingMs', () => {
   it('is null without a timestamp', () => {
-    expect(msRemaining(undefined, NOW)).toBeNull();
+    expect(waitingMs(undefined, NOW)).toBeNull();
   });
 
   it('is null for an unparseable timestamp', () => {
-    expect(msRemaining('not a date', NOW)).toBeNull();
+    expect(waitingMs('not a date', NOW)).toBeNull();
   });
 
-  it('is the full window at the moment of asking', () => {
-    expect(msRemaining(new Date(NOW).toISOString(), NOW)).toBe(REQUEST_TTL_MS);
+  it('is zero at the moment of asking', () => {
+    expect(waitingMs(new Date(NOW).toISOString(), NOW)).toBe(0);
+  });
+
+  it('never goes negative on a clock that disagrees', () => {
+    // A phone a few seconds ahead of the server would otherwise report a
+    // request as having been made in the future.
+    expect(waitingMs(new Date(NOW + 5_000).toISOString(), NOW)).toBe(0);
   });
 });
 

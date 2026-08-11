@@ -22,7 +22,7 @@ import { prisma } from '../../lib/prisma.js';
 vi.mock('../../realtime/socket.js', () => ({ emitToClub: () => {} }));
 
 const {
-  requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn,
+  requestBuyIn, decideBuyInRequest, requestCashOut, decideCashOut, requestSitIn, decideSitIn,
   amendCashOut, beginSettling, resumeNight, extendSession, removeFromLobby, startPlaying,
   settleSession,
 } = await import('./offlineSessions.service.js');
@@ -601,5 +601,85 @@ describe('settling a night that never started', () => {
     await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
     expect(session.status).not.toBe('active');
+  });
+});
+
+/**
+ * A request waits until somebody decides it.
+ *
+ * There was a five-minute deadline: an interval swept un-actioned requests into
+ * 'rejected', and each decide path re-checked the same deadline itself. A host
+ * who put the phone down to deal a hand came back to a queue that had quietly
+ * refused somebody's buy-in on their behalf — the player told no by a timer
+ * nobody set, and the only trace a rejected row nobody wrote.
+ *
+ * The window used to be five minutes, so every age below is well past it.
+ */
+describe('a pending request does not expire', () => {
+  const longAgo = (mins: number) => new Date(Date.now() - mins * 60_000);
+
+  it('is still pending an hour later', async () => {
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await prisma.buyInRequest.update({ where: { id: req.id }, data: { createdAt: longAgo(60) } });
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.status).toBe('pending');
+  });
+
+  it('can still be approved an hour later', async () => {
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await prisma.buyInRequest.update({ where: { id: req.id }, data: { createdAt: longAgo(60) } });
+
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.status).toBe('approved');
+    expect(row.approvedBy).toBe(ownerId);
+  });
+
+  it('can still be rejected an hour later, by a person rather than a clock', async () => {
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await prisma.buyInRequest.update({ where: { id: req.id }, data: { createdAt: longAgo(90) } });
+
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, false);
+
+    const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
+    expect(row.status).toBe('rejected');
+    // Named, not anonymous. The old sweep set approvedBy to null.
+    expect(row.approvedBy).toBe(ownerId);
+  });
+
+  it('leaves an old sit-in in the queue rather than dropping it', async () => {
+    await requestSitIn(sessionId, clubId, priyaId);
+    const before = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const state = before.engineState as Record<string, any>;
+    state.sitInRequestedAt = { [priyaId]: longAgo(45).toISOString() };
+    await prisma.pokerSession.update({ where: { id: sessionId }, data: { engineState: state as never } });
+
+    await decideSitIn(sessionId, clubId, ownerId, false, priyaId, true);
+
+    const after = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const s2 = after.engineState as Record<string, any>;
+    expect(s2.activePlayerUids).toContain(priyaId);
+    expect(s2.pendingSitInUids ?? []).not.toContain(priyaId);
+  });
+
+  it('leaves an old cash-out standing, so the count is still the player\'s', async () => {
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await requestCashOut(sessionId, clubId, priyaId, 7_400);
+
+    const before = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const state = before.engineState as Record<string, any>;
+    state.cashOuts = state.cashOuts.map((c: any) => ({ ...c, requestedAt: longAgo(75).toISOString() }));
+    await prisma.pokerSession.update({ where: { id: sessionId }, data: { engineState: state as never } });
+
+    await decideCashOut(sessionId, clubId, ownerId, false, priyaId, true);
+
+    const after = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const confirmed = ((after.engineState as Record<string, any>).cashOuts ?? [])
+      .find((c: any) => c.userId === priyaId);
+    expect(confirmed?.status).toBe('confirmed');
+    expect(confirmed?.amount).toBe(7_400);
   });
 });
