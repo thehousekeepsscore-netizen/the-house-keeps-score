@@ -650,6 +650,13 @@ describe('a pending request does not expire', () => {
   });
 
   it('leaves an old sit-in in the queue rather than dropping it', async () => {
+    // The shared fixture seats Priya already, and you cannot ask for a chair
+    // you are sitting in — so she stands up first.
+    const seated = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const seatedState = seated.engineState as Record<string, any>;
+    seatedState.activePlayerUids = (seatedState.activePlayerUids ?? []).filter((u: string) => u !== priyaId);
+    await prisma.pokerSession.update({ where: { id: sessionId }, data: { engineState: seatedState as never } });
+
     await requestSitIn(sessionId, clubId, priyaId);
     const before = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
     const state = before.engineState as Record<string, any>;
