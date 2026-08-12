@@ -117,7 +117,13 @@ floor, not a ceiling); or make it explicit and deterministic and say so.
 
 ## The ones about trusting the number on screen
 
-### 5. The client engine that produces the preview has no tests
+### 5. ~~The client engine that produces the preview has no tests~~ — FIXED
+
+**Fixed in PR #22.** The client copy now has 23 behavioural tests of its own,
+and a further 53 that run BOTH engines over the same inputs and compare their
+output field by field — including the full cross product of mismatch strategy,
+rake order, rounding rule and pot setting. A one-character change to either
+copy fails it. Left below as the record of what it was.
 
 `apps/web/src/lib/settlementEngine.ts` is a hand-maintained mirror of the API's
 copy. Both files carry comments saying so. But:
@@ -271,8 +277,7 @@ locally.
 
 ## Suggested order for Phase 2
 
-1. **Finding 5** — test the client engine, or stop having two. It undermines the
-   preview, which is the whole point of the workflow.
+1. ~~**Finding 5**~~ — done, see above.
 2. ~~**Finding 1**~~ — done, see above.
 3. **Finding 9** — a way to correct a locked figure without leaving settlement.
 4. **Findings 4, 11, 12** — ties, the split rake line, and input clamping. All
