@@ -1,7 +1,9 @@
-import React from 'react';
-import { QueuedRequest, REQUEST_TTL_MS } from '../../lib/night-state';
+import React, { useState } from 'react';
+import { Check, X, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { QueuedRequest } from '../../lib/night-state';
 import { PlayerAvatar } from './PlayerAvatar';
 import { Button } from '../ui/Button';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 /**
  * Things waiting for you.
@@ -89,6 +91,18 @@ export const WaitingForYou: React.FC<{
   rows: WaitingRow[];
   formatAmount: (n: number) => string;
 }> = ({ rows, formatAmount }) => {
+  /*
+   * Collapsed by default, because that is the state the queue spends its life
+   * in: a host glances at the felt, sees two names, and decides. The labelled
+   * buttons are a deliberate second gear for when a request needs reading
+   * rather than recognising.
+   *
+   * `confirm` is named to avoid window.confirm, which is what a bare
+   * `confirm(...)` would otherwise reach for if the hook ever went missing.
+   */
+  const [expanded, setExpanded] = useState(false);
+  const confirm = useConfirm();
+
   if (rows.length === 0) return null;
 
   const scrolls = rows.length > VISIBLE_CARDS;
@@ -101,9 +115,23 @@ export const WaitingForYou: React.FC<{
       aria-label={`${rows.length} waiting for you`}
       className="furniture rounded-[var(--radius-lg)] overflow-hidden shrink-0"
     >
-      <h2 className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-[0.18em] text-text-muted">
-        Waiting for you
-      </h2>
+      <div className="px-3 pt-1.5 pb-0.5 flex items-center gap-2">
+        <h2 className="text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          Awaiting approval
+        </h2>
+        <span className="text-[10px] font-semibold text-accent tabular-nums">{rows.length}</span>
+        {/* The toggle trades width for certainty: ticks are quicker to reach
+            and labels are harder to mistake, so the host picks which they are
+            in the mood for rather than the design picking for them. */}
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="ml-auto flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-text-muted hover:text-text cursor-pointer"
+        >
+          {expanded ? 'Collapse' : 'Expand'}
+          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+      </div>
 
       <ul
         // Two cards' worth, and the third onwards is reached by scrolling this
@@ -165,14 +193,66 @@ export const WaitingForYou: React.FC<{
               </div>
 
               {row.blockedReason ? (
-                <p className="max-w-[132px] shrink-0 text-right text-xs text-warning leading-tight">
-                  {row.blockedReason}
+                /* No tick at all, in either state. A control that looks live
+                   and is refused teaches the rule by refusing, and this is the
+                   one row where the reason is worth the width. */
+                <p
+                  title={row.blockedReason}
+                  className="max-w-[120px] shrink-0 flex items-center gap-1 text-right text-xs text-text-faint leading-tight"
+                >
+                  <Lock className="w-3 h-3 shrink-0" />
+                  <span className="min-w-0">Needs another admin</span>
                 </p>
+              ) : !expanded ? (
+                /* Compact, and never instant. A tick in a small target moves
+                   real money, so it asks first — the labelled buttons below
+                   already carry that weight in their own size and wording. */
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    aria-label={`Reject ${row.name}`}
+                    disabled={row.pending}
+                    onClick={() =>
+                      confirm({
+                        title: 'Reject this request?',
+                        description: `${row.name} · ${tagOf(row)}${
+                          row.amount !== undefined ? ` · ${formatAmount(row.amount)}` : ''
+                        }`,
+                        confirmLabel: 'Reject',
+                        onConfirm: row.onDismiss,
+                      })
+                    }
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-text-muted hover:text-warning disabled:opacity-40 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Approve ${row.name}`}
+                    disabled={row.pending}
+                    onClick={() =>
+                      confirm({
+                        title: 'Approve this request?',
+                        description: `${row.name} · ${tagOf(row)}${
+                          row.amount !== undefined ? ` · ${formatAmount(row.amount)}` : ''
+                        }`,
+                        confirmLabel: 'Approve',
+                        onConfirm: row.onApprove,
+                      })
+                    }
+                    className="w-9 h-9 rounded-full bg-accent text-accent-contrast flex items-center justify-center disabled:opacity-40 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
               ) : (
                 /* Approve is affirmative and expected, so it leads and carries
-                   the material. Dismissing is quieter and never the same
-                   weight — a mis-tap there is socially expensive at a real
-                   table, and the fix is hierarchy rather than an extra step. */
+                   the material. Rejecting is quieter and never the same weight —
+                   a mis-tap there is socially expensive at a real table, and the
+                   fix is hierarchy rather than an extra step.
+                
+                   These are labelled and deliberate, so they act directly; the
+                   ticks in the collapsed state are the ones that ask first. */
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="ghost"
@@ -181,7 +261,7 @@ export const WaitingForYou: React.FC<{
                     onClick={row.onDismiss}
                     className="whitespace-nowrap"
                   >
-                    Later
+                    Reject
                   </Button>
                   <Button
                     variant="primary"
@@ -198,6 +278,10 @@ export const WaitingForYou: React.FC<{
           );
         })}
       </ul>
+
+      {/* Lives here rather than at the screen: the queue owns the question, and
+          a dialog hoisted to a parent would need every row threaded up to it. */}
+      {confirm.dialog}
     </section>
   );
 };
