@@ -14,9 +14,14 @@ its edges, not its shape.
 
 ---
 
-## The one that leaks money
+## The one that leaked money
 
-### 1. Rake is collected even when there is no pot to collect it into
+### 1. ~~Rake is collected even when there is no pot to collect it into~~ — FIXED
+
+**Fixed in PR #21 (engine version 3).** `chargesRake` now requires `potEnabled`,
+so a club with charges configured and the pot switched off charges nobody, and
+the steps log says why instead of saying it afterwards. `sum(nets) + pot` is 0
+where it was −600. Left below as the record of what it was.
 
 `computeRake` runs whenever a rake is configured. `potContribution` is then
 forced to `0` if `potEnabled` is false — but the deduction has already been
@@ -268,7 +273,7 @@ locally.
 
 1. **Finding 5** — test the client engine, or stop having two. It undermines the
    preview, which is the whole point of the workflow.
-2. **Finding 1** — stop collecting rake with no pot. Real money, small fix.
+2. ~~**Finding 1**~~ — done, see above.
 3. **Finding 9** — a way to correct a locked figure without leaving settlement.
 4. **Findings 4, 11, 12** — ties, the split rake line, and input clamping. All
    small, all safe.

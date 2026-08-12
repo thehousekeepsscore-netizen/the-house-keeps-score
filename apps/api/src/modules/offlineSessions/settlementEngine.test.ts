@@ -290,3 +290,66 @@ describe('every combination of club rules keeps the books balanced', () => {
     }
   }
 });
+
+/**
+ * A house take with nowhere to go.
+ *
+ * The engine charged rake whenever a rake was configured, and credited the pot
+ * only when the pot was enabled. A club with charges set and potEnabled false
+ * therefore took the money off every player and gave it to nobody — it left
+ * the table. The steps log even said so, after the fact.
+ *
+ * This is the one arrangement where sum(nets) + pot came out non-zero, so the
+ * invariant every other case is checked against was the thing that would have
+ * caught it, had anything asked.
+ */
+describe('rake needs somewhere to go', () => {
+  const charged = { sessionRakeAmount: 300, winnersCutPercent: 10 };
+  const night = () => table(['win', 5000, 8000], ['lose', 5000, 2000]);
+
+  it('charges nobody when the pot is disabled', () => {
+    const r = computeSettlement(night(), rules({ ...charged, potEnabled: false }));
+
+    expect(r.players.every((p) => p.rakeDeduction === 0)).toBe(true);
+    expect(r.totalRakeCollected).toBe(0);
+    expect(r.potContribution).toBe(0);
+  });
+
+  it('keeps the books balanced, which is what it used to break', () => {
+    const r = computeSettlement(night(), rules({ ...charged, potEnabled: false }));
+
+    // 600 chips used to vanish here: 300 flat across two, plus 10% of the
+    // winner's 3,000, deducted from players and credited to no pot.
+    expectBooksBalance(r);
+    expectTableReconciles(r);
+  });
+
+  it('leaves every player with exactly what they won or lost', () => {
+    const r = computeSettlement(night(), rules({ ...charged, potEnabled: false }));
+
+    expect(r.players.find((p) => p.userId === 'win')?.netResult).toBe(3000);
+    expect(r.players.find((p) => p.userId === 'lose')?.netResult).toBe(-3000);
+  });
+
+  it('says why nothing was charged rather than charging quietly', () => {
+    const r = computeSettlement(night(), rules({ ...charged, potEnabled: false }));
+
+    expect(r.steps.some((st) => /Club Pot is disabled, so nothing was charged/.test(st.detail))).toBe(true);
+  });
+
+  it('still charges normally when the pot is enabled', () => {
+    const r = computeSettlement(night(), rules({ ...charged, potEnabled: true }));
+
+    // 300 a seat from two, plus 10% of the winner's 3,000.
+    expect(r.totalRakeCollected).toBeCloseTo(900, 6);
+    expect(r.potContribution).toBeCloseTo(900, 6);
+    expectBooksBalance(r);
+  });
+
+  it('says nothing at all when no rake was configured either way', () => {
+    const r = computeSettlement(night(), rules({ sessionRakeAmount: 0, winnersCutPercent: 0, potEnabled: false }));
+
+    expect(r.steps.some((st) => /nothing was charged/.test(st.detail))).toBe(false);
+    expectBooksBalance(r);
+  });
+});
