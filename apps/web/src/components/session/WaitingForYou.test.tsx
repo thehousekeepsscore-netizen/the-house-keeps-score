@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WaitingForYou, WaitingRow } from './WaitingForYou';
 
@@ -86,9 +86,10 @@ describe('every row is a person', () => {
     expect(tagLine(/(^|\s)Cash out •/)).toBeInTheDocument();
     expect(screen.getByText('7,200')).toBeInTheDocument();
     // One verb across all three kinds. The host is answering the same question
-    // every time — yes or not yet — and three different words for "yes" made
-    // them read the card to find out which button they were about to press.
-    expect(screen.getByRole('button', { name: /^approve$/i })).toBeInTheDocument();
+    // every time — yes or no — and three different words for "yes" made them
+    // read the card to find out which button they were about to press. The
+    // collapsed control says it in its label rather than its face.
+    expect(screen.getByRole('button', { name: /^approve arjun$/i })).toBeInTheDocument();
   });
 });
 
@@ -190,7 +191,8 @@ describe('blocked actions', () => {
         formatAmount={fmt}
       />
     );
-    expect(screen.getByText(/another admin needs to approve/i)).toBeInTheDocument();
+    // Short enough for the collapsed row, with the full reason on hover.
+    expect(screen.getByText(/needs another admin/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
   });
 });
@@ -204,16 +206,72 @@ describe('the empty queue', () => {
   });
 });
 
+/**
+ * Collapsed by default, so the icon controls are what a host meets first.
+ *
+ * They are small and they move money, so they ask before they act — the
+ * labelled buttons in the expanded state are the ones that carry that weight
+ * in their own size and wording, and act directly.
+ */
+const expand = () => fireEvent.click(screen.getByRole('button', { name: /expand/i }));
+
 describe('acting on a row', () => {
-  it('approves and dismisses the person it names', async () => {
+  it('acts on the person it names, from the labelled buttons', async () => {
     const onApprove = vi.fn();
     const onDismiss = vi.fn();
     render(<WaitingForYou rows={[row({ onApprove, onDismiss })]} formatAmount={fmt} />);
+    expand();
 
-    await userEvent.click(screen.getByRole('button', { name: /approve/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
     expect(onApprove).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByRole('button', { name: /later/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^reject$/i }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before a tick moves money', async () => {
+    const onApprove = vi.fn();
+    render(<WaitingForYou rows={[row({ name: 'Priya', onApprove })]} formatAmount={fmt} />);
+
+    // Collapsed by default. The tick is a small target on a scrolling list, so
+    // it opens the question rather than answering it.
+    await userEvent.click(screen.getByRole('button', { name: /approve priya/i }));
+    expect(onApprove).not.toHaveBeenCalled();
+
+    expect(screen.getByText(/approve this request\?/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    expect(onApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before a cross refuses one, and does nothing if cancelled', async () => {
+    const onDismiss = vi.fn();
+    render(<WaitingForYou rows={[row({ name: 'Priya', onDismiss })]} formatAmount={fmt} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /reject priya/i }));
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('names the figure in the question, so it is not approved blind', async () => {
+    render(<WaitingForYou rows={[row({ name: 'Priya', amount: 5000 })]} formatAmount={fmt} />);
+    await userEvent.click(screen.getByRole('button', { name: /approve priya/i }));
+
+    expect(screen.getByText(/Priya · Join table · 5,000/)).toBeInTheDocument();
+  });
+
+  it('offers no tick at all when this admin cannot approve it', () => {
+    render(
+      <WaitingForYou
+        rows={[row({ name: 'Priya', blockedReason: 'Another admin needs to approve this one.' })]}
+        formatAmount={fmt}
+      />
+    );
+
+    // Not a disabled tick — none. A control that exists to be refused teaches
+    // the rule by refusing.
+    expect(screen.queryByRole('button', { name: /approve priya/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reject priya/i })).not.toBeInTheDocument();
   });
 });
