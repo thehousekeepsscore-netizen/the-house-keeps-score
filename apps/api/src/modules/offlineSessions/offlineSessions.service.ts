@@ -377,135 +377,26 @@ function clearCashOutFor(state: OfflineEngineState, userId: string): OfflineEngi
   return { ...state, cashOuts: state.cashOuts.filter((c) => c.userId !== userId) };
 }
 
-// A request an admin hasn't acted on within this window is auto-rejected. It
-// applies to the three at-the-table request types only — buy-in, sit-in and
-// cash-out — where a stale request misrepresents the live table. Club join
-// requests and edit-approval requests deliberately never expire: nobody is
-// waiting at a table for those, and an owner who is offline for five minutes
-// would otherwise reject every one of them.
-export const REQUEST_TTL_MS = 5 * 60 * 1000;
-
-
-export function isRequestExpired(requestedAt: Date | string | undefined, now = Date.now()): boolean {
-  if (!requestedAt) return false; // no timestamp recorded — never expire it
-  const t = requestedAt instanceof Date ? requestedAt.getTime() : Date.parse(requestedAt);
-  return Number.isFinite(t) && now - t > REQUEST_TTL_MS;
-}
-
-/**
- * Auto-rejects every at-the-table request that has outlived REQUEST_TTL_MS.
+/*
+ * A request waits until somebody decides it.
  *
- * The decide* paths each re-check expiry themselves, so this is not what makes
- * expiry correct — it is what makes it *visible*: it clears dead rows out of
- * the admin's queue and emits the same events a real decision would, so open
- * clients update without a reload. Safe to call on an interval and safe to run
- * concurrently with a real decision, since every write is narrowed to rows
- * that are still pending.
+ * There was a five-minute deadline here: an interval swept un-actioned
+ * buy-ins, sit-ins and cash-outs into 'rejected', and each decide path
+ * re-checked the same deadline to close the gap between a request expiring and
+ * being swept.
  *
- * Assumes a single API process. With more than one, run it on only one of them
- * (or move to a scheduler) or each instance will emit duplicate events.
+ * It was the wrong model for the room. A host puts the phone down to deal, or
+ * counts a stack, or argues about a hand — and comes back to a queue that has
+ * quietly rejected somebody's buy-in on their behalf. The player is told no by
+ * a timer nobody set, and the only trace is a rejected row nobody wrote.
+ * Requests are not perishable; the answer is just sometimes slow.
+ *
+ * So a pending request now lives until it is decided. Approving it, rejecting
+ * it, or the night ending are the only things that take one out of the queue.
+ *
+ * Club join requests and edit-approval requests never expired even under the
+ * old rule, for the same reason applied to a longer timescale.
  */
-export async function expireStaleRequests(now = Date.now()) {
-  const cutoff = new Date(now - REQUEST_TTL_MS);
-  let expiredBuyIns = 0;
-  let expiredSitIns = 0;
-  let expiredCashOuts = 0;
-
-  // Buy-ins live in their own table, so they expire in one statement. Grab the
-  // ids first — the update itself can't tell us which rows it touched.
-  // Whole rows, not just ids: the expiry event now carries the rejected row so
-  // clients can patch it in place instead of refetching the session to learn
-  // what a sweep they were not part of did.
-  const staleBuyIns = await prisma.buyInRequest.findMany({
-    where: { status: 'pending', createdAt: { lt: cutoff } },
-  });
-  if (staleBuyIns.length > 0) {
-    await prisma.buyInRequest.updateMany({
-      where: { id: { in: staleBuyIns.map((r) => r.id) }, status: 'pending' },
-      data: { status: 'rejected' },
-    });
-    expiredBuyIns = staleBuyIns.length;
-    for (const r of staleBuyIns) {
-      emitToClub(r.clubId, 'club:buyin-decided', {
-        sessionId: r.sessionId, requestId: r.id, userId: r.userId, approve: false, expired: true,
-        request: { ...r, status: 'rejected' },
-      });
-    }
-  }
-
-  // Sit-ins and cash-outs are engineState fields, so they need a read/modify/
-  // write per active session.
-  const sessions = await prisma.pokerSession.findMany({
-    where: { status: 'active' },
-    select: { id: true, clubId: true, engineState: true },
-  });
-
-  for (const session of sessions) {
-    const state = session.engineState as unknown as OfflineEngineState;
-
-    const deadSitIns = (state.pendingSitInUids || []).filter((uid) =>
-      isRequestExpired(state.sitInRequestedAt?.[uid], now)
-    );
-    const deadCashOuts = (state.cashOuts || []).filter(
-      (c) => c.status === 'pending' && isRequestExpired(c.requestedAt, now)
-    );
-    if (deadSitIns.length === 0 && deadCashOuts.length === 0) continue;
-
-    const pendingSitInUids = (state.pendingSitInUids || []).filter((uid) => !deadSitIns.includes(uid));
-    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
-    deadSitIns.forEach((uid) => delete sitInRequestedAt[uid]);
-    // Rejecting a cash-out drops it entirely, same as decideCashOut does, so
-    // the player can re-count and ask again.
-    const deadCashOutUids = new Set(deadCashOuts.map((c) => c.userId));
-    const cashOuts = (state.cashOuts || []).filter((c) => !deadCashOutUids.has(c.userId));
-
-    // Under the same lock as every other writer. The sweep runs on an interval,
-    // so without it a request expiring at the moment an admin approves it can
-    // put back a seat list taken before that approval landed — and the sweep is
-    // the one writer nobody is watching when it happens.
-    //
-    // Re-derived inside the lock rather than reusing the scan above: the scan
-    // is a snapshot, and by now somebody may have decided one of these.
-    const { session: sweptSession } = await mutateSessionState(session.id, async (fresh) => {
-      const stillDeadSitIns = (fresh.pendingSitInUids || []).filter((uid) =>
-        isRequestExpired(fresh.sitInRequestedAt?.[uid], now)
-      );
-      const stillDeadCashOuts = new Set(
-        (fresh.cashOuts || [])
-          .filter((c) => c.status === 'pending' && isRequestExpired(c.requestedAt, now))
-          .map((c) => c.userId)
-      );
-      const nextSitIns = (fresh.pendingSitInUids || []).filter((uid) => !stillDeadSitIns.includes(uid));
-      const nextRequestedAt = { ...(fresh.sitInRequestedAt || {}) };
-      stillDeadSitIns.forEach((uid) => delete nextRequestedAt[uid]);
-      return {
-        state: {
-          ...fresh,
-          pendingSitInUids: nextSitIns,
-          sitInRequestedAt: nextRequestedAt,
-          cashOuts: (fresh.cashOuts || []).filter((c) => !stillDeadCashOuts.has(c.userId)),
-        },
-        result: null,
-      };
-    });
-    void pendingSitInUids; void sitInRequestedAt; void cashOuts;
-
-    for (const uid of deadSitIns) {
-      emitToClub(session.clubId, 'club:sitin-decided', {
-        sessionId: session.id, userId: uid, approved: false, expired: true, session: sweptSession,
-      });
-    }
-    for (const c of deadCashOuts) {
-      emitToClub(session.clubId, 'club:cashout-decided', {
-        sessionId: session.id, userId: c.userId, approved: false, expired: true, session: sweptSession,
-      });
-    }
-    expiredSitIns += deadSitIns.length;
-    expiredCashOuts += deadCashOuts.length;
-  }
-
-  return { expiredBuyIns, expiredSitIns, expiredCashOuts };
-}
 
 export interface StartSessionInput {
   sessionType: 'OFFLINE' | 'LAZY_DEALER';
@@ -620,7 +511,6 @@ export async function decideSitIn(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  let expired = false;
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
@@ -635,14 +525,6 @@ export async function decideSitIn(
     const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
     delete sitInRequestedAt[userId];
 
-    // Checked at decision time as well as by the sweep: the sweep runs on an
-    // interval, so without this an admin could still approve a request in the
-    // gap after it expired but before it was swept.
-    if (isRequestExpired(state.sitInRequestedAt?.[userId])) {
-      expired = true;
-      return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: null };
-    }
-
     // Only an approval seats them, so only an approval voids an earlier cash-out.
     const nextState = approve ? clearCashOutFor(state, userId) : state;
     const activePlayerUids = approve
@@ -655,12 +537,6 @@ export async function decideSitIn(
     };
   });
 
-  if (expired) {
-    emitToClub(clubId, 'club:sitin-decided', {
-      sessionId, userId, approved: false, expired: true, session,
-    });
-    throw new HttpError(409, 'That sit-in request expired before it was approved');
-  }
 
   emitToClub(clubId, 'club:sitin-decided', { sessionId, userId, approved: approve, session });
   return session;
@@ -1102,18 +978,11 @@ export async function decideCashOut(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  let expired = false;
 
   const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
     const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
     if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
-
-    // Same reasoning as decideSitIn: close the window between expiry and sweep.
-    if (isRequestExpired(entry.requestedAt)) {
-      expired = true;
-      return { state: clearCashOutFor(state, userId), result: null };
-    }
 
     // Money moving requires a second pair of eyes, exactly as a buy-in does. A
     // player who is also an admin standing themselves up is still the author of
@@ -1142,12 +1011,6 @@ export async function decideCashOut(
     return { state: { ...state, cashOuts, activePlayerUids }, result: null };
   });
 
-  if (expired) {
-    emitToClub(clubId, 'club:cashout-decided', {
-      sessionId, userId, approved: false, expired: true, session,
-    });
-    throw new HttpError(409, 'That cash-out request expired before it was confirmed — ask the player to re-count');
-  }
 
   emitToClub(clubId, 'club:cashout-decided', { sessionId, userId, approved: approve, session });
   return session;
@@ -1256,8 +1119,6 @@ export async function decideBuyInRequest(
   const club = await clubsService.getClubOrThrow(session.clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  let expired: { userId: string; request: unknown } | null = null;
-
   /*
    * Everything that decides the request happens inside the lock.
    *
@@ -1277,16 +1138,6 @@ export async function decideBuyInRequest(
       const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
       if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
       if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');
-
-      // Same reasoning as decideSitIn: close the window between expiry and sweep.
-      if (isRequestExpired(req.createdAt)) {
-        const expiredRow = await tx.buyInRequest.update({
-          where: { id: requestId },
-          data: { status: 'rejected', approvedBy: null },
-        });
-        expired = { userId: req.userId, request: expiredRow };
-        return { state, result: { req, decided: expiredRow } };
-      }
 
       if (approve) {
         await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount, tx);
@@ -1319,14 +1170,6 @@ export async function decideBuyInRequest(
 
   // Emitted after the commit, never inside it: an event sent from within a
   // transaction is a claim about state that may still roll back.
-  if (expired) {
-    emitToClub(session.clubId, 'club:buyin-decided', {
-      sessionId, requestId, userId: (expired as any).userId, approve: false, expired: true,
-      request: (expired as any).request,
-    });
-    throw new HttpError(409, 'That buy-in request expired before it was approved');
-  }
-
   emitToClub(session.clubId, 'club:buyin-decided', {
     sessionId, requestId, userId: result.req.userId, approve, request: result.decided,
   });

@@ -54,7 +54,7 @@ export interface WaitingRow extends QueuedRequest {
  * lines at their existing sizes (15px name and figure, 12px tag) and takes the
  * padding instead, which is what was actually spare.
  */
-const CARD_H = 64;
+const CARD_H = 56;
 const VISIBLE_CARDS = 2;
 
 /** A tag, not a sentence. Same row in the database, different person to talk to. */
@@ -65,26 +65,24 @@ function tagOf(row: WaitingRow): string {
 }
 
 /**
- * How long they have been waiting — and, at the end, how long is left.
+ * How long they have been waiting.
  *
- * Age is the right thing to show for almost the whole life of a request: it is
- * the social fact ("Arjun asked two minutes ago"), and a ticking deadline on
- * every row would make an ordinary queue look like an emergency.
+ * Age, and only age. There used to be a countdown for the last minute before a
+ * five-minute auto-reject — that deadline is gone, so a request that has been
+ * sitting a while is a social fact, not an emergency: somebody asked, and
+ * nobody has answered yet.
  *
- * The last minute is different. The server auto-rejects at five minutes and the
- * request simply disappears, so for that final stretch the honest reading is
- * the one that says it is about to.
+ * It stops counting up at an hour. Past that the number stops being
+ * information and starts being an accusation, and the row already says the
+ * only thing that matters — this is still waiting.
  */
 function waited(row: WaitingRow): { text: string; urgent: boolean } | null {
-  if (row.msRemaining === null) return null;
+  if (row.waitingMs === null) return null;
 
-  if (row.msRemaining <= 60_000) {
-    return { text: `expires in ${Math.max(0, Math.ceil(row.msRemaining / 1000))}s`, urgent: true };
-  }
-
-  const ageMs = Math.max(0, REQUEST_TTL_MS - row.msRemaining);
-  const mins = Math.floor(ageMs / 60_000);
-  return { text: mins < 1 ? 'just now' : `${mins}m`, urgent: false };
+  const mins = Math.floor(row.waitingMs / 60_000);
+  if (mins < 1) return { text: 'just now', urgent: false };
+  if (mins < 60) return { text: `${mins}m`, urgent: mins >= 10 };
+  return { text: 'over an hour', urgent: true };
 }
 
 export const WaitingForYou: React.FC<{
@@ -103,7 +101,7 @@ export const WaitingForYou: React.FC<{
       aria-label={`${rows.length} waiting for you`}
       className="furniture rounded-[var(--radius-lg)] overflow-hidden shrink-0"
     >
-      <h2 className="px-4 pt-2 pb-0.5 text-[10px] uppercase tracking-[0.18em] text-text-muted">
+      <h2 className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-[0.18em] text-text-muted">
         Waiting for you
       </h2>
 
@@ -120,31 +118,48 @@ export const WaitingForYou: React.FC<{
             <li
               key={row.id}
               style={{ height: CARD_H }}
-              className="px-3 flex items-center gap-2.5 border-t border-line/30 first:border-t-0"
+              className="px-3 flex items-center gap-2 border-t border-line/30 first:border-t-0"
             >
               <PlayerAvatar userId={row.userId} name={row.name} photoUrl={row.avatarUrl} size={30} />
 
               <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <p className="min-w-0 flex-1 text-[15px] font-semibold text-text truncate leading-tight">
-                    {row.name}
-                  </p>
-                  {row.amount !== undefined && (
-                    <p className="text-[15px] text-accent tabular-nums shrink-0 leading-tight">
-                      {formatAmount(row.amount)}
-                    </p>
-                  )}
-                </div>
+                {/*
+                  The name gets the room, and the figure gets out of its way.
+                
+                  Both sat on one flex line with the amount shrink-0, so a wide
+                  figure ate the name's width and "Rajen Shah" came back as
+                  "Raje". The amount is a fixed shape — it is always short and
+                  always tabular — so it belongs beside the TAG on the line
+                  below, where nothing competes with it, and the name gets the
+                  whole width to itself.
+                
+                  title carries the full name for anyone who still meets the
+                  ellipsis on a very narrow screen.
+                */}
+                <p
+                  title={row.name}
+                  className="text-[15px] font-semibold text-text truncate leading-tight"
+                >
+                  {row.name}
+                </p>
 
-                <p className="mt-0.5 text-xs text-text-muted truncate leading-tight">
-                  {tagOf(row)}
+                <p className="mt-0.5 flex items-baseline gap-2 text-xs text-text-muted leading-tight">
+                  {row.amount !== undefined && (
+                    <span className="text-[13px] font-semibold text-accent tabular-nums shrink-0">
+                      {formatAmount(row.amount)}
+                    </span>
+                  )}
+                  {/* The tag gives way before the age does. "More chips" is
+                      guessable from context and the figure beside it; how long
+                      somebody has been waiting is the part a host cannot
+                      reconstruct, so it never truncates. */}
+                  <span className="min-w-0 truncate">{tagOf(row)}</span>
                   {age && (
-                    <>
-                      {' • '}
-                      <span className={age.urgent ? 'text-warning tabular-nums' : 'tabular-nums'}>
-                        {age.text}
-                      </span>
-                    </>
+                    <span
+                      className={`shrink-0 tabular-nums ${age.urgent ? 'text-warning' : ''}`}
+                    >
+                      • {age.text}
+                    </span>
                   )}
                 </p>
               </div>

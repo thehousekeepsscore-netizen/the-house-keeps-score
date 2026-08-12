@@ -82,13 +82,13 @@ export const TablePreview: React.FC = () => {
   // the feature and it has to be read, not asserted.
   const waiting: WaitingRow[] = [
     { id: 'w1', kind: 'buy-in', userId: 'u1', joining: true, amount: 5000,
-      msRemaining: 4 * 60_000 + 12_000, name: 'Priya', onApprove: () => {}, onDismiss: () => {} },
+      waitingMs: 48_000, name: 'Priya', onApprove: () => {}, onDismiss: () => {} },
     { id: 'w2', kind: 'buy-in', userId: 'u2', joining: false, amount: 3000,
-      msRemaining: 2 * 60_000, name: 'Rahul', onApprove: () => {}, onDismiss: () => {} },
+      waitingMs: 3 * 60_000, name: 'Rahul', onApprove: () => {}, onDismiss: () => {} },
     { id: 'w3', kind: 'cash-out', userId: 'u3', joining: false, amount: 7200,
-      msRemaining: 47_000, name: 'Arjun', onApprove: () => {}, onDismiss: () => {} },
+      waitingMs: 4 * 60_000 + 13_000, name: 'Arjun', onApprove: () => {}, onDismiss: () => {} },
     { id: 'w4', kind: 'buy-in', userId: 'u4', joining: false, amount: 3000,
-      msRemaining: 3 * 60_000, name: 'You',
+      waitingMs: 2 * 60_000, name: 'You',
       blockedReason: 'Another admin needs to approve this one.',
       onApprove: () => {}, onDismiss: () => {} },
   ];

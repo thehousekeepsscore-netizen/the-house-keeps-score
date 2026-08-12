@@ -71,6 +71,12 @@ export type QueueKind = 'buy-in' | 'sit-in' | 'cash-out';
  * authority — this copy exists so the screen can show the countdown, and it
  * must never claim a request is dead before the server says so.
  */
+/**
+ * @deprecated Requests no longer expire — see offlineSessions.service.ts.
+ *
+ * Kept only because removing it is a wider change than this one; nothing in the
+ * queue reads it any more, and a request lives until somebody decides it.
+ */
 export const REQUEST_TTL_MS = 5 * 60 * 1000;
 
 export interface QueuedRequest {
@@ -90,7 +96,14 @@ export interface QueuedRequest {
   amount?: number;
   requestedAt?: string;
   /** Milliseconds until the server will auto-reject. Null when unknown. */
-  msRemaining: number | null;
+  /**
+   * How long this has been waiting, in ms. Null when no time was recorded.
+   *
+   * Was time REMAINING against a five-minute deadline. There is no deadline
+   * now, so the honest figure is the one a host actually wants: how long
+   * somebody has been standing there.
+   */
+  waitingMs: number | null;
 }
 
 export interface Seat {
@@ -174,11 +187,11 @@ export interface NightInput {
 }
 
 /** Null rather than a negative number when there is no timestamp to count from. */
-export function msRemaining(requestedAt: string | undefined, now: number): number | null {
+export function waitingMs(requestedAt: string | undefined, now: number): number | null {
   if (!requestedAt) return null;
   const t = Date.parse(requestedAt);
   if (!Number.isFinite(t)) return null;
-  return Math.max(0, t + REQUEST_TTL_MS - now);
+  return Math.max(0, now - t);
 }
 
 export function deriveNight(input: NightInput): Night {
@@ -330,7 +343,7 @@ export function deriveNight(input: NightInput): Night {
       joining: !activeUids.includes(r.userId),
       amount: r.amount,
       requestedAt: r.createdAt,
-      msRemaining: msRemaining(r.createdAt, now),
+      waitingMs: waitingMs(r.createdAt, now),
     })),
     ...pendingSitInUids.filter(mine).map((userId) => {
       const requestedAt = session.sitInRequestedAt?.[userId];
@@ -340,7 +353,7 @@ export function deriveNight(input: NightInput): Night {
         userId,
         joining: true,
         requestedAt,
-        msRemaining: msRemaining(requestedAt, now),
+        waitingMs: waitingMs(requestedAt, now),
       };
     }),
     ...pendingCashOuts.filter((c) => mine(c.userId)).map((c) => ({
@@ -350,7 +363,7 @@ export function deriveNight(input: NightInput): Night {
       joining: false,
       amount: c.amount,
       requestedAt: c.requestedAt,
-      msRemaining: msRemaining(c.requestedAt, now),
+      waitingMs: waitingMs(c.requestedAt, now),
     })),
   ].sort((a, b) => {
     // Oldest first. All three kinds share one TTL, so this is also

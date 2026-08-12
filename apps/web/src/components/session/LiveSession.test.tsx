@@ -531,7 +531,7 @@ describe('the table on hold', () => {
         waiting: [
           {
             id: 'q1', kind: 'buy-in', userId: 'priya', joining: false, amount: 3000,
-            requestedAt: ago(1), msRemaining: 4 * 60_000, name: 'Priya',
+            requestedAt: ago(1), waitingMs: 4 * 60_000, name: 'Priya',
             onApprove: vi.fn(), onDismiss: vi.fn(),
           },
         ],
