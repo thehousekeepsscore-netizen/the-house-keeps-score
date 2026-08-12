@@ -45,8 +45,12 @@ export type RoundingRule = 'NONE' | 'NEAREST_1' | 'NEAREST_5' | 'NEAREST_10';
  *       different per-head charges depending on how many sat down. Nights
  *       settled under version 1 keep their figures; this only decides what a
  *       night settled from here on is charged.
+ *   3 — rake is no longer charged when the Club Pot is disabled. It used to be
+ *       deducted from every player and credited to nobody, so the money left
+ *       the table: sum(nets) + pot came out negative by exactly the take. Only
+ *       affects clubs that had charges configured with the pot switched off.
  */
-export const SETTLEMENT_ENGINE_VERSION = 2;
+export const SETTLEMENT_ENGINE_VERSION = 3;
 
 export interface SettlementSettings {
   /**
@@ -444,7 +448,29 @@ export function computeSettlement(
     totalRakeCollected = working.reduce((s, p) => s + p.rakeDeduction, 0);
   };
 
-  const chargesRake = (settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0;
+  /*
+   * No pot, no rake. Both halves, or neither.
+   *
+   * This read only the two rake figures, so a club with charges configured and
+   * potEnabled false took the money off every player and credited it to
+   * nobody: potContribution is forced to 0 below, and the difference simply
+   * left the table. On a two-player night at a flat 300 and a 10% cut that was
+   * 600 chips gone, with sum(nets) = -600 — every other path in this engine
+   * holds sum(nets) + pot = 0.
+   *
+   * The steps log already claimed this was what happened ("Club Pot is
+   * disabled — no balance was updated"). It said so after taking the money.
+   */
+  const chargesRake =
+    (settings.potEnabled ?? false) &&
+    ((settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0);
+
+  if (!chargesRake && ((settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0)) {
+    steps.push({
+      step: 'Rake',
+      detail: 'Club Pot is disabled, so nothing was charged — a house take with nowhere to go would leave the table without reaching anyone.',
+    });
+  }
   if (settings.rakeOrder === 'RAKE_FIRST') {
     if (chargesRake) runRake();
     runMismatch();
