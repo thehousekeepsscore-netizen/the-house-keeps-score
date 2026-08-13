@@ -20,7 +20,7 @@ What the night used to say is reachable, by an authorised user, through a
 change history — the way you reach a file's previous versions, not the way you
 read two files side by side.
 
-Two consequences of that choice are load-bearing everywhere below:
+Three consequences of that choice are load-bearing everywhere below:
 
 **Recalculation is always from inputs, never from outputs.** A correction
 replays `stored inputs → chosen engine version → chosen rules → new
@@ -33,6 +33,18 @@ column (§13.1).
 the overwrite does not happen.** With nothing competing on screen, the revision
 log is the *only* surviving record of what the night used to say. It stops
 being documentation and becomes the recovery path. §13 is about what that costs.
+
+**Nothing is overwritten that was not approved digit for digit.** Every
+correction — a single night or fifty — carries a **preview digest** computed
+from the exact inputs, rules, engine version and per-player outputs that will
+be written. Approval means *"I approve this exact recalculation."* At execution
+the server replays and recomputes the digest; if it does not match, the
+operation **aborts**. A stale approval never lands (§7).
+
+Recovery is therefore not a feature of this design, it is a **precondition of
+it**. The revision log, the digest gate and the invariant harness are the three
+things that make deliberately overwriting financial data defensible, and none
+of them is optional or deferrable.
 
 ---
 
@@ -369,6 +381,13 @@ a delta applied to the old outputs — a full recompute from inputs, which is
 what makes the operation idempotent and what stops a second correction from
 compounding the first.
 
+**Digest:** the request carries a `previewDigest` over the exact recalculation
+it is asking for, and execution re-verifies it (§7). A single-night edit is not
+exempt — it is the *first* path where the gate runs, and the one that proves it.
+
+**Flow:** `request → preview → digest → second-admin approval → verify digest →
+overwrite → audit`, all of the last four inside one transaction.
+
 **Balance reversal/reapplication:** the pot moves by `-ledger.net` then by the
 new contribution, exactly as `applySessionChange` does today. Player balances
 are derived from records, so they follow the overwrite with no separate step.
@@ -434,53 +453,123 @@ how an unnoticed rule change becomes a month of restated results.
 
 ---
 
-## 7. Approval for retroactive changes
+## 7. Approval, and the preview digest
+
+**This section governs every overwrite**, single-night or bulk. The digest is
+not a feature of the retroactive path that the bank edit happens to reuse — it
+is the gate, and both paths go through it.
+
+### What the approver is approving
+
+Not "a correction to Tuesday". A **specific set of numbers**, fixed at the
+moment they looked at it.
 
 ```
-RetroRuleApplication
+previewDigest = H(
+  recordId, recordType,
+  baseRevision,                  the revision being replaced
+  engineVersion,                 the version that will run
+  ruleSnapshot,                  all 11 settings, canonically ordered
+  inputs,                        per player: buyIn, cashOut, and ORDER
+  outputs,                       per player: net, seatFee, winnersCut, isWinner
+  totals
+)
+```
+
+For a bulk application, the digest is over the ordered list of per-record
+digests plus the selection itself, so adding or removing a night invalidates it
+as surely as changing one.
+
+Three details are deliberate:
+
+- **`outputs`, not `totals`.** Two different distributions can share a total.
+  The approver approved who pays what, not how much moved.
+- **`inputs`, including participant order.** `TOP_N` ties turn on it (§3), so a
+  reordering is a different recalculation even when every figure is identical.
+- **`baseRevision`.** The digest is a claim about *replacing a specific state*.
+  If the record has moved on, the approval was for a world that no longer
+  exists.
+
+### The gate
+
+```
+preview   → compute result, derive digest, store on the request
+approve   → a second admin sees those exact figures and accepts them
+execute   → REPLAY AGAIN from scratch, recompute the digest,
+            compare, and abort the transaction on any difference
+```
+
+Execution never trusts the stored preview. It recomputes from the record's
+current state and checks that it lands on the same numbers. So the digest
+catches everything that could have shifted underneath a pending approval:
+
+| Changed between preview and execution | Caught by |
+|---|---|
+| Someone edited the night's bank | `inputs`, `baseRevision` |
+| Another correction was applied first | `baseRevision` |
+| A new club rule version was created | `ruleSnapshot` |
+| The night was migrated to another engine version | `engineVersion` |
+| The engine's arithmetic changed within a version | `outputs` — and golden fixtures (§1) should have failed CI first |
+| A night was added to or removed from a bulk selection | the selection hash |
+
+An adjustment being marked settled (§10) touches no term, and correctly does
+not invalidate anything.
+
+**On mismatch: abort, do not re-preview.** The request returns to `pending`
+with a stale marker and the approver is shown the new figures to accept or
+decline. Auto-re-approving a changed recalculation would defeat the whole
+mechanism — quietly, and in exactly the case it exists for.
+
+### Who approves
+
+Owner or another admin, never the requester. Single-admin clubs queue, as in §5.
+
+### The request models
+
+```
+SettlementCorrection            one night — the bank edit (§5)
+  id, recordId, recordType
+  baseRevision
+  proposedInputs                only for causedBy = bank-edit
+  engineVersion, ruleSnapshot
+  previewDigest
+  reason                        required
+  status                        pending | approved | rejected | applied | cancelled | stale
+  requestedBy, requestedAt, decidedBy, decidedAt, appliedAt
+
+RetroRuleApplication            many nights — the bulk case (§6)
   id, clubId
   fromRuleVersionId, toRuleVersionId
-  sessionIds          the selected nights
-  previewDigest       hash of the previewed outcome
-  reason              text, required
-  status              pending | approved | rejected | applied | cancelled
-  requestedBy, requestedAt
-  decidedBy, decidedAt
-  appliedAt
+  sessionIds
+  previewDigest                 over the ordered per-record digests
+  reason                        required
+  status, requestedBy, requestedAt, decidedBy, decidedAt, appliedAt
 ```
 
-**Lifecycle:** propose → preview → second-admin approval → **overwrite** →
-audit.
+The bulk case **fans out into `SettlementCorrection` rows**, one per night,
+rather than owning a second write path. One overwrite implementation, exercised
+by both — which is also why proving the single-night path first (§12) proves
+most of the bulk one.
 
-**Approval:** owner or another admin, never the requester. Single-admin clubs
-queue, as in §5.
+**Bulk is all-or-nothing.** One transaction; any night that fails its digest or
+its invariants aborts the whole application. A partial bulk overwrite would
+leave the club in a state nobody previewed and nobody approved.
 
-**`previewDigest` is the safety catch.** The approver approves *a specific set
-of numbers*. If anything changes between approval and execution — a night
-edited, another rule version created, an engine deployed — the digest no longer
-matches and execution refuses rather than overwriting something nobody saw.
-This is the mechanism that makes "approve what you previewed" literally true,
-and it matters more under overwrite than it would have under a side-by-side
-model: there is no second column afterwards in which a surprise would show up.
+### Double-application
 
-The digest must cover the inputs, the rules, the engine version and the full
-per-player output — not the totals. Two different distributions can share a
-total.
-
-**Double-application** is prevented three ways, and any one of them suffices:
+Prevented three ways, and any one suffices:
 
 1. `status` moves to `applied` inside the same transaction that writes the
    revisions and overwrites the records, under a row lock
-2. every record carries a `revision` integer; execution asserts the expected
-   revision and bumps it
+2. every record carries a `revision` integer; execution asserts `baseRevision`
+   and bumps it
 3. recomputation is **from inputs**, so applying twice produces the same
    numbers rather than compounding — the failure mode is a no-op, not a
    doubled rake
 
-Point 3 is the reason the "from inputs, never from outputs" rule is not merely
-stylistic. Under a delta model, a retried or duplicated apply would double the
-rake and there would be no undisturbed original left on screen to notice it
-against.
+Point 3 is why "from inputs, never from outputs" is not merely stylistic. Under
+a delta model a retried apply would double the rake, and there would be no
+undisturbed original on screen to notice it against.
 
 ---
 
@@ -618,6 +707,8 @@ one can fail on rounding alone, which is why it is separate.
 
 **Invariants specific to overwrite:**
 
+- the recomputed digest equals the approved one (§7) — checked first, because
+  it is the cheapest way to reject a correction nobody agreed to
 - exactly one `isLive` revision per record — a database constraint, not a check
 - the live revision's `outputs` equal the settlement row's `playerSummaries`,
   field for field
@@ -674,13 +765,40 @@ separate line: *paid 5,000, should have paid 6,000, owes 1,000*. It reads as a
 reconciliation item, not as an alternative net, and it is the only place the
 old figure appears in a player-facing screen.
 
+### Two figures, named differently, on purpose
+
 **In the leaderboard**, the corrected settlement, always. There is no
 club-configurable basis and no "original vs corrected" toggle — that toggle
-would be exactly the two competing results this design removes. The cost is
-that the leaderboard now measures *what the rules say* rather than *what
-changed hands*, and those diverge by the outstanding adjustments. That
-divergence should be visible as a club-level figure ("₹3,400 in outstanding
-corrections") rather than hidden inside the rankings.
+would be exactly the two competing results this design removes.
+
+But that leaves the app holding two genuinely different quantities, and the
+failure mode is somebody reading the first and assuming the second. They get
+distinct names and distinct definitions, everywhere they appear:
+
+| | Definition | Answers |
+|---|---|---|
+| **Leaderboard position** | the latest approved settlement | *what the rules say the night was* |
+| **Cash position** | latest physically settled revision **+** outstanding corrections | *what has actually changed hands, and what still owes* |
+
+```
+cashPosition(player) = Σ over records of  paidNet
+                     + Σ over records of  outstanding delta
+```
+
+where `paidNet` is the net at `paidBasisRevision` — the figure the money was
+actually moved on — and the outstanding delta is what §10's ledger says is
+still owed.
+
+When nothing has been corrected, or every correction has been settled, the two
+are identical and the distinction costs nothing. They separate only when real
+money is lagging a correction, which is precisely when someone needs to be told.
+
+**Never present the leaderboard figure as a balance.** A player who is up 4,000
+on the leaderboard and has an outstanding 1,000 correction has *not* been paid
+4,000 — and a rankings screen that implies otherwise is how a correction turns
+into an argument about whether somebody already paid. The club-level total
+("₹3,400 in outstanding corrections") belongs on the club screen; the per-player
+figure belongs beside that player's own balance.
 
 **A club may waive.** Chasing 200 chips around a WhatsApp group is worse than
 absorbing it, and `waived` records that decision rather than pretending the
@@ -733,53 +851,77 @@ the whole feature. This is a query, not a feature, and it should happen first.
 
 ---
 
-## 12. Proposed sequence
+## 12. Implementation order
 
-Your order, with four changes and the reasons.
+**Agreed as specified**, with two sequencing hazards resolved below rather than
+reordered around. The governing rule stands: *nothing on the retroactive path
+begins until the single-bank correction is proven end to end.*
 
-| # | Step | Why here |
+| # | Step | Ships |
 |---|---|---|
-| 0 | **Replayability triage** | A query. Decides whether the rest is worth building, and sizes §11. Hours, not days. |
-| 1 | **Revision model + backfill of revision 1** (§8, §13.3) | Moved to the front, and now a hard gate: overwriting without a before-copy is unrecoverable. Includes the `isLive` constraint, writing revision 1 at settle time, and backfilling revision 1 for every existing record. |
-| 2 | **Split `rakeDeduction` into seat fee + cut** (§3) | Small, no arithmetic change — but the audit trail you specified cannot be produced without it, so it stops being optional. |
-| 3 | **Versioned engine dispatch + golden fixtures** (§1) | Before rule versions: replaying a night needs its *engine*, and the night already carries its *rules*. **Extract to one shared module here.** |
-| 4 | **Invariant harness** (§9) | Runs in production, not only tests. Every later step overwrites money and this is the seatbelt that aborts before it lands. |
-| 5 | **Single-bank edit** (§5) | The smallest blast radius that exercises the whole machine: request, approval, replay, revision, overwrite, adjustment, audit. Prove it on one night before offering it on fifty. |
-| 6 | **Change history UI + revert** (§8) | Immediately after the first thing that can overwrite. Recovery is not a later polish item once corrections are live. |
-| 7 | **Club rule versions** (§4) | Now needed, because retroactive application is the first thing that has to ask "which rules, as of when". |
-| 8 | **Retroactive preview** (§6) | Read-only. Ships independently and is worth having alone — an owner can see the consequence of a rule change without being able to apply it. |
-| 9 | **Bulk apply + approval** (§7) | The only step that overwrites at scale, and the last to be built. |
+| 1 | **Replayability audit, and the revision-1 backfill plan** (§11, §13.3) | A query and a migration script. Counts each population; establishes which records can ever be corrected. |
+| 2 | **Extract + version the settlement engine** (§1) | One shared module, `engineVersion` dispatch, `engineVersion` column on both record types. |
+| 3 | **Separate seat fee and winner's cut** (§3) | Engine output shape only, no arithmetic change. **Golden fixtures freeze at the end of this step.** |
+| 4 | **Revision storage + audit model** (§8) | `SettlementRevision`, the `isLive` constraint, revision 1 at settle time, and the **backfill from step 1 executed here**. |
+| 5 | **Preview / digest mechanism** (§7) | Replay-and-hash, read-only. Nothing can overwrite yet, so this is exercised against real data with no blast radius. |
+| 6 | **Two-admin approval** (§5, §7) | `SettlementCorrection`, self-approval block, single-admin queue, stale handling. |
+| 7 | **Transactional overwrite** (§13.2) | Digest re-verify → invariants → revision → overwrite, one transaction. The first step that can lose data, and everything protecting it already exists. |
+| 8 | **History editing** (§5) | The single-night bank edit, end to end, on machinery already proven. |
+| 9 | **Retroactive Club Rule application** (§4, §6) | Rule versions, preview, bulk fan-out. **Gated on step 8 being proven in production.** |
+| 10 | **Revert / recovery testing** (§8) | The revert UI, and the recovery drill. |
 
-**The four changes to your ordering:**
+### Two hazards in this sequence, and how to resolve them
 
-**Revision model first, not fourth.** The significant one, and overwrite
-semantics strengthen rather than weaken it. Replay infrastructure that lands
-before the revision model *is* an unrecoverable overwrite. The before-copy has
-to exist before the first correction can run.
+Neither needs the order changed. Both need something pinned to a specific step
+so it cannot slip.
 
-**Audit folded into step 1** rather than standing alone. `SettlementRevision`
-*is* the audit for settlement; a separate audit model built later would
-duplicate it and drift.
+**Step 1's backfill cannot execute at step 1.** Backfilling revision 1 needs the
+revision table, which arrives at step 4. Step 1 is therefore the *audit* — the
+query that counts replayable, assumption-reconstructable and unreplayable
+records — plus the backfill script written against the step-4 schema. **The
+backfill runs inside step 4**, and the precondition you asked for is enforced in
+code rather than by calendar position:
 
-**Engine dispatch before rule versions.** A night carries its own rules already,
-so the bank edit needs versioned *replay* but not rule *versions*. Swapping
-these ships step 5 sooner and defers the largest data-model change until
-something concrete needs it.
+> No revision 1 → no correction. Asserted at the top of the overwrite path
+> (§9), so it holds regardless of when any migration ran.
 
-**Preview split from apply.** Read-only and genuinely useful on its own. It also
-means the riskiest code is exercised against real data for a while before it is
-ever allowed to commit.
+That is stronger than an ordering guarantee, because it survives a record
+created after the backfill by some path nobody anticipated.
 
-**One addition since the last draft:** the change-history UI and revert (step 6)
-move up to sit directly behind the first overwrite. Under the previous model the
-original stayed on screen, so a viewer for old revisions was a convenience.
-Overwriting makes it the only way to see what a night used to say.
+**Recovery is tested at step 10, but the first real overwrite ships at step 7.**
+Three steps of production overwrites would run before the recovery path has been
+exercised — and the whole argument for overwrite semantics rests on recovery
+working.
 
-**Not in scope, deliberately:** unfreezing `IMMUTABLE_CLUB_RULES`. That is the
-prerequisite for a *normal* rule change, and it belongs with step 7 — but until
-`ClubRuleVersion` exists, unfreezing re-opens the exact hole the freeze covers.
-Doing it earlier would leave a window where a rule change silently changes what
-any unreplayable night claims to have used.
+The split that keeps your order intact: **revert as an API, with tests, is part
+of step 7**; step 10 is the *UI* and the full drill. Concretely, step 7 does not
+ship until a test proves that after an overwrite, replaying `revision_k.inputs`
+under `revision_k.ruleSnapshot` at `revision_k.engineVersion` reproduces
+`revision_k.outputs` byte for byte. That is a test, not a screen, and it is the
+only evidence that the audit copy is genuinely a recovery path rather than a
+record of one.
+
+### Two notes on the steps themselves
+
+**Freeze the golden fixtures at the end of step 3, not step 2.** Step 3 changes
+the engine's output shape, so fixtures generated at step 2 would need a format
+migration one step later — and a fixture that has been migrated is a fixture
+that has been edited, which is the one thing they exist to prevent.
+
+**Unfreezing `IMMUTABLE_CLUB_RULES` belongs to step 9**, not earlier. Until
+`ClubRuleVersion` exists, unfreezing re-opens the exact hole the freeze covers:
+a window in which a rule change silently alters what any unreplayable night
+claims to have used.
+
+### Why the bank edit is the right foundation
+
+Agreed, and worth stating as a design property rather than a preference: the
+bulk path **fans out into the same `SettlementCorrection` rows** the single edit
+uses (§7). It is not a parallel implementation that happens to look similar.
+Proving step 8 proves the replay, the digest gate, the transaction boundary, the
+revision write, the adjustment ledger and the pot reversal. What step 9 adds on
+top is selection, rule versions, and all-or-nothing batching — real work, but
+not a second way to overwrite money.
 
 ---
 
@@ -843,8 +985,13 @@ and the right ones are behind an admin-only history.
 
 **Consequences:** the preview must be per-player and complete rather than
 summarised (§6); `previewDigest` must cover the full distribution rather than
-totals (§7); and the approver's screen should state plainly that this replaces
-the settled result.
+totals, and must be re-verified at execution rather than trusted (§7); and the
+approver's screen should state plainly that this replaces the settled result.
+
+The digest is what turns the preview from a courtesy into a contract. Without
+it, "the approver saw these numbers" is a claim about a screen that has since
+been discarded; with it, the numbers are the thing that was approved, and
+anything else refuses to commit.
 
 ### 13.5 Exported and remembered figures diverge silently
 
