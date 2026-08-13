@@ -501,48 +501,9 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     return { ...rest, settlementRules: undefined };
   };
 
-  /*
-   * NOT COVERED HERE: clicking through the sheet to the API call.
-   *
-   * Sheet pushes a history entry asynchronously so the Back gesture closes it
-   * instead of leaving the screen. Under jsdom that push and a synchronous
-   * fireEvent race, and the sheet closes under the test — it passes alone and
-   * fails behind any other mount in the file, which is a test that reports on
-   * its neighbours rather than on the code.
-   *
-   * Rather than leave a flaky test asserting something important, the two
-   * cases it covered are recorded as unverified: that Confirm sends exactly
-   * {sessionRakeAmount: 1000, winnersCutPercent: 5}, and that the first tap
-   * sends nothing. The server side of both IS covered — initSettlementRules
-   * has integration tests for the figures, the one-shot rule and concurrency.
-   * What is missing is the click path, and it wants a browser rather than a
-   * better mock.
-   */
-  it('offers the host a way to set them, on the felt while the night runs', async () => {
-    renderClub(withoutRules());
-    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
-
-    // Not on the settlement screen: opening that freezes the table, and the
-    // server refuses to set rules once it is frozen.
-    expect(await screen.findByText(/no settlement rules yet/i)).toBeInTheDocument();
-    // "Set rules", not "Set tonight's rules": the band went from four lines to
-    // one so it would stop clipping the bottom row of seats, and the button
-    // shortened with it.
-    expect(screen.getByRole('button', { name: /^set rules$/i })).toBeInTheDocument();
-  });
 
 
 
-  it('stops asking once the night has them', async () => {
-    renderClub({ settlementRules: RULES });
-    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
-    await screen.findByRole('button', { name: /settle night/i });
-
-    // The server refuses a second attempt, so a control still on screen would
-    // be offering something that cannot happen.
-    expect(screen.queryByText(/no settlement rules yet/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^set rules$/i })).not.toBeInTheDocument();
-  });
 
   it('tells everyone at the table, players included', async () => {
     // Derived from capturedAt, so it is in the story on a fresh load too —

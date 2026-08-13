@@ -38,12 +38,31 @@ export interface PokerTableProps {
   /** The club's own formatter — respects the chips/₹ toggle and devaluation. */
   formatAmount: (n: number) => string;
   /**
-   * The brass stud on the felt, and what it does for THIS viewer.
+   * The one control on the felt, and what it does for THIS viewer.
    *
-   * One control, one meaning — chips onto this table — and two subjects. An
-   * admin is asked whose; a player is the answer already. Passed as a label
-   * with its action rather than as a boolean, because the accessible name has
-   * to say which of the two it is.
+   * One meaning — chips onto this table — and two subjects, which now take two
+   * shapes because they are not the same act:
+   *
+   *   add-player    a host bringing somebody to the table. Impersonal, about
+   *                 the room, so it stays a brass stud set into the middle of
+   *                 the cloth.
+   *   ask-for-bank  a player asking for their own chips. It belongs to one
+   *                 person, so it sits at the foot of the felt directly above
+   *                 their own seat — the viewer is always bottom-centre — and
+   *                 it is labelled, because a bare + in front of your own face
+   *                 does not say whose chips it means.
+   */
+  /**
+   * Admins only now. A player's own request is NOT here.
+   *
+   * It was, and it could not be made to fit: the seat boxes hang into the
+   * cloth by half their height, so the free interior is sized for a small
+   * round stud and nothing else. A labelled pill overlapped the viewer's own
+   * seat by 4px at four players and by 33px at eighteen — measured, not
+   * guessed — and the space is negative at high counts, so no amount of
+   * arranging inside the felt was going to make room for a word.
+   *
+   * It lives under the table now, on the viewer's own line. See LiveSession.
    */
   stud?: { label: string; onPress: () => void };
 }

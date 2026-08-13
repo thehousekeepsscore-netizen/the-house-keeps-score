@@ -94,13 +94,6 @@ export interface LiveSessionProps {
   onResumeNight?: () => void;
   /** Admins only, in the lobby: take out somebody who said they were coming. */
   onRemoveFromLobby?: (userId: string) => void;
-  /**
-   * Admins only, and only for a night that has none: say what it plays for.
-   *
-   * Absent once the night has rules — the server refuses a second attempt, so
-   * a control that stayed on screen would offer something that cannot happen.
-   */
-  onSetSettlementRules?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -127,33 +120,24 @@ const nameOf = (
 ) => (uid === currentUserId ? 'You' : users[uid]?.displayName || 'Player');
 
 /**
- * What the brass stud does for whoever is holding the phone.
+ * What the brass stud does, which is now one thing.
  *
- * One control and one meaning — chips onto this table — with two subjects. An
- * admin has to be asked whose, because they can bank anybody. A player is the
- * answer already, so they are taken straight to the amount.
+ * Bringing somebody to the table: impersonal, about the room, and the only
+ * control that earns a place in the middle of the cloth.
  *
- * It was admin-only when it was built, which made it a host's tool sitting in
- * the middle of everybody's table. A player's route to chips was to work out
- * that their own face was a button, which is a thing you either know or you do
- * not.
+ * A player's own request used to share it, and has moved out — to their own
+ * line under the table, where it can say whose chips it means. It could not
+ * say that on the felt: the seat boxes hang into the cloth by half their
+ * height, so the free interior is sized for a small round stud, and a labelled
+ * pill overlapped the viewer's own seat by 4px at four players and 33px at
+ * eighteen.
  */
 function studFor(
   isAdmin: boolean,
-  hasSeat: boolean,
-  onAddPlayer?: () => void,
-  onAskForChips?: () => void
+  onAddPlayer?: () => void
 ): { label: string; onPress: () => void } | undefined {
   if (isAdmin && onAddPlayer) {
     return { label: 'Add a player to the table', onPress: onAddPlayer };
-  }
-  if (onAskForChips) {
-    // The same tap and the same sheet, but not the same act: somebody with no
-    // chair is joining, and only somebody already sitting in one is topping up.
-    return {
-      label: hasSeat ? 'Ask for chips' : 'Join the table',
-      onPress: onAskForChips,
-    };
   }
   return undefined;
 }
@@ -181,7 +165,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onKeepPlaying,
   onResumeNight,
   onRemoveFromLobby,
-  onSetSettlementRules,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -263,34 +246,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onKeepPlaying={onKeepPlaying}
           onSettle={onSettleNight}
         />
-      )}
-
-      {/*
-        A night that does not know what it is playing for.
-        
-        Only ever true of a game that started before rules were recorded
-        against a session, and it has to be dealt with before the night can be
-        settled — so it says that, here, rather than letting the host find out
-        at 2am when Settle refuses. Players see it too: what the house takes is
-        not an administrative detail to them.
-      */}
-      {live && !night.settling && !session?.settlementRules && night.startedPlayingAt !== null && (
-        <div className="shrink-0 mx-3 mb-2 px-3 py-2 rounded-[var(--radius-lg)] bg-warning/10 border border-warning/40 flex items-center gap-3">
-          {/* One line and a button, side by side. The full explanation ran to
-              four lines above the felt and cost 110px — enough to clip the
-              bottom row of seats on a 375x812 screen. Why a night has no rules
-              matters far less than that it needs some, and the sheet says the
-              rest at the moment it is actually being answered. */}
-          <p className="min-w-0 flex-1 text-xs text-text leading-snug">
-            <span className="text-text font-medium">No settlement rules yet.</span>{' '}
-            <span className="text-text-muted">Set them before this night can be settled.</span>
-          </p>
-          {isAdmin && onSetSettlementRules && (
-            <Button variant="primary" size="sm" className="shrink-0" onClick={onSetSettlementRules}>
-              Set rules
-            </Button>
-          )}
-        </div>
       )}
 
       {/* Lead with what needs a decision. This sits above the stage in every
@@ -642,17 +597,39 @@ const Stage: React.FC<{
               users={users}
               onSelectPlayer={onSelectPlayer}
               formatAmount={formatAmount}
-              stud={
-              night.settling
-                ? undefined
-                : studFor(isAdmin, night.mySeat !== null, onAddPlayer, onAskForChips)
-            }
+              stud={night.settling ? undefined : studFor(isAdmin, onAddPlayer)}
             />
 
-            {night.mySeat && night.mySeat.state !== 'cashedOut' && (
-              <p className="mt-2 text-center text-sm text-text-muted">
-                You're in for {formatAmount(night.mySeat.totalBuyIn)}
-              </p>
+            {/*
+              The viewer's own line, and now their own control.
+            
+              This already said what the reader has on the table; asking for
+              more belongs beside it rather than in the middle of the felt,
+              where it was competing with the pot and colliding with seats. It
+              sits directly under the viewer's seat, which is always
+              bottom-centre, so the association the felt could not make is made
+              by position without fighting the geometry.
+            */}
+            {/* Stage only reaches this branch in the running phases, so being
+                live is already true here. */}
+            {!night.settling && (night.mySeat || onAskForChips) && (
+              <div className="mt-2 flex items-center justify-center gap-3">
+                {night.mySeat && night.mySeat.state !== 'cashedOut' && (
+                  <p className="text-sm text-text-muted">
+                    You're in for {formatAmount(night.mySeat.totalBuyIn)}
+                  </p>
+                )}
+                {onAskForChips && (
+                  <button
+                    type="button"
+                    onClick={onAskForChips}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-accent/45 px-3 py-1 text-[13px] font-semibold text-accent active:scale-95 transition cursor-pointer"
+                  >
+                    <span aria-hidden="true" className="text-base leading-none">+</span>
+                    {night.mySeat ? 'Ask for bank' : 'Join the table'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

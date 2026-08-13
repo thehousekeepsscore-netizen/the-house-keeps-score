@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LiveSession, LiveSessionProps } from './LiveSession';
 import { deriveNight } from '../../lib/night-state';
@@ -460,7 +460,7 @@ describe('the stud on the felt', () => {
     const onAddPlayer = vi.fn();
     running({ isAdmin: false, onAskForChips, onAddPlayer });
 
-    await userEvent.click(screen.getByRole('button', { name: /ask for chips/i }));
+    await userEvent.click(screen.getByRole('button', { name: /ask for bank/i }));
     expect(onAskForChips).toHaveBeenCalledTimes(1);
     // A player is never offered the pick-a-person step, even if the handler is
     // threaded down to them.
@@ -471,7 +471,7 @@ describe('the stud on the felt', () => {
     // Same tap, same sheet, different thing happening: somebody with no chair
     // is joining, and only somebody already in one is topping up.
     running({ isAdmin: false, currentUserId: 'host', onAskForChips: vi.fn() });
-    expect(screen.getByRole('button', { name: /ask for chips/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ask for bank/i })).toBeInTheDocument();
     cleanup();
 
     renderScreen(
@@ -705,9 +705,9 @@ describe('every phase renders', () => {
 /**
  * What the house takes, after the control that set it has gone.
  *
- * Locking the rules removes the "Set tonight's rules" band, which would take
- * the figures with it. They are the only numbers on this screen that decide
- * what a player walks away with, so they stay.
+ * These are the only numbers on this screen that decide what a player walks
+ * away with, and nothing else on the felt says what the house takes — so they
+ * stay, for players as well as the host.
  */
 describe('the house take line', () => {
   const rules = (over: Record<string, unknown> = {}) => ({
@@ -751,13 +751,6 @@ describe('the house take line', () => {
     expect(screen.queryByText(/of winnings/i)).not.toBeInTheDocument();
   });
 
-  it('says nothing at all on a night that has no rules yet', () => {
-    renderScreen({ session: playing(undefined) });
-
-    expect(screen.queryByText(/house takes/i)).not.toBeInTheDocument();
-    // That night gets the band asking for them instead.
-    expect(screen.getByText(/no settlement rules yet/i)).toBeInTheDocument();
-  });
 });
 
 /**
@@ -807,5 +800,93 @@ describe('the felt is never the thing that gives way', () => {
     // absorb the cost of a busy queue.
     const unshrinkable = felt.closest('div.shrink-0');
     expect(unshrinkable, 'the felt should sit inside a shrink-0 container').not.toBeNull();
+  });
+});
+
+/**
+ * A player's own request, off the felt.
+ *
+ * It used to be the brass stud in the middle of the table, which could not say
+ * whose chips it meant and could not be labelled without hitting a seat: the
+ * free interior is sized for a small round stud, and a labelled pill overlapped
+ * the viewer's own seat by 4px at four players and 33px at eighteen. Measured,
+ * both times, before it moved.
+ *
+ * It sits on the viewer's own line under the table now — beside "You're in
+ * for", directly below their seat, which is always bottom-centre.
+ */
+describe('asking for your own bank', () => {
+  const playing = (over: Partial<LiveSessionProps> = {}) =>
+    renderScreen(
+      {
+        session: session({ activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(60) }),
+        onAskForChips: vi.fn(),
+        ...over,
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'host', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'host', createdAt: ago(50),
+        } as never,
+      ]
+    );
+
+  it('is labelled, because a bare + cannot say whose chips it means', () => {
+    playing({ isAdmin: false });
+    expect(screen.getByRole('button', { name: /ask for bank/i })).toBeInTheDocument();
+  });
+
+  it('sits beside what the viewer already has on the table', () => {
+    playing({ isAdmin: false });
+    expect(screen.getByText(/You're in for/i)).toBeInTheDocument();
+  });
+
+  it('is NOT on the felt any more', () => {
+    // The stud's accessible name was the only thing that said what it did, and
+    // for a player it said this. Nothing on the cloth should now.
+    playing({ isAdmin: false });
+    const felt = screen.getByRole('group', { name: /at the table/i });
+    expect(within(felt).queryByRole('button', { name: /ask for bank/i })).not.toBeInTheDocument();
+  });
+
+  it('says join rather than ask when the viewer has no seat', () => {
+    renderScreen(
+      {
+        session: session({ activePlayerUids: ['priya'], startedPlayingAt: ago(60) }),
+        currentUserId: 'host',
+        isAdmin: false,
+        onAskForChips: vi.fn(),
+      },
+      [
+        {
+          id: 'b1', sessionId: 's1', clubId: 'c1', userId: 'priya', userDisplayName: '',
+          amount: 5000, status: 'approved', requestedBy: 'priya', createdAt: ago(50),
+        } as never,
+      ]
+    );
+    expect(screen.getByRole('button', { name: /join the table/i })).toBeInTheDocument();
+  });
+
+  it('opens the same sheet it always did', () => {
+    const onAskForChips = vi.fn();
+    playing({ isAdmin: false, onAskForChips });
+
+    fireEvent.click(screen.getByRole('button', { name: /ask for bank/i }));
+    expect(onAskForChips).toHaveBeenCalledTimes(1);
+  });
+
+  it('is gone while the table is frozen for settlement', () => {
+    // Nothing can be bought from here, so nothing should offer to.
+    playing({ isAdmin: false, session: session({
+      activePlayerUids: ['host', 'priya'], startedPlayingAt: ago(60), settlingAt: ago(1),
+    }) });
+    expect(screen.queryByRole('button', { name: /ask for bank/i })).not.toBeInTheDocument();
+  });
+
+  it('leaves the host their own control on the felt', () => {
+    // Bringing somebody to the table is about the room, not about one person,
+    // and it keeps the middle of the cloth.
+    playing({ isAdmin: true, onAddPlayer: vi.fn() });
+    expect(screen.getByRole('button', { name: /add a player to the table/i })).toBeInTheDocument();
   });
 });
