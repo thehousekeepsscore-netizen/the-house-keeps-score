@@ -15,27 +15,44 @@ import {
 } from '../../../api/src/modules/offlineSessions/settlementEngine';
 
 /**
- * The two engines must agree, and this is what proves it by running them.
+ * There is one engine now, and this is what proves it.
  *
- * apps/web keeps a hand-maintained mirror of the API's settlement engine so a
- * host can see what a night will settle to before committing it. The API copy
- * has a thousand tests. The web copy had none — and it is the one that
- * produces the figures an admin actually approves. The server then recomputes
- * with its own copy and saves ITS answer, so any disagreement means the host
- * signed off on numbers that were never committed. Silently: no error, nothing
- * to notice, and no way to tell afterwards.
+ * apps/web used to keep a hand-maintained mirror of the API's settlement
+ * engine so a host could see what a night would settle to before committing
+ * it. Two copies of 500 lines, kept in step by a comment asking the next
+ * person to remember. The host approved figures from one copy and the server
+ * committed figures from the other, so a drift meant a settlement nobody
+ * signed off on — silently: no error, nothing to notice, no way to tell
+ * afterwards.
  *
- * There is already a parity test in the API suite, and it compares the two
- * files as TEXT with comments stripped. That is a good guard against one copy
- * being edited and the other forgotten, and it cannot see two other things:
+ * `apps/web/src/lib/settlementEngine.ts` is now a re-export of the API module,
+ * so the preview and the commit are the same function. This file keeps running
+ * because two things still need proving, and neither is about drift:
  *
- *   - the client copy actually EXECUTING — bundling, tsconfig, module
- *     resolution, anything that makes the source and the running code differ
- *   - a change made identically to both copies that is identically wrong
+ *   - the shared module actually RESOLVES AND EXECUTES from the web app —
+ *     bundling, tsconfig, module resolution, anything that could make the
+ *     import work in a type-check and fail in a browser
+ *   - `export *` re-exports the values, not just the types, so `computeSettlement`
+ *     imported from the web path is the real function rather than undefined
  *
- * So this runs both, over the same inputs, and compares outputs field by
- * field. It is deliberately in apps/web, next to the copy nobody was testing.
+ * The identity check below is the new guarantee; the behavioural comparison
+ * underneath it is the old one, kept because a passing identity assertion
+ * would still be worthless if the module never ran.
  */
+describe('the web engine IS the API engine', () => {
+  it('re-exports the same function object, not an equivalent one', () => {
+    // Stronger than any output comparison: there is no second implementation
+    // for a comparison to be run against.
+    expect(webCompute).toBe(apiCompute);
+    expect(WEB_VERSION).toBe(API_VERSION);
+  });
+
+  it('resolves as a callable value across the app boundary', () => {
+    // `export *` is a type-level no-op if the module fails to load, and a
+    // type-check alone would not notice.
+    expect(typeof webCompute).toBe('function');
+  });
+});
 
 const RULES: SettlementSettings = {
   sessionRakeAmount: 0,

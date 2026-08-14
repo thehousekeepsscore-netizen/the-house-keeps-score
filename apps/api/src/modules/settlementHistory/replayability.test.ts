@@ -10,8 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { RecordUnderAudit, asRules, assess, evidenceFrom, summarise } from './replayability.js';
-import { SettlementSettings, computeSettlement } from '../offlineSessions/settlementEngine.js';
-import { computeSettlementAt } from './versionedEngine.js';
+import { SettlementSettings, computeSettlement, computeSettlementAt } from '../offlineSessions/settlementEngine.js';
 
 const RULES: SettlementSettings = {
   sessionRakeAmount: 500,

@@ -14,9 +14,20 @@
 // vs "rake first" produce genuinely different numbers: whichever step
 // runs second sees the output of the one before it, not the raw profit.
 //
-// IMPORTANT: apps/web/src/lib/settlementEngine.ts mirrors this file
-// exactly (same functions, same behavior) for the client-side live
-// preview. If you change the rules here, change them there too.
+// ONE IMPLEMENTATION, SHARED. apps/web/src/lib/settlementEngine.ts used to be
+// a hand-maintained mirror of this file — two copies of 500 lines, kept in step
+// by a comment. It now re-exports this module, so the client preview and the
+// server commit run the same code by construction rather than by discipline.
+// The parity tests that used to compare the copies still run; they now assert
+// that there is nothing to compare.
+//
+// VERSIONED. A settled night must replay under the engine that decided it, not
+// under today's engine with yesterday's data — the same setting has meant an 8x
+// different rake across versions. `computeSettlementAt` selects; the divergence
+// points are marked DIVERGENCE below and are the only places version is read.
+// Each version's behaviour is frozen by a golden fixture generated from that
+// version's ORIGINAL source out of git (fixtures/engine-vN.json). A change that
+// fails one needs a new version, never a new fixture.
 
 export type RakeMethod = 'PERCENT_PROFIT' | 'PERCENT_CASHOUT' | 'FIXED_PER_WINNER' | 'FIXED_PER_SESSION' | 'CUSTOM';
 export type MismatchStrategy =
@@ -51,6 +62,15 @@ export type RoundingRule = 'NONE' | 'NEAREST_1' | 'NEAREST_5' | 'NEAREST_10';
  *       affects clubs that had charges configured with the pot switched off.
  */
 export const SETTLEMENT_ENGINE_VERSION = 3;
+
+/** Every version this engine can still run. Nothing is ever removed. */
+export type EngineVersion = 1 | 2 | 3;
+export const KNOWN_ENGINE_VERSIONS: readonly EngineVersion[] = [1, 2, 3];
+export const CURRENT_ENGINE_VERSION: EngineVersion = SETTLEMENT_ENGINE_VERSION;
+
+export function isKnownEngineVersion(v: unknown): v is EngineVersion {
+  return v === 1 || v === 2 || v === 3;
+}
 
 export interface SettlementSettings {
   /**
@@ -315,7 +335,12 @@ function applyExcessToWinners(
   return { resolution: 'excess_from_players', potEffect: 0, requiresManualResolution: false };
 }
 
-function computeRake(players: WorkingPlayer[], settings: SettlementSettings, steps: SettlementStepLog[]): number {
+function computeRake(
+  players: WorkingPlayer[],
+  settings: SettlementSettings,
+  version: EngineVersion,
+  steps: SettlementStepLog[]
+): number {
   // Two independent charges, either or both of which may be zero:
   //   sessionRakeAmount — seat fee, charged to every player who sat down, so a
   //                       table of five collects five times it
@@ -339,31 +364,76 @@ function computeRake(players: WorkingPlayer[], settings: SettlementSettings, ste
 
   const flat = settings.sessionRakeAmount ?? 0;
   if (flat > 0 && players.length > 0) {
-    // PER PLAYER, not split. Everyone at the table pays the same seat fee,
-    // winners and losers alike — it is the cost of a chair for the night, not a
-    // tax on profit, so it does not scale down as more people sit down.
-    //
-    // This was a total for the night until engine version 2, divided among
-    // however many played. A host who set 1,000 expecting each player to pay it
-    // saw 1,000 come off the table in total, and 200 each once five people sat
-    // down — the charge got cheaper the busier the game, which is backwards for
-    // a seat fee.
-    //
-    // No remainder handling any more: nothing is divided, so nothing rounds.
-    players.forEach((p) => {
-      p.rakeDeduction = Math.round((p.rakeDeduction + flat) * 100) / 100;
-    });
-    total += flat * players.length;
-    steps.push({
-      step: 'Rake',
-      detail: `Session rake: ${flat} per player from ${players.length} player(s) — ${flat * players.length} in total.`,
-    });
+    if (version === 1) {
+      // DIVERGENCE 1 (v1). A flat fee for the NIGHT, split equally across
+      // everyone at the table — so the charge got cheaper the busier the game,
+      // which is backwards for a seat fee, and is why version 2 changed it.
+      //
+      // Note where the remainder goes: to the LAST player in the array. That
+      // makes participant ORDER arithmetic for any v1 night whose fee does not
+      // divide evenly — reorder the seats and a different person pays the extra
+      // cent. One production record depends on this exact behaviour, which is
+      // why v1 is reproduced rather than approximated.
+      const share = flat / players.length;
+      let assigned = 0;
+      players.forEach((p, i) => {
+        const owed = i === players.length - 1
+          ? Math.round((flat - assigned) * 100) / 100
+          : Math.round(share * 100) / 100;
+        assigned = Math.round((assigned + owed) * 100) / 100;
+        p.rakeDeduction = Math.round((p.rakeDeduction + owed) * 100) / 100;
+      });
+      total += flat;
+      steps.push({
+        step: 'Rake',
+        detail: `Session rake: flat ${flat} for the night, split equally across ${players.length} players (${Math.round(share * 100) / 100} each).`,
+      });
+    } else {
+      // PER PLAYER, not split (v2 onward). Everyone at the table pays the same
+      // seat fee, winners and losers alike — it is the cost of a chair for the
+      // night, not a tax on profit, so it does not scale down as more people
+      // sit down.
+      //
+      // No remainder handling any more: nothing is divided, so nothing rounds,
+      // and seat order stops mattering here.
+      players.forEach((p) => {
+        p.rakeDeduction = Math.round((p.rakeDeduction + flat) * 100) / 100;
+      });
+      total += flat * players.length;
+      steps.push({
+        step: 'Rake',
+        detail: `Session rake: ${flat} per player from ${players.length} player(s) — ${flat * players.length} in total.`,
+      });
+    }
   }
 
   return total;
 }
 
+/**
+ * Settles a table under the CURRENT engine.
+ *
+ * The signature every caller already used, unchanged. Live settlement always
+ * wants today's rules today; only a replay of a past night wants otherwise, and
+ * that says so explicitly by calling `computeSettlementAt`.
+ */
 export function computeSettlement(
+  players: SettlementPlayerInput[],
+  settings: SettlementSettings,
+  opts: ComputeSettlementOptions = {}
+): SettlementResult {
+  return computeSettlementAt(CURRENT_ENGINE_VERSION, players, settings, opts);
+}
+
+/**
+ * Settles a table under a SPECIFIC engine version.
+ *
+ * For replaying a settled night as it was decided. Passing a version other than
+ * the current one is a deliberate statement that this is history, not a game in
+ * progress — see SETTLEMENT-HISTORY-DESIGN.md §1.
+ */
+export function computeSettlementAt(
+  version: EngineVersion,
   players: SettlementPlayerInput[],
   settings: SettlementSettings,
   opts: ComputeSettlementOptions = {}
@@ -437,7 +507,7 @@ export function computeSettlement(
   };
 
   const runRake = () => {
-    computeRake(working, settings, steps);
+    computeRake(working, settings, version, steps);
     working.forEach((p) => {
       p.rakeDeduction = roundTo(p.rakeDeduction, settings.roundingRule);
       p.remaining -= p.rakeDeduction;
@@ -461,11 +531,18 @@ export function computeSettlement(
    * The steps log already claimed this was what happened ("Club Pot is
    * disabled — no balance was updated"). It said so after taking the money.
    */
-  const chargesRake =
-    (settings.potEnabled ?? false) &&
-    ((settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0);
+  //
+  // DIVERGENCE 2 (v3). Versions 1 and 2 read only the two rake figures, so the
+  // `potEnabled` term below is what version 3 added. Replaying a v1 or v2 night
+  // must therefore still take the money — that is what those nights recorded,
+  // and "correcting" it silently would be a different night, not a correction.
+  const configuresCharge =
+    (settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0;
+  const chargesRake = version >= 3
+    ? (settings.potEnabled ?? false) && configuresCharge
+    : configuresCharge;
 
-  if (!chargesRake && ((settings.sessionRakeAmount ?? 0) > 0 || (settings.winnersCutPercent ?? 0) > 0)) {
+  if (!chargesRake && configuresCharge) {
     steps.push({
       step: 'Rake',
       detail: 'Club Pot is disabled, so nothing was charged — a house take with nowhere to go would leave the table without reaching anyone.',
