@@ -111,6 +111,26 @@ export interface SettlementPlayerResult {
   grossProfit: number; // initial profit, untouched by any rule
   isWinner: boolean; // per winnerDefinition, fixed for the whole pipeline
   mismatchDeduction: number; // signed: positive = taken from this player, negative = given back to them (pot-funded excess)
+  /**
+   * The two house charges, and their sum.
+   *
+   * `rakeDeduction` is what the engine has always returned and what every
+   * existing caller reads — seat fee and winners' cut added together. It stays
+   * exactly as it was, to the cent.
+   *
+   * `seatFee` and `winnersCut` are the same money, told apart. A player who
+   * asks how much of their deduction was the table fee could not be answered
+   * before: the two were summed in computeRake and could not be separated
+   * afterwards (SETTLEMENT-REVIEW.md finding 11). The settlement audit needs
+   * them apart, so they are reported apart.
+   *
+   * INVARIANT, asserted in the tests: seatFee + winnersCut === rakeDeduction.
+   * The seat fee is exact by construction — a flat amount per player, or v1's
+   * already-rounded share — so the cut carries any rounding residual, which is
+   * right for a figure derived as a percentage.
+   */
+  seatFee: number;
+  winnersCut: number;
   rakeDeduction: number;
   netResult: number; // grossProfit - mismatchDeduction - rakeDeduction
 }
@@ -136,6 +156,9 @@ export interface SettlementResult {
   mismatchResolution: MismatchResolution;
   requiresManualResolution: boolean;
   totalRakeCollected: number;
+  /** The same total, told apart. Sum to totalRakeCollected. */
+  totalSeatFees: number;
+  totalWinnersCut: number;
   potContribution: number; // net amount added to (negative = drawn from) the club pot; always 0 when potEnabled is false
   players: SettlementPlayerResult[];
   steps: SettlementStepLog[];
@@ -171,6 +194,14 @@ function roundTo(value: number, rule: RoundingRule): number {
 interface WorkingPlayer extends SettlementPlayerResult {
   remaining: number; // running profit as it moves through the pipeline
   manualWinner?: boolean;
+  /**
+   * The flat seat fee charged to this player, before any rounding of the
+   * combined figure and before the refund pass. Tracked alongside rather than
+   * derived afterwards, because once the two charges are summed into
+   * rakeDeduction they cannot be told apart again — which is the whole reason
+   * this field exists.
+   */
+  seatFeeCharged: number;
 }
 
 function determineWinners(players: WorkingPlayer[], settings: SettlementSettings, steps: SettlementStepLog[]) {
@@ -381,6 +412,7 @@ function computeRake(
           ? Math.round((flat - assigned) * 100) / 100
           : Math.round(share * 100) / 100;
         assigned = Math.round((assigned + owed) * 100) / 100;
+        p.seatFeeCharged = owed;
         p.rakeDeduction = Math.round((p.rakeDeduction + owed) * 100) / 100;
       });
       total += flat;
@@ -397,6 +429,7 @@ function computeRake(
       // No remainder handling any more: nothing is divided, so nothing rounds,
       // and seat order stops mattering here.
       players.forEach((p) => {
+        p.seatFeeCharged = flat;
         p.rakeDeduction = Math.round((p.rakeDeduction + flat) * 100) / 100;
       });
       total += flat * players.length;
@@ -451,10 +484,13 @@ export function computeSettlementAt(
       grossProfit,
       isWinner: false,
       mismatchDeduction: 0,
+      seatFee: 0,
+      winnersCut: 0,
       rakeDeduction: 0,
       netResult: grossProfit,
       remaining: grossProfit,
       manualWinner: p.manualWinner,
+      seatFeeCharged: 0,
     };
   });
 
@@ -576,6 +612,26 @@ export function computeSettlementAt(
     });
   });
 
+  /*
+   * Tell the two charges apart, without moving a single total.
+   *
+   * `rakeDeduction` is final at this point — rounded, and reduced by the refund
+   * pass where a winner would otherwise have gone below break-even. The split
+   * is derived from it rather than accumulated in parallel, so it cannot drift
+   * from the figure everything else reads.
+   *
+   * The seat fee is the exact half: a flat amount per player, or v1's
+   * already-rounded share. So it is taken first and capped at the total, and
+   * the cut takes what is left. Capping is what makes a refund come off the
+   * CUT before the seat fee, which is the right order — the cut is a charge on
+   * profit that turned out not to exist, and the seat fee is the cost of a
+   * chair either way.
+   */
+  working.forEach((p) => {
+    p.seatFee = Math.min(Math.round(p.seatFeeCharged * 100) / 100, p.rakeDeduction);
+    p.winnersCut = Math.round((p.rakeDeduction - p.seatFee) * 100) / 100;
+  });
+
   working.forEach((p) => {
     p.netResult = p.grossProfit - p.mismatchDeduction - p.rakeDeduction;
   });
@@ -593,6 +649,8 @@ export function computeSettlementAt(
     grossProfit: p.grossProfit,
     isWinner: p.isWinner,
     mismatchDeduction: p.mismatchDeduction,
+    seatFee: p.seatFee,
+    winnersCut: p.winnersCut,
     rakeDeduction: p.rakeDeduction,
     netResult: p.netResult,
   }));
@@ -604,6 +662,8 @@ export function computeSettlementAt(
     mismatchResolution,
     requiresManualResolution,
     totalRakeCollected,
+    totalSeatFees: Math.round(working.reduce((s, p) => s + p.seatFee, 0) * 100) / 100,
+    totalWinnersCut: Math.round(working.reduce((s, p) => s + p.winnersCut, 0) * 100) / 100,
     potContribution,
     players: players_,
     steps,
