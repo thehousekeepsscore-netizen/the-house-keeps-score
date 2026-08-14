@@ -212,23 +212,47 @@ describe('rounding never loses a chip', () => {
   }
 });
 
-describe('the two engine copies stay identical', () => {
-  // apps/web keeps a mirror so it can preview a settlement before committing
-  // it. If the two ever drift, the number an admin approves stops being the
-  // number that gets saved — so drift fails here rather than in someone's
-  // settlement. Comments are allowed to differ; nothing else is.
-  const stripToLogic = (source: string) =>
-    source
+describe('there is only one engine', () => {
+  /*
+   * This used to compare two files as text.
+   *
+   * apps/web kept a hand-maintained mirror so it could preview a settlement
+   * before committing it, and drift meant the number an admin approved stopped
+   * being the number that got saved. Comparing the sources caught drift after
+   * it was written; sharing the module means there is nothing to drift.
+   *
+   * The check that remains is the one that matters now: nobody may quietly
+   * paste the implementation back. A re-export is a few lines — an engine is
+   * five hundred — so a length bound states the rule without pinning the exact
+   * wording of a comment.
+   */
+  const webEngine = () =>
+    readFileSync(new URL('../../../../web/src/lib/settlementEngine.ts', import.meta.url), 'utf8');
+
+  it('the web module re-exports the API module rather than copying it', () => {
+    expect(webEngine()).toMatch(
+      /export \* from '\.\.\/\.\.\/\.\.\/api\/src\/modules\/offlineSessions\/settlementEngine'/
+    );
+  });
+
+  it('the web module contains no implementation of its own', () => {
+    const code = webEngine()
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n')
       .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith('//'))
-      .join('\n');
+      .filter((line) => line.length > 0 && !line.startsWith('//'));
 
-  it('have the same logic in apps/api and apps/web', () => {
+    // One line of code. A second implementation cannot hide in that.
+    expect(code).toHaveLength(1);
+    expect(code[0]).toContain('export *');
+  });
+
+  it('the engine imports nothing, so one file can serve Node and the browser', () => {
     const api = readFileSync(new URL('./settlementEngine.ts', import.meta.url), 'utf8');
-    const web = readFileSync(new URL('../../../../web/src/lib/settlementEngine.ts', import.meta.url), 'utf8');
-    expect(stripToLogic(web)).toBe(stripToLogic(api));
+    // A single `node:` import here would compile fine on the server and break
+    // the web bundle — which is the failure mode that ends with the preview
+    // and the commit diverging again.
+    expect(api).not.toMatch(/^\s*import\s/m);
   });
 });
 

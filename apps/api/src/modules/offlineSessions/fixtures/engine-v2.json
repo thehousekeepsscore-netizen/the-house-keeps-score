@@ -1,0 +1,3735 @@
+{
+ "engineVersion": 2,
+ "generatedFrom": "a865e06:apps/api/src/modules/offlineSessions/settlementEngine.ts",
+ "generatedAt": "2026-08-14T05:51:15.512Z",
+ "note": "Generated from the ORIGINAL source of this version, out of git. Never regenerate: a change that fails this file needs a new engine version, not a new fixture.",
+ "caseCount": 22400,
+ "sampleStride": 400,
+ "digest": "3d9e4c56eb51f0693f05b8aa734f22311f7c6ad19a8a9934838a6c91b6e5280f",
+ "samples": [
+  {
+   "index": 0,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 400,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 800,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 1200,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 1600,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 2000,
+   "table": "reconciled pair",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 2400,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "excess_from_players",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 500,
+      "rakeDeduction": 0,
+      "netResult": 3500
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 2800,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "excess_from_players",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 500,
+      "rakeDeduction": 0,
+      "netResult": 3500
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 3200,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "excess_from_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": -500,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 4000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 3600,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "excess_from_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": -500,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 4000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 4000,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "manual_pending",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 4000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 4400,
+   "table": "over-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15500,
+    "mismatchAmount": 500,
+    "mismatchResolution": "excess_from_players",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 9000,
+      "grossProfit": 4000,
+      "isWinner": true,
+      "mismatchDeduction": 500,
+      "rakeDeduction": 0,
+      "netResult": 3500
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 3500,
+      "grossProfit": -1500,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 4800,
+   "table": "under-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 9000,
+    "mismatchAmount": -6000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 6000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 5200,
+   "table": "under-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 9000,
+    "mismatchAmount": -6000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 6000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 5600,
+   "table": "under-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 9000,
+    "mismatchAmount": -6000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 6000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 6000,
+   "table": "under-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 9000,
+    "mismatchAmount": -6000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 6000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 6400,
+   "table": "under-declared trio",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 9000,
+    "mismatchAmount": -6000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 6000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 2000,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 6800,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 7200,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 7600,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 8000,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 8400,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 8800,
+   "table": "three, fee does not divide",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 5000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 4000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 9200,
+   "table": "five mixed",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 12000,
+    "totalCashOuts": 12000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 2000,
+      "cashOut": 5000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 2000,
+      "cashOut": 1000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 3000,
+      "cashOut": 0,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 1000,
+      "cashOut": 1500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 4000,
+      "cashOut": 4500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 9600,
+   "table": "five mixed",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 12000,
+    "totalCashOuts": 12000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 2000,
+      "cashOut": 5000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 2000,
+      "cashOut": 1000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 3000,
+      "cashOut": 0,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 1000,
+      "cashOut": 1500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 4000,
+      "cashOut": 4500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 10000,
+   "table": "five mixed",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 12000,
+    "totalCashOuts": 12000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 2000,
+      "cashOut": 5000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 2000,
+      "cashOut": 1000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 3000,
+      "cashOut": 0,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 1000,
+      "cashOut": 1500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 4000,
+      "cashOut": 4500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 10400,
+   "table": "five mixed",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 12000,
+    "totalCashOuts": 12000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 2000,
+      "cashOut": 5000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 2000,
+      "cashOut": 1000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 3000,
+      "cashOut": 0,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 1000,
+      "cashOut": 1500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 4000,
+      "cashOut": 4500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 10800,
+   "table": "five mixed",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 12000,
+    "totalCashOuts": 12000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 2000,
+      "cashOut": 5000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 2000,
+      "cashOut": 1000,
+      "grossProfit": -1000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 3000,
+      "cashOut": 0,
+      "grossProfit": -3000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 1000,
+      "cashOut": 1500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 4000,
+      "cashOut": 4500,
+      "grossProfit": 500,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 500
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 11200,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 11600,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 12000,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 12400,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 12800,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 13200,
+   "table": "everyone flat",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 3000,
+    "totalCashOuts": 3000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 1000,
+      "cashOut": 1000,
+      "grossProfit": 0,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 0
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 13600,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 14000,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 14400,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 14800,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 15200,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 15600,
+   "table": "exact tie at the top",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 7000,
+      "grossProfit": 2000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 2000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 16000,
+   "table": "one player busted",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 0,
+      "grossProfit": -5000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -5000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 10000,
+      "grossProfit": 5000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 5000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 16400,
+   "table": "one player busted",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 0,
+      "grossProfit": -5000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -5000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 10000,
+      "grossProfit": 5000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 5000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 16800,
+   "table": "one player busted",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 0,
+      "grossProfit": -5000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -5000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 10000,
+      "grossProfit": 5000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 5000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 17200,
+   "table": "one player busted",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 0,
+      "grossProfit": -5000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -5000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 10000,
+      "grossProfit": 5000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 5000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 17600,
+   "table": "one player busted",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 10000,
+    "totalCashOuts": 10000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 0,
+      "grossProfit": -5000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -5000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 10000,
+      "grossProfit": 5000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 5000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 18000,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 1000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 18400,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 1000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 18800,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 1000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 19200,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 1000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 19600,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "manual_pending",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 20000,
+   "table": "eight at the table",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "CUSTOM",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 40000,
+    "totalCashOuts": 39000,
+    "mismatchAmount": -1000,
+    "mismatchResolution": "shortfall_to_pot",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 1000,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u3",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u4",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u5",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u6",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     },
+     {
+      "userId": "u7",
+      "totalBuyIn": 5000,
+      "cashOut": 3000,
+      "grossProfit": -2000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -2000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition",
+     "Mismatch"
+    ]
+   }
+  },
+  {
+   "index": 20400,
+   "table": "manual winners marked",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "PROPORTIONAL_WINNERS",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 20800,
+   "table": "manual winners marked",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EQUAL_ALL",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 21200,
+   "table": "manual winners marked",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "SHORTFALL_TO_POT",
+    "rakeOrder": "MISMATCH_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 21600,
+   "table": "manual winners marked",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "EXCESS_FROM_POT",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NONE"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  },
+  {
+   "index": 22000,
+   "table": "manual winners marked",
+   "settings": {
+    "sessionRakeAmount": 0,
+    "winnersCutPercent": 0,
+    "rakeEnabled": false,
+    "rakeMethod": "PERCENT_PROFIT",
+    "rakeValue": 0,
+    "potEnabled": true,
+    "mismatchStrategy": "MANUAL",
+    "rakeOrder": "RAKE_FIRST",
+    "winnerDefinition": "PROFIT_POSITIVE",
+    "winnerTopN": 1,
+    "roundingRule": "NEAREST_5"
+   },
+   "expected": {
+    "totalBuyIns": 15000,
+    "totalCashOuts": 15000,
+    "mismatchAmount": 0,
+    "mismatchResolution": "none",
+    "requiresManualResolution": false,
+    "totalRakeCollected": 0,
+    "potContribution": 0,
+    "players": [
+     {
+      "userId": "u0",
+      "totalBuyIn": 5000,
+      "cashOut": 8000,
+      "grossProfit": 3000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 3000
+     },
+     {
+      "userId": "u1",
+      "totalBuyIn": 5000,
+      "cashOut": 6000,
+      "grossProfit": 1000,
+      "isWinner": true,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": 1000
+     },
+     {
+      "userId": "u2",
+      "totalBuyIn": 5000,
+      "cashOut": 1000,
+      "grossProfit": -4000,
+      "isWinner": false,
+      "mismatchDeduction": 0,
+      "rakeDeduction": 0,
+      "netResult": -4000
+     }
+    ],
+    "stepSequence": [
+     "Winner Definition"
+    ]
+   }
+  }
+ ]
+}

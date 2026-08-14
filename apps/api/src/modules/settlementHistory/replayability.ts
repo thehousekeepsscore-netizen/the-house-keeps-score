@@ -49,8 +49,13 @@
  * audit that quietly drops the hard rows is not an audit.
  */
 
-import { SettlementSettings, SettlementResult } from '../offlineSessions/settlementEngine.js';
-import { computeSettlementAt, EngineVersion, isKnownEngineVersion } from './versionedEngine.js';
+import {
+  SettlementSettings,
+  SettlementResult,
+  computeSettlementAt,
+  EngineVersion,
+  isKnownEngineVersion,
+} from '../offlineSessions/settlementEngine.js';
 
 export type RecordKind = 'cashout' | 'historical';
 
