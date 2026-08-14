@@ -105,6 +105,19 @@ was never changed. Under overwrite semantics that reinterpretation would land
 on the visible result, which is why versioned dispatch is a precondition for
 correcting anything rather than a refinement of it.
 
+### The requirement this imposes
+
+> **A historical record replays under the engine semantics that originally
+> produced it — never today's engine with yesterday's data.**
+
+Stated as a requirement rather than an implementation note, because it is the
+property that makes a correction a *correction*. An 8x rake difference on an
+unchanged setting is what the alternative looks like.
+
+Confirmed by step 1: all three versions are recoverable from git, and the whole
+divergence is two conditionals. With PR #22's parity harness already protecting
+behaviour, versioned branches carry less risk than three frozen copies.
+
 ### Where the version lives
 
 *(verified)* `CashOutSettlement` does **not** record an engine version.
@@ -247,6 +260,18 @@ of the audit trail**, not the safe-and-optional cleanup it was in the review.
 It is still safe — no change to any arithmetic, only to the shape of what is
 returned — but it has moved onto the critical path.
 
+**Backwards, it is not reconstructable, and the design does not pretend it is.**
+*(verified in step 1)* `playerSummaries[].winnersCutDeduction` holds the FUSED
+figure under a misleading name, and `CashOutSettlement.totalWinnersCut` means
+different things depending on which path last wrote it — `0` from
+`settleSession`, the full rake from `applySessionChange`. So:
+
+- backfilled revision-1 rows carry `seatFee: null` and `winnersCut: null`
+- each carries a **`splitUnavailableReason`** recording exactly why, so a screen
+  showing a blank seat fee can say whether that means *zero* or *never stored*
+  without dating the record against a release
+- from step 3 onward both are stored independently
+
 **`rakeOrder`** affects only the cut:
 
 | | A's mismatch | A's cut |
@@ -380,6 +405,16 @@ outputs, and editing an output is how a ledger stops reconciling.
 a delta applied to the old outputs — a full recompute from inputs, which is
 what makes the operation idempotent and what stops a second correction from
 compounding the first.
+
+**Every engine input travels with the replay — `manualWinner` included.**
+Step 1 found that `applySessionChange` does not pass it, so any `MANUAL`-rules
+night that was ever edited was silently re-settled with no winners. That is an
+existing defect, tracked separately. The requirement on this path is absolute:
+
+> Carry every input the engine reads. Where a required input is absent from the
+> record, **refuse to replay** — never substitute a default. A missing
+> `manualWinner` makes a night unreplayable (§11), not replayable-with-nobody-
+> winning.
 
 **Digest:** the request carries a `previewDigest` over the exact recalculation
 it is asking for, and execution re-verifies it (§7). A single-night edit is not
@@ -822,6 +857,36 @@ recorded. **Reconstructable with a stated assumption, not from data.**
 
 **Back-dated records.** Never had a session, so never had a snapshot. Rules were
 the club's at *recording* time. Same reasoning, same assumption.
+
+### A fourth population: records no engine ever settled
+
+*(verified in step 1)* Two paths write a settlement-shaped row without running
+the engine, and neither writes an audit row:
+
+- **`sessions.endSession`** — Virtual Table nights. Every deduction 0,
+  `netResult` is raw profit, `rakeCollected` and `potAdjustment` 0.
+- **`seed-history.ts`** — two July nights transcribed from a PDF ledger, with
+  `profit = cashOut - totalBuyIn` and `importedBy: 'system'`.
+
+**Decision: preserved, never converted.** These are legacy, not degraded.
+
+- they stay visible in History
+- their leaderboard contribution is unchanged — no recomputation, no restatement
+- they are classified internally as legacy / non-engine-settled, so the
+  distinction is queryable rather than a comment
+- they are excluded from the correction and replay workflow entirely
+- no rules are inferred and no settlement is reconstructed for them
+- their existing financial result is not modified by this project
+
+Applying rules to one would be a **first settlement wearing the word
+"correction"** — a different operation, with a different meaning for people who
+already settled up. Whether to offer an explicit *"convert legacy history to a
+settlement"* workflow is a separate product decision, made deliberately if it
+is made at all. It is never something the replay system arrives at by guessing.
+
+**Consequence for §9:** the invariant harness must expect `sum(nets) + pot != 0`
+on Virtual Table records — that is a known property of the population, not
+corruption, and treating it as corruption would flag every one of them.
 
 ### The rule for missing data
 
