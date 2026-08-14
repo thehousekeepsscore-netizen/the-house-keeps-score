@@ -128,7 +128,7 @@ export interface RecordEvidence {
   engineVersion: number | null;
   /** From PokerSession.engineState.settlementRules or AuditLog.changes.meta.settlementRules. */
   rules: SettlementSettings | null;
-  rulesSource: 'session-snapshot' | 'audit' | null;
+  rulesSource: 'canonical' | 'session-snapshot' | 'audit' | null;
   /**
    * `changes.players[].userId` from the settle audit, written from the same
    * array as the record in the same transaction. Where both exist and agree,
@@ -244,6 +244,17 @@ export function evidenceFrom(args: {
   kind: RecordKind;
   /** `HistoricalSessionRecord.importedBy`. Ignored for cash-out records. */
   importedBy?: string | null;
+  /**
+   * `canonicalInputs` off the record itself, where the row has one.
+   *
+   * The best source there is, and it outranks everything else: it carries the
+   * rules, the engine version, participant order AND manualWinner in one object
+   * that the writer captured from the very array the engine settled. The other
+   * sources each supply a piece and leave the rest to be inferred.
+   */
+  canonicalInputs?: unknown;
+  /** `engineVersion` off the record itself. */
+  recordEngineVersion?: number | null;
 }): RecordEvidence & { rulesDisagree: boolean } {
   const creation = args.auditRows.find((r) => CREATION_ACTIONS.includes(r.action));
   const changes = (creation?.changes ?? null) as Record<string, unknown> | null;
@@ -252,6 +263,13 @@ export function evidenceFrom(args: {
       ? (changes.meta as Record<string, unknown>)
       : null;
 
+  // Priority: the record's own canonical contract, then the session snapshot
+  // the engine was handed, then the audit's serialised copy. Never the Club.
+  const canonical =
+    args.canonicalInputs && typeof args.canonicalInputs === 'object'
+      ? (args.canonicalInputs as Record<string, unknown>)
+      : null;
+  const fromCanonical = asRules(canonical?.rules);
   const fromSnapshot = asRules(args.sessionSnapshot);
   const fromAudit = asRules(meta?.settlementRules);
 
@@ -260,11 +278,16 @@ export function evidenceFrom(args: {
     ? auditPlayers.map((p) => String((p as Record<string, unknown>).userId ?? ''))
     : null;
 
+  const canonicalVersion =
+    typeof canonical?.engineVersion === 'number' ? (canonical.engineVersion as number) : null;
+
   return {
     engineVersion:
-      typeof meta?.settlementEngineVersion === 'number' ? (meta.settlementEngineVersion as number) : null,
-    rules: fromSnapshot ?? fromAudit,
-    rulesSource: fromSnapshot ? 'session-snapshot' : fromAudit ? 'audit' : null,
+      canonicalVersion ??
+      (typeof args.recordEngineVersion === 'number' ? args.recordEngineVersion : null) ??
+      (typeof meta?.settlementEngineVersion === 'number' ? (meta.settlementEngineVersion as number) : null),
+    rules: fromCanonical ?? fromSnapshot ?? fromAudit,
+    rulesSource: fromCanonical ? 'canonical' : fromSnapshot ? 'session-snapshot' : fromAudit ? 'audit' : null,
     auditPlayerOrder,
     // Two paths write a record without ever running the engine, and neither
     // writes an audit row. The absence of a creation audit is required in both

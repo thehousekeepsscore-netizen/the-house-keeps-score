@@ -168,13 +168,13 @@ async function main() {
       select: {
         id: true, clubId: true, sessionId: true, sessionType: true, isDeleted: true,
         totalBuyIns: true, totalCashOuts: true, rakeCollected: true, potAdjustment: true,
-        playerSummaries: true, settledAt: true, settledBy: true,
+        playerSummaries: true, settledAt: true, canonicalInputs: true, engineVersion: true, settledBy: true,
       },
     }),
     prisma.historicalSessionRecord.findMany({
       select: {
         id: true, clubId: true, sessionType: true, isDeleted: true,
-        playerStats: true, sessionDate: true, createdAt: true, importedBy: true,
+        playerStats: true, sessionDate: true, createdAt: true, importedBy: true, canonicalInputs: true, engineVersion: true,
       },
     }),
     prisma.auditLog.findMany({ select: { sessionId: true, action: true, changes: true } }),
@@ -215,6 +215,8 @@ async function main() {
         sessionSnapshot: snapshotBySession.get(s.sessionId),
         sessionType: s.sessionType,
         kind: 'cashout',
+        canonicalInputs: s.canonicalInputs,
+        recordEngineVersion: s.engineVersion,
       })),
     };
 
@@ -239,6 +241,8 @@ async function main() {
         sessionType: h.sessionType,
         kind: 'historical',
         importedBy: h.importedBy,
+        canonicalInputs: h.canonicalInputs,
+        recordEngineVersion: h.engineVersion,
       })),
     };
 

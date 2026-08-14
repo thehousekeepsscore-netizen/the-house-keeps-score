@@ -5,6 +5,7 @@ import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import * as notificationsService from '../notifications/notifications.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from './settlementEngine.js';
+import { buildCanonicalInputs, canonicalOutputsFrom } from './canonicalSettlement.js';
 import { AUDIT_SCHEMA_VERSION } from '../clubRecords/auditMeta.js';
 
 // Offline and Lazy Dealer sessions don't run the automated poker engine —
@@ -1262,20 +1263,47 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
       roundingRule: rules.roundingRule as SettlementSettings['roundingRule'],
     };
 
-    const engineResult = computeSettlement(
-      activePlayerUids.map((uid) => {
-        const entry = entryByUid.get(uid);
-        return {
-          userId: uid,
-          userDisplayName: nameByUid.get(uid) || 'Player',
-          buyIn: Number(entry?.buyIn || 0),
-          cashOut: lockedCashOut.has(uid) ? lockedCashOut.get(uid)! : Number(entry?.cashOut || 0),
-          manualWinner: entry?.manualWinner,
-        };
-      }),
-      settlementSettings,
-      { currentPotBalance: club.clubPotBalance, mismatchAcknowledged: input.mismatchAcknowledged }
-    );
+    /*
+     * The engine's inputs, built once and then both RUN and RECORDED.
+     *
+     * Extracted into a variable rather than inlined into the call so the
+     * canonical record below is provably the same array the engine settled —
+     * participant order included, which is arithmetic rather than presentation
+     * (canonicalSettlement.ts). Building it twice would let the two drift.
+     */
+    const enginePlayers = activePlayerUids.map((uid) => {
+      const entry = entryByUid.get(uid);
+      return {
+        userId: uid,
+        userDisplayName: nameByUid.get(uid) || 'Player',
+        buyIn: Number(entry?.buyIn || 0),
+        cashOut: lockedCashOut.has(uid) ? lockedCashOut.get(uid)! : Number(entry?.cashOut || 0),
+        manualWinner: entry?.manualWinner,
+      };
+    });
+
+    const engineResult = computeSettlement(enginePlayers, settlementSettings, {
+      currentPotBalance: club.clubPotBalance,
+      mismatchAcknowledged: input.mismatchAcknowledged,
+    });
+
+    /*
+     * The replay contract, captured beside the settlement rather than instead
+     * of it. The live path above is untouched — same call, same arguments, same
+     * numbers — and this records everything needed to reproduce it later
+     * without consulting the Club again.
+     *
+     * settlementRulesSnapshot.integration.test.ts proves the captured record
+     * replays back to exactly what was stored.
+     */
+    const canonicalInputs = buildCanonicalInputs({
+      rules: settlementSettings,
+      players: enginePlayers,
+      currentPotBalance: club.clubPotBalance,
+      mismatchAcknowledged: input.mismatchAcknowledged,
+      capturedFrom: 'settleSession',
+    });
+    const canonicalOutputs = canonicalOutputsFrom(engineResult, canonicalInputs);
 
     if (engineResult.requiresManualResolution) {
       throw new HttpError(409, 'This club requires manual mismatch resolution — acknowledge it before settling.');
@@ -1307,10 +1335,30 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
         settledBy: requesterId,
         totalBuyIns: engineResult.totalBuyIns,
         totalCashOuts: engineResult.totalCashOuts,
-        totalWinnersCut: 0, // superseded by totalRakeCollected — kept 0 for schema/history compatibility
+        /*
+         * ONE MEANING, both writers.
+         *
+         * This was hard-coded to 0 here and set to the FULL rake by
+         * applySessionChange, so the same column meant different things
+         * depending on which path last wrote it — and it could not mean the
+         * winners' cut at all, because the engine fused the cut and the seat
+         * fee into one number. Now that the engine reports them apart, the
+         * column can finally hold what its name says.
+         *
+         * Rounded because the column is an Int and Prisma coerces silently;
+         * `canonicalOutputs` carries the unrounded figure.
+         *
+         * Rows written before this change are unreliable and cannot be
+         * repaired — nothing renders this field, which is why the ambiguity
+         * went unnoticed and why pinning it changes nothing on screen.
+         */
+        totalWinnersCut: Math.round(engineResult.totalWinnersCut),
         rakeCollected: engineResult.totalRakeCollected,
         potAdjustment: engineResult.potContribution,
         playerSummaries: summaries as any,
+        engineVersion: canonicalInputs.engineVersion,
+        canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+        canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
       },
     });
 

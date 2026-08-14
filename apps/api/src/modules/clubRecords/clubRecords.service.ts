@@ -3,6 +3,7 @@ import { HttpError } from '../../middleware/errorHandler.js';
 import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from '../offlineSessions/settlementEngine.js';
+import { buildCanonicalInputs, canonicalOutputsFrom } from '../offlineSessions/canonicalSettlement.js';
 import { AUDIT_SCHEMA_VERSION } from './auditMeta.js';
 import { Prisma } from '@prisma/client';
 
@@ -144,17 +145,30 @@ export async function createPastSession(
     roundingRule: club.roundingRule as SettlementSettings['roundingRule'],
   };
 
-  const result = computeSettlement(
-    input.entries.map((e, i) => ({
-      userId: e.userId || `unlinked:${i}:${e.userName}`,
-      userDisplayName: e.userName,
-      buyIn: Number(e.buyIn || 0),
-      cashOut: Number(e.cashOut || 0),
-      manualWinner: e.manualWinner,
-    })),
-    settings,
-    { currentPotBalance: club.clubPotBalance, mismatchAcknowledged: input.mismatchAcknowledged }
-  );
+  // Built once, then both run and recorded — see the matching note in
+  // settleSession. Participant order is arithmetic, so the array the engine
+  // settles must be the array the canonical record keeps.
+  const enginePlayers = input.entries.map((e, i) => ({
+    userId: e.userId || `unlinked:${i}:${e.userName}`,
+    userDisplayName: e.userName,
+    buyIn: Number(e.buyIn || 0),
+    cashOut: Number(e.cashOut || 0),
+    manualWinner: e.manualWinner,
+  }));
+
+  const result = computeSettlement(enginePlayers, settings, {
+    currentPotBalance: club.clubPotBalance,
+    mismatchAcknowledged: input.mismatchAcknowledged,
+  });
+
+  const canonicalInputs = buildCanonicalInputs({
+    rules: settings,
+    players: enginePlayers,
+    currentPotBalance: club.clubPotBalance,
+    mismatchAcknowledged: input.mismatchAcknowledged,
+    capturedFrom: 'createPastSession',
+  });
+  const canonicalOutputs = canonicalOutputsFrom(result, canonicalInputs);
 
   if (result.requiresManualResolution) {
     throw new HttpError(409, 'This club requires manual mismatch resolution — acknowledge it before recording.');
@@ -206,6 +220,17 @@ export async function createPastSession(
         playerStats: playerStats as any,
         notes: input.notes,
         importedBy: requesterId,
+        /*
+         * A back-dated night now records the rules it was settled under.
+         *
+         * Its audit row never did — meta carried the engine version and not the
+         * rules — so a record_past_session record could say which engine ran
+         * and not what it was told. Every night recorded from here on carries
+         * both, on the record itself.
+         */
+        engineVersion: canonicalInputs.engineVersion,
+        canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+        canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -647,16 +672,39 @@ async function applySessionChange(
      */
     const rules = await settlementRulesForRecord(tx, recordId, staged.sourceType, club);
 
-    const result = computeSettlement(
-      entries.map((e: any, i: number) => ({
-        userId: e.userId || `unlinked:${i}:${e.userName ?? e.userDisplayName}`,
-        userDisplayName: e.userName ?? e.userDisplayName,
-        buyIn: Number(e.totalBuyIn || 0),
-        cashOut: Number(e.cashOut || 0),
-      })),
+    /*
+     * NOTE ON manualWinner, which this path still does not carry.
+     *
+     * The edit form sends buy-ins and cash-outs and nothing about who won, so a
+     * MANUAL-rules night re-settled here comes back with no winners at all.
+     * That is a real defect and it predates this change (recorded in
+     * SETTLEMENT-REPLAYABILITY-AUDIT.md §2).
+     *
+     * It is NOT fixed here, deliberately: fixing it would change what an edit
+     * computes, and step 3 changes no settlement behaviour. Step 5 replaces
+     * this path with one that carries every engine input and refuses rather
+     * than defaulting — see SETTLEMENT-HISTORY-DESIGN.md §5.
+     *
+     * What this change does add is the evidence: the canonical record below
+     * states that manualWinner was false for everybody, so a night mis-settled
+     * this way is afterwards identifiable instead of indistinguishable.
+     */
+    const enginePlayers = entries.map((e: any, i: number) => ({
+      userId: e.userId || `unlinked:${i}:${e.userName ?? e.userDisplayName}`,
+      userDisplayName: e.userName ?? e.userDisplayName,
+      buyIn: Number(e.totalBuyIn || 0),
+      cashOut: Number(e.cashOut || 0),
+    }));
+
+    const result = computeSettlement(enginePlayers, rules, { currentPotBalance: club.clubPotBalance });
+
+    const canonicalInputs = buildCanonicalInputs({
       rules,
-      { currentPotBalance: club.clubPotBalance }
-    );
+      players: enginePlayers,
+      currentPotBalance: club.clubPotBalance,
+      capturedFrom: 'applySessionChange',
+    });
+    const canonicalOutputs = canonicalOutputsFrom(result, canonicalInputs);
 
     if (result.requiresManualResolution) {
       throw new HttpError(409, 'This club requires manual mismatch resolution — reconcile the difference before editing this session.');
@@ -677,6 +725,9 @@ async function applySessionChange(
           ...(staged.date !== undefined ? { sessionDate: staged.date } : {}),
           ...(staged.notes !== undefined ? { notes: staged.notes } : {}),
           playerStats: playerStats as any,
+          engineVersion: canonicalInputs.engineVersion,
+          canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+          canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
         },
       });
     } else {
@@ -696,10 +747,18 @@ async function applySessionChange(
           ...(staged.notes !== undefined ? { notes: staged.notes } : {}),
           totalBuyIns: result.totalBuyIns,
           totalCashOuts: result.totalCashOuts,
-          totalWinnersCut: result.totalRakeCollected,
+          // The winners' cut, which is what the column is called. It held the
+          // FULL rake here and 0 in settleSession, so the same column meant two
+          // different things depending on which path wrote last. Both write the
+          // same thing now. Rounded for the Int column; canonicalOutputs keeps
+          // the unrounded figure.
+          totalWinnersCut: Math.round(result.totalWinnersCut),
           rakeCollected: result.totalRakeCollected,
           potAdjustment: result.potContribution,
           playerSummaries: playerSummaries as any,
+          engineVersion: canonicalInputs.engineVersion,
+          canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+          canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
         },
       });
     }

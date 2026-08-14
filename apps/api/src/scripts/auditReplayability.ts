@@ -87,14 +87,14 @@ async function main() {
       select: {
         id: true, clubId: true, sessionId: true, sessionType: true, isDeleted: true,
         totalBuyIns: true, totalCashOuts: true, rakeCollected: true, potAdjustment: true,
-        playerSummaries: true, settledAt: true,
+        playerSummaries: true, settledAt: true, canonicalInputs: true, engineVersion: true,
       },
       orderBy: { settledAt: 'asc' },
     }),
     prisma.historicalSessionRecord.findMany({
       select: {
         id: true, clubId: true, sessionType: true, isDeleted: true,
-        playerStats: true, sessionDate: true, createdAt: true, importedBy: true,
+        playerStats: true, sessionDate: true, createdAt: true, importedBy: true, canonicalInputs: true, engineVersion: true,
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -131,7 +131,9 @@ async function main() {
     players: StoredPlayer[],
     totals: RecordUnderAudit['totals'],
     liveSessionId: string | null,
-    importedBy: string | null = null
+    importedBy: string | null = null,
+    canonicalInputs: unknown = null,
+    recordEngineVersion: number | null = null
   ): RecordUnderAudit => {
     const { rulesDisagree, ...evidence } = evidenceFrom({
       auditRows: auditsByRecord.get(id) ?? [],
@@ -139,6 +141,8 @@ async function main() {
       sessionType,
       kind,
       importedBy,
+      canonicalInputs,
+      recordEngineVersion,
     });
     if (rulesDisagree) disagreements.push(id);
 
@@ -165,7 +169,10 @@ async function main() {
           rakeCollected: s.rakeCollected,
           potAdjustment: s.potAdjustment,
         },
-        s.sessionId
+        s.sessionId,
+        null,
+        s.canonicalInputs,
+        s.engineVersion
       )
     );
   }
@@ -186,7 +193,9 @@ async function main() {
         // contradict, so the cross-check simply does not apply to it.
         {},
         null,
-        h.importedBy
+        h.importedBy,
+        h.canonicalInputs,
+        h.engineVersion
       )
     );
   }
