@@ -63,7 +63,30 @@ import { SettlementSettings } from '../modules/offlineSessions/settlementEngine.
  */
 const EXECUTION_ENABLED = false;
 
-const prisma = new PrismaClient();
+/**
+ * One connection, and only one.
+ *
+ * The audit is a handful of sequential reads, so it needs exactly one slot —
+ * and production sits behind a pooler with fifteen client slots in total,
+ * shared by every running instance. `new PrismaClient()` would ask for
+ * `num_cpus * 2 + 1` of them, decided by whichever laptop runs the script, and
+ * a script that takes a third of production's connection budget to count rows
+ * is a script that can cause the outage it was written to prevent.
+ */
+function readOnlyClient(): PrismaClient {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return new PrismaClient();
+  try {
+    const url = new URL(raw);
+    url.searchParams.set('connection_limit', '1');
+    url.searchParams.set('pool_timeout', '30');
+    return new PrismaClient({ datasources: { db: { url: url.toString() } } });
+  } catch {
+    return new PrismaClient();
+  }
+}
+
+const prisma = readOnlyClient();
 
 /**
  * A row of `SettlementRevision` as SETTLEMENT-HISTORY-DESIGN.md §8 defines it.

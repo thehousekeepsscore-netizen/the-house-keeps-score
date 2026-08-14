@@ -19,21 +19,87 @@ record backfilled by inference silently starts claiming rules it never used.
 
 ## The headline
 
-**The production numbers are not in this document, because I cannot reach
-production.** The audit is a script; running it is one read-only command:
+**Two of the three settled nights in production are correctable today. The
+third is not, and the reason is not fixable.**
+
+```
+TOTAL RECORDS                  3       CashOutSettlement 3 · Historical 0
+
+FULL POPULATION BY VERDICT            TOTAL    %   LIVE  DELETED
+  engine-settled / replayable            2   67%      2        0
+  engine-settled, input missing          1   33%      1        0
+  never engine-settled                   0    0%      0        0
+  fundamentally unrecoverable            0    0%      0        0
+  ------------------------------------------------------------
+  accounted for                          3   of 3
+
+"ENGINE-SETTLED, INPUT MISSING" BY REASON — 1 record
+  engine version unknown                 0
+  rules unknown                          1   ← the only cause
+  manual winner missing                  0
+  pot state missing                      0
+  participant identity missing           0
+  replay disagreed                       0
+  other                                  0
+
+EVIDENCE
+  replay reproduced the record           2   both, to the cent
+  replay DISAGREED                       0
+  participant order changes the money    1   ← see below
+  order corroborated by a second copy    3   all of them
+
+RECONCILIATION
+  sessions marked settled with NO settlement row   0
+  settlements pointing at a missing session        0
+  settlements sharing one session id               0
+```
+
+Run read-only, on a single pooled connection, against the production database
+on 2026-08-14. No transaction, no write, no row created, and not one `Club`
+settlement column selected.
 
 ```bash
 cd apps/api && DATABASE_URL='<production url>' npx tsx src/scripts/auditReplayability.ts --json audit.json
 ```
 
-It opens no transaction, issues no write, creates no row, and never selects a
-single `Club` settlement column. It prints the table in §6 filled in.
+### The four things worth knowing
 
-What this document contains is everything establishable without the production
-data: **which inputs the engine needs, which of them the database keeps, and
-therefore which categories exist at all** — plus a run against the local
-database and an end-to-end proof that a night settled by today's app is
-replayable to the cent.
+**The history is three nights.** Small enough that "is this feature viable
+across the whole history" has a concrete answer: yes, with a boundary of one
+record, and the value of the feature is overwhelmingly in nights not yet
+played.
+
+**Production has run v1 and v2, and never v3.**
+
+| Record | Club | Settled | Engine | Verdict |
+|---|---|---|---|---|
+| `cmsf5a2gt…` | Texas Holdem | 2026-08-04 | **1** | input missing — rules unknown |
+| `cmsl1zrnr…` | All in 2026 | 2026-08-09 | **1** | replayable, **order-sensitive** |
+| `cmsmbsezu…` | All in 2026 | 2026-08-09 | **2** | replayable |
+
+So versioned dispatch is not hypothetical: two live records need v1 semantics
+and one needs v2, and replaying any of them under today's v3 would restate real
+money. The v1→v2 divergence is the 8× rake change, and it sits between two
+records settled on the same day.
+
+**The order hazard is real, in production, on money.** `cmsl1zrnr…` is
+order-sensitive: it is a v1 night, and v1 divides the flat rake across the
+table and gives the rounding remainder to the last seat. Reorder its
+participants and a different player pays. This is no longer a theoretical
+finding — it is one of the two records we are proposing to make correctable.
+
+All three records had their order **corroborated** by the audit's independently
+written second copy, and both replayable ones reproduced their stored figures
+exactly, which is stronger evidence still: a wrong order would not have
+reproduced an order-sensitive record.
+
+**A population that was not in the original three.** The Texas Holdem record
+has a `settle_session` audit stamped `settlementEngineVersion: 1` and **no
+rules at all** — not in the audit meta, not on the session. Engine-version
+stamping shipped *before* rules stamping did, so there is a window where a
+record knows which engine ran and not what it was told. Classified correctly by
+cause rather than by date, which is why the reason breakdown matters more than
+the category count.
 
 ---
 
@@ -295,9 +361,11 @@ appear in any verdict table:
 
 ---
 
-## 7. Run against the local dev database
+## 7. The local dev database, for contrast
 
-Not the answer, and the reason it is not the answer is itself a finding.
+Run first, and worth keeping because the contrast with production is the point:
+a database can look 0% replayable for a reason that says nothing about the
+system.
 
 ```
 TOTAL RECORDS                 14
@@ -326,10 +394,9 @@ All 14 accounted for, deleted rows included.
 
 **This database has zero `AuditLog` rows.** That is why all 12 settlements come
 back `engine-version-unknown` + `rules-unknown` — they predate PR #12 entirely.
-So the local run establishes that the pipeline works and that the population
-reconciles, and it **says nothing about how many production records are
-replayable**, because it contains no record of the kind production has been
-writing since #12. **0% here is not a forecast.**
+It established that the pipeline works and that the population reconciles, and
+it said nothing about production: **0% here was not a forecast**, and production
+came back 67%.
 
 The two live records are the July 25th/26th nights `seed-history.ts` imported.
 The audit identified them as transcribed rather than settled without being told

@@ -38,7 +38,30 @@ import {
 } from '../modules/settlementHistory/replayability.js';
 import { writeFileSync } from 'node:fs';
 
-const prisma = new PrismaClient();
+/**
+ * One connection, and only one.
+ *
+ * The audit is a handful of sequential reads, so it needs exactly one slot —
+ * and production sits behind a pooler with fifteen client slots in total,
+ * shared by every running instance. `new PrismaClient()` would ask for
+ * `num_cpus * 2 + 1` of them, decided by whichever laptop runs the script, and
+ * a script that takes a third of production's connection budget to count rows
+ * is a script that can cause the outage it was written to prevent.
+ */
+function readOnlyClient(): PrismaClient {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return new PrismaClient();
+  try {
+    const url = new URL(raw);
+    url.searchParams.set('connection_limit', '1');
+    url.searchParams.set('pool_timeout', '30');
+    return new PrismaClient({ datasources: { db: { url: url.toString() } } });
+  } catch {
+    return new PrismaClient();
+  }
+}
+
+const prisma = readOnlyClient();
 
 /**
  * Nights that exist on one side of the relationship and not the other.
@@ -261,6 +284,37 @@ function report(
   ev('replay DISAGREED', all.replayMismatched);
   ev('participant order changes the money', all.orderSensitive);
   ev('order corroborated by a second copy', all.orderCorroborated);
+
+  // The category the whole decision turns on, split by cause. A record can
+  // raise several causes, so these deliberately do not sum to the category —
+  // said out loud rather than left as a trap.
+  const missing = assessments.filter((a) => a.verdict === 'missing-required-input');
+  const has = (code: BlockerCode) => missing.filter((a) => a.blockers.includes(code)).length;
+  const KNOWN: BlockerCode[] = [
+    'engine-version-unknown',
+    'rules-unknown',
+    'manual-winners-lost',
+    'pot-balance-unknown',
+    'participant-identity-missing',
+    'replay-mismatch',
+  ];
+  const other = missing.filter((a) => a.blockers.some((b) => !KNOWN.includes(b))).length;
+
+  console.log('\n' + '-'.repeat(72));
+  console.log(`"ENGINE-SETTLED, INPUT MISSING" BY REASON — ${missing.length} record(s)`);
+  console.log('-'.repeat(72));
+  const reason = (label: string, n: number) =>
+    console.log(`  ${label.padEnd(34)} ${String(n).padStart(5)}  ${pct(n, missing.length)}`);
+  reason('engine version unknown', has('engine-version-unknown'));
+  reason('rules unknown', has('rules-unknown'));
+  reason('manual winner missing', has('manual-winners-lost'));
+  reason('pot state missing', has('pot-balance-unknown'));
+  reason('participant identity missing', has('participant-identity-missing'));
+  reason('replay disagreed', has('replay-mismatch'));
+  reason('other', other);
+  console.log(`\n  ${'order sensitivity undetermined'.padEnd(34)} ${String(missing.filter((a) => a.orderSensitive === null).length).padStart(5)}`);
+  console.log('    (no replay was possible, so whether seat order moves the money is unknown)');
+  console.log('\n  (a record may raise several reasons — these do not sum to the category total)');
 
   const blockers = Object.entries(all.byBlocker).sort((a, b) => b[1] - a[1]);
   console.log('\n' + '-'.repeat(72));

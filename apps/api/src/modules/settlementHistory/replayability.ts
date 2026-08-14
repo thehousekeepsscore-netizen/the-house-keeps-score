@@ -75,6 +75,8 @@ export type BlockerCode =
   | 'manual-winners-lost'
   /** Rules consult the club pot balance at settle time, which was never stored. */
   | 'pot-balance-unknown'
+  /** A player row has no userId, so seat position is its only identity. */
+  | 'participant-identity-missing'
   /** Everything appeared present, and the replay still disagreed with the record. */
   | 'replay-mismatch';
 
@@ -93,6 +95,8 @@ export const BLOCKER_REASONS: Record<BlockerCode, string> = {
     'winnerDefinition is MANUAL, so the winners were chosen by hand — and manualWinner is not persisted in playerSummaries or playerStats. The winner set cannot be reconstructed.',
   'pot-balance-unknown':
     'The mismatch strategy consults the club pot balance at settle time to decide whether the pot covers an excess. That balance is not stored on the record, and the pot ledger cannot pin it to the instant the engine ran.',
+  'participant-identity-missing':
+    'One or more player rows carry no userId (an unlinked player). Seat position is then the only thing identifying them, so a reordering is both undetectable and uncorrectable — and TOP_N ties and the v1 seat-fee remainder both turn on position.',
   'replay-mismatch':
     'Every input appeared to be present, but replaying the record did not reproduce its stored figures. An input we have not identified is missing, or the record was written by a path that did not use the engine.',
 };
@@ -422,6 +426,15 @@ export function assess(record: RecordUnderAudit): Assessment {
 
   if (rules && rules.winnerDefinition === 'MANUAL') {
     blockers.push('manual-winners-lost');
+  }
+
+  // Identity, which is what makes ORDER checkable at all. A row with no userId
+  // is identified by nothing but its position, so nothing can ever confirm the
+  // position is the original one.
+  if (parsed.some((p) => !p.userId)) {
+    blockers.push('participant-identity-missing');
+    const n = parsed.filter((p) => !p.userId).length;
+    notes.push(`${n} of ${parsed.length} player row(s) have no userId — identified by seat position alone.`);
   }
 
   const mismatchAmount = sumCashOut - sumBuyIn;

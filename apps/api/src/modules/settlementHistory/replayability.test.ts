@@ -215,6 +215,22 @@ describe('never engine-settled', () => {
   });
 });
 
+describe('participant identity', () => {
+  it('blocks a record where a player row has no userId', () => {
+    const record = settledRecord([[5000, 8000], [5000, 2000]]);
+    record.players[1].userId = null;
+    const a = assess(record);
+    expect(a.blockers).toContain('participant-identity-missing');
+    expect(a.notes.join(' ')).toMatch(/seat position alone/);
+  });
+
+  it('leaves a fully linked table alone', () => {
+    expect(assess(settledRecord([[5000, 8000], [5000, 2000]])).blockers).not.toContain(
+      'participant-identity-missing'
+    );
+  });
+});
+
 describe('reading the evidence off a row', () => {
   const settleAudit = (over: Record<string, unknown> = {}) => ({
     action: 'settle_session',
