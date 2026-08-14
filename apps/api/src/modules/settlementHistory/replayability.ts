@@ -23,21 +23,30 @@
  *
  * Four verdicts, and the line between them is what survives in the data:
  *
- *   replayable            every input is present, and a replay reproduces the
- *                         stored figures exactly. Correctable.
- *   partially-recoverable the inputs (who played, in and out) are intact and
- *                         self-consistent, but something needed to RECOMPUTE
- *                         is absent. Revision 1 can be written and displayed;
- *                         the night cannot be corrected.
- *   unrecoverable         the record's own inputs are missing, malformed, or
- *                         contradict its stored totals. Not even a faithful
- *                         revision 1 can be written without a human stating
- *                         what happened.
- *   never-engine-settled  the record was never produced by the settlement
- *                         engine at all (see NEVER_ENGINE_SETTLED). Applying
- *                         rules to it would be a first settlement wearing the
- *                         word "correction", so it is its own category rather
- *                         than a degraded one.
+ *   replayable
+ *     Engine-settled, every input present, and a replay reproduces the stored
+ *     figures to the cent. Correctable.
+ *
+ *   missing-required-input
+ *     Engine-settled, and the inputs (who played, in and out) are intact and
+ *     consistent with the record's own totals — but something needed to
+ *     RECOMPUTE is absent. Revision 1 can be written and the night stays
+ *     visible and correct; it cannot be corrected.
+ *
+ *   never-engine-settled
+ *     No settlement engine ever ran (see VIRTUAL_TABLE_SESSION_TYPE and
+ *     TRANSCRIBED_IMPORTER). Applying rules would be a FIRST settlement
+ *     wearing the word "correction", so this is its own category rather than
+ *     a degraded one. Legacy: visible, unchanged, and never correctable.
+ *
+ *   fundamentally-unrecoverable
+ *     The record's own inputs are missing, malformed, or contradict its stored
+ *     totals. Not even a faithful revision 1 can be written without a human
+ *     stating what happened.
+ *
+ * EVERY record lands in exactly one of the four. Deleted records are assessed
+ * like any other and reported as a cross-cut rather than filtered out — an
+ * audit that quietly drops the hard rows is not an audit.
  */
 
 import { SettlementSettings, SettlementResult } from '../offlineSessions/settlementEngine.js';
@@ -45,7 +54,7 @@ import { computeSettlementAt, EngineVersion, isKnownEngineVersion } from './vers
 
 export type RecordKind = 'cashout' | 'historical';
 
-export type Verdict = 'replayable' | 'partially-recoverable' | 'unrecoverable' | 'never-engine-settled';
+export type Verdict = 'replayable' | 'missing-required-input' | 'fundamentally-unrecoverable' | 'never-engine-settled';
 
 /**
  * Every reason a record can fail to be replayable. Codes rather than prose so
@@ -339,7 +348,7 @@ export function assess(record: RecordUnderAudit): Assessment {
     clubId: record.clubId,
     kind: record.kind,
     isDeleted: record.isDeleted,
-    verdict: 'unrecoverable',
+    verdict: 'fundamentally-unrecoverable',
     blockers,
     notes,
     playerCount: record.players.length,
@@ -367,7 +376,7 @@ export function assess(record: RecordUnderAudit): Assessment {
 
   if (record.players.length === 0) {
     blockers.push('inputs-missing');
-    return { ...base, verdict: 'unrecoverable' };
+    return { ...base, verdict: 'fundamentally-unrecoverable' };
   }
 
   const parsed = record.players.map((p) => ({
@@ -380,7 +389,7 @@ export function assess(record: RecordUnderAudit): Assessment {
 
   if (parsed.some((p) => p.buyIn === null || p.cashOut === null || p.buyIn! < 0 || p.cashOut! < 0)) {
     blockers.push('inputs-malformed');
-    return { ...base, verdict: 'unrecoverable' };
+    return { ...base, verdict: 'fundamentally-unrecoverable' };
   }
 
   const sumBuyIn = parsed.reduce((s, p) => s + p.buyIn!, 0);
@@ -395,7 +404,7 @@ export function assess(record: RecordUnderAudit): Assessment {
     notes.push(`Σ cash-outs ${sumCashOut} vs stored totalCashOuts ${record.totals.totalCashOuts}.`);
   }
   if (blockers.includes('inputs-contradict-totals')) {
-    return { ...base, verdict: 'unrecoverable' };
+    return { ...base, verdict: 'fundamentally-unrecoverable' };
   }
 
   // ---- Now the things needed to RECOMPUTE. Inputs are known good from here. ----
@@ -432,7 +441,7 @@ export function assess(record: RecordUnderAudit): Assessment {
   // ---- Replay, where everything needed is present. ----
 
   if (blockers.length > 0 || !rules || version === null) {
-    return { ...base, verdict: 'partially-recoverable', orderCorroborated: corroborated(record, parsed) };
+    return { ...base, verdict: 'missing-required-input', orderCorroborated: corroborated(record, parsed) };
   }
 
   const inputs = parsed.map((p, i) => ({
@@ -463,7 +472,7 @@ export function assess(record: RecordUnderAudit): Assessment {
     notes.push(`Worst per-player difference between replay and record: ${worst.toFixed(2)}.`);
     return {
       ...base,
-      verdict: 'partially-recoverable',
+      verdict: 'missing-required-input',
       replay: 'mismatched',
       worstDelta: worst,
       orderSensitive,
@@ -512,8 +521,8 @@ export interface AuditSummary {
 export function summarise(assessments: Assessment[]): AuditSummary {
   const byVerdict: Record<Verdict, number> = {
     replayable: 0,
-    'partially-recoverable': 0,
-    unrecoverable: 0,
+    'missing-required-input': 0,
+    'fundamentally-unrecoverable': 0,
     'never-engine-settled': 0,
   };
   const byBlocker: Record<string, number> = {};

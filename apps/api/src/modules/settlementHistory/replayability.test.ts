@@ -126,21 +126,21 @@ describe('replayable', () => {
 describe('partially recoverable — inputs survive, recomputation does not', () => {
   it('refuses a record with no engine version', () => {
     const a = assess(settledRecord([[5000, 8000], [5000, 2000]], RULES, {}, { engineVersion: null }));
-    expect(a.verdict).toBe('partially-recoverable');
+    expect(a.verdict).toBe('missing-required-input');
     expect(a.blockers).toContain('engine-version-unknown');
     expect(a.replay).toBe('not-attempted');
   });
 
   it('refuses a record with no rules — and NEVER falls back to the club', () => {
     const a = assess(settledRecord([[5000, 8000], [5000, 2000]], RULES, {}, { rules: null, rulesSource: null }));
-    expect(a.verdict).toBe('partially-recoverable');
+    expect(a.verdict).toBe('missing-required-input');
     expect(a.blockers).toContain('rules-unknown');
   });
 
   it('refuses a record whose winners were chosen by hand', () => {
     const manual: SettlementSettings = { ...RULES, winnerDefinition: 'MANUAL' };
     const a = assess(settledRecord([[5000, 8000], [5000, 2000]], manual));
-    expect(a.verdict).toBe('partially-recoverable');
+    expect(a.verdict).toBe('missing-required-input');
     expect(a.blockers).toContain('manual-winners-lost');
   });
 
@@ -161,14 +161,14 @@ describe('partially recoverable — inputs survive, recomputation does not', () 
     record.players[0].storedNet = (record.players[0].storedNet as number) + 1;
 
     const a = assess(record);
-    expect(a.verdict).toBe('partially-recoverable');
+    expect(a.verdict).toBe('missing-required-input');
     expect(a.blockers).toContain('replay-mismatch');
     expect(a.replay).toBe('mismatched');
     expect(a.worstDelta).toBeCloseTo(1, 5);
   });
 });
 
-describe('unrecoverable — the record cannot even state what happened', () => {
+describe('fundamentally-unrecoverable — the record cannot even state what happened', () => {
   it('rejects a record with no players', () => {
     const record = settledRecord([[5000, 8000], [5000, 2000]]);
     record.players = [];
@@ -179,7 +179,7 @@ describe('unrecoverable — the record cannot even state what happened', () => {
     const record = settledRecord([[5000, 8000], [5000, 2000]]);
     record.players[1].totalBuyIn = 'five thousand';
     const a = assess(record);
-    expect(a.verdict).toBe('unrecoverable');
+    expect(a.verdict).toBe('fundamentally-unrecoverable');
     expect(a.blockers).toEqual(['inputs-malformed']);
   });
 
@@ -187,7 +187,7 @@ describe('unrecoverable — the record cannot even state what happened', () => {
     const record = settledRecord([[5000, 8000], [5000, 2000]]);
     record.totals.totalBuyIns = 99_999;
     const a = assess(record);
-    expect(a.verdict).toBe('unrecoverable');
+    expect(a.verdict).toBe('fundamentally-unrecoverable');
     expect(a.blockers).toEqual(['inputs-contradict-totals']);
   });
 
@@ -326,7 +326,7 @@ describe('summarise', () => {
     const s = summarise(rows);
     expect(s.total).toBe(3);
     expect(s.byVerdict.replayable).toBe(1);
-    expect(s.byVerdict['partially-recoverable']).toBe(2);
+    expect(s.byVerdict['missing-required-input']).toBe(2);
     expect(s.byBlocker['rules-unknown']).toBe(1);
     expect(s.byBlocker['engine-version-unknown']).toBe(1);
     expect(s.replayMatched).toBe(1);

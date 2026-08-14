@@ -111,6 +111,16 @@ interface PlannedRevision {
     mismatchDeduction: number | null;
   }[];
 
+  /**
+   * WHY seatFee and winnersCut are null, recorded on the row rather than left
+   * to be rediscovered.
+   *
+   * A screen that shows a blank seat fee has to be able to say whether that
+   * means "zero" or "never stored". This says which, in the row itself, so no
+   * reader ever has to date the record against a release to find out.
+   */
+  splitUnavailableReason: string;
+
   totals: {
     totalBuyIns: number | null;
     totalCashOuts: number | null;
@@ -279,6 +289,11 @@ function plan(
       rakeCollected: record.totals.rakeCollected ?? null,
       potContribution: record.totals.potAdjustment ?? null,
     },
+
+    splitUnavailableReason:
+      'rakeDeduction was stored as a single fused figure (seat fee + winners cut) in ' +
+      'playerSummaries.winnersCutDeduction. The parts were never persisted separately and ' +
+      'cannot be derived from the total. Records written from step 3 onward store both.',
 
     causedBy: 'settle',
     causeId: null,
