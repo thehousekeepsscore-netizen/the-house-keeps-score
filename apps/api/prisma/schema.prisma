@@ -320,6 +320,61 @@ model PendingChangeRequest {
   @@index([clubId])
 }
 
+/// A settled night, as it stood at one moment.
+///
+/// Revision 1 is what the night said when it was settled; every later revision
+/// is a correction. The row exists so that overwriting a settlement is
+/// survivable — with nothing competing on screen, this is the ONLY surviving
+/// record of what a night used to say (SETTLEMENT-HISTORY-DESIGN.md §8).
+///
+/// Nothing here is ever updated in place. A correction appends.
+///
+/// `isLive` marks the revision the record currently shows. Exactly one per
+/// record, enforced by a partial unique index in the migration rather than by
+/// convention — "there are never two competing current settlements" is a
+/// database constraint.
+model SettlementRevision {
+  id                 String  @id @default(cuid())
+  /// The CashOutSettlement / HistoricalSessionRecord this describes.
+  recordId           String
+  recordType         String
+  /// 1 = original. Monotonic per record.
+  revision           Int
+  isLive             Boolean @default(true)
+  supersedesRevision Int?
+
+  /// Which engine produced these figures. Null where the data never said.
+  engineVersion    Int?
+  /// The 11 settlement rules actually used. Null where they are not in the data
+  /// — never inferred from the Club.
+  ruleSnapshot     Json?
+  /// The replay basis: ordered participants with identity, buy-in, cash-out and
+  /// manualWinner, plus pot state and the mismatch acknowledgement.
+  canonicalInputs  Json?
+  /// What the settlement says. TRANSCRIBED for a backfilled revision, not
+  /// recomputed — revision 1 is a migration of evidence, not a recalculation.
+  canonicalOutputs Json
+  totals           Json
+
+  /// settle | bank-edit | retro-rule | engine-migration | revert | backfill
+  causedBy    String
+  causeId     String?
+  reason      String
+  requestedBy String?
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+
+  /// Set when this revision's inputs are not sufficient to replay — e.g. the
+  /// rules were never recorded. Such a record is preserved and not correctable.
+  inputsIncompleteReason String?
+  /// Set when the seat fee and winners' cut were stored fused and cannot be
+  /// separated. Never zero as a stand-in.
+  splitUnavailableReason String?
+
+  @@unique([recordId, recordType, revision])
+  @@index([recordId, recordType])
+}
+
 model AuditLog {
   id             String   @id @default(cuid())
   clubId         String
