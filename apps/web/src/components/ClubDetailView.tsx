@@ -15,6 +15,7 @@ import { Sheet } from './ui/Sheet';
 import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
+import { JoinRequestList } from './JoinRequestList';
 import { getSocket } from '../lib/socket';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
@@ -42,8 +43,7 @@ import {
   HistoricalPlayerStat,
   PendingChangeRequest,
   AuditLog,
-  ToastMessage
-} from '../types';
+  ToastMessage, ClubJoinRequest } from '../types';
 import {
   Crown, 
   Users, 
@@ -795,8 +795,44 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     `${clubKey}:roster`,
     () => clubsApi.getClubRoster(initialClub.id)
   );
+
   const allUsers = rosterRes.data ?? EMPTY_ROSTER;
   const refreshRoster = rosterRes.refresh;
+
+  /*
+   * Requests to join THIS club.
+   *
+   * The endpoint is the same one the dashboard uses — it already returns only
+   * what this user may see (their own outgoing requests, plus incoming ones
+   * for clubs they admin), so the filtering here is about scope, not secrecy.
+   * A null key for a non-admin means the request is never issued at all.
+   */
+  const joinRequestsRes = useResource<ClubJoinRequest[]>(
+    isAdmin ? `${clubKey}:join-requests` : null,
+    () => clubsApi.listJoinRequests()
+  );
+  const clubJoinRequests = useMemo(
+    () => (joinRequestsRes.data ?? []).filter((r) => r.clubId === initialClub.id && r.status === 'pending'),
+    [joinRequestsRes.data, initialClub.id]
+  );
+
+  /*
+   * Throws on failure, which is the contract JoinRequestList relies on to tell
+   * "someone else decided this" apart from "this genuinely broke".
+   *
+   * Accepting changes the roster and the member list, so both are refreshed;
+   * rejecting changes neither and costs one request.
+   */
+  const decideJoinRequest = useCallback(
+    async (request: ClubJoinRequest, accept: boolean) => {
+      await clubsApi.decideJoinRequest(request.clubId, request.id, accept);
+      await joinRequestsRes.refresh();
+      if (accept) {
+        await Promise.all([refreshClub(), refreshRoster()]);
+      }
+    },
+    [joinRequestsRes, refreshClub, refreshRoster]
+  );
 
 
 
@@ -2752,6 +2788,24 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       <ShieldCheck className="w-4 h-4 text-accent" /> Total Club Admins: {totalAdminsCount}
                     </div>
                   </div>
+
+                  {/*
+                    Admission comes before anything else on this screen: a
+                    person has to be in the club before they can ask for chips
+                    in it. Same component as the dashboard's cross-club list —
+                    only `showClubName` differs, because this tab already IS a
+                    club.
+                  */}
+                  <JoinRequestList
+                    requests={clubJoinRequests}
+                    loading={joinRequestsRes.status === 'empty' && !joinRequestsRes.error}
+                    loadError={joinRequestsRes.error ? 'Could not load join requests.' : null}
+                    onRetryLoad={() => void joinRequestsRes.refresh()}
+                    onDecide={decideJoinRequest}
+                    onStale={() => void joinRequestsRes.refresh()}
+                    title={`Requests to join (${clubJoinRequests.length})`}
+                    emptyMessage="Nobody is waiting to join this club."
+                  />
 
                   {/* SECTION 1: PENDING BANK BUY-INS */}
                   <div className="space-y-3">
