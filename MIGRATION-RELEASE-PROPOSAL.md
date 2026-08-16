@@ -206,7 +206,31 @@ release model will not enforce it and a reviewer is the only thing that can.
 
 ---
 
-## 7. What I recommend
+## 7. Correction to the staging, found while implementing
+
+Stage 1 was described as *"config as code, no behaviour change"*. That is not
+quite achievable, and the reason is worth recording rather than glossing:
+
+> *"If the deployment does not have a healthcheck configured, Railway will mark
+> the deployment as `Active` after starting the container."*
+
+So adding `healthcheckPath` is inert **only if the dashboard already sets it**.
+If it does not, this is a real change: deploys begin waiting for a `200` instead
+of going active the moment the container starts. That change is desirable — it
+is half of the release flow being built — but it is a change, and stage 1 cannot
+both prove config-as-code is read and alter nothing.
+
+What stage 1 does instead: it changes **nothing that can touch data**, and its
+only possible effect is health gating we want anyway. The endpoint is public,
+does no database work and answers in well under a second, so the 300-second
+budget is not in question.
+
+`restartPolicyType` is deliberately **omitted**. Railway's documented reference
+does not state the default, so setting it could silently change behaviour to
+something other than what the dashboard has today. It stays dashboard-owned
+until someone reads the current value.
+
+## 8. What I recommend
 
 Adopt `railway.json` with `preDeployCommand`, rolled out in the three deploys
 above, **before** the correction workflow ships. It is the only option that
