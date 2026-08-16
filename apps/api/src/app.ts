@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
+import { deploymentIdentity } from "./lib/deploymentIdentity.js";
 import { env } from "./env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { clubsRouter } from "./modules/clubs/clubs.routes.js";
@@ -52,7 +53,15 @@ app.use(cookieParser());
 // Health is deliberately above the limiter: it is what Railway polls to decide
 // whether this instance is alive, and rate-limiting it would turn a traffic
 // spike into a restart loop.
-app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+//
+// It now answers a second question as well as "is it up": WHICH BUILD is up.
+// `{"status":"ok"}` alone could not tell anyone whether an instance had picked
+// up a merge, which is exactly what you need to know before running a data
+// migration or a historical correction against it. Every field is read rather
+// than guessed — see deploymentIdentity.ts. Still no database call: this is a
+// liveness probe, and a query here would turn a slow database into a restart
+// loop.
+app.get("/api/health", (_req, res) => res.json(deploymentIdentity()));
 
 /**
  * A ceiling on API traffic per client.
