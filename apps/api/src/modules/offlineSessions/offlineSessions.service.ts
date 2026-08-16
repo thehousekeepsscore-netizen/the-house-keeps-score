@@ -1362,6 +1362,39 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
       },
     });
 
+    /*
+     * Revision 1, written the moment the night is settled.
+     *
+     * The original is a revision like any other rather than a special case, so
+     * every later correction has something to supersede — and the precondition
+     * the design states ("no revision 1, no correction") is satisfied for new
+     * nights without a backfill ever running.
+     *
+     * Inside this transaction on purpose: a settlement that exists without its
+     * revision would be a night that could later be overwritten with nothing
+     * behind it, which is the one thing the revision model exists to prevent.
+     *
+     * `isLive` is true and stays true until a correction supersedes it. The
+     * partial unique index on (recordId, recordType) WHERE isLive makes "one
+     * current settlement per night" a database constraint.
+     */
+    await tx.settlementRevision.create({
+      data: {
+        recordId: settlement.id,
+        recordType: 'cashout',
+        revision: 1,
+        isLive: true,
+        engineVersion: canonicalInputs.engineVersion,
+        ruleSnapshot: canonicalInputs.rules as unknown as Prisma.InputJsonValue,
+        canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+        canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
+        totals: canonicalOutputs.totals as unknown as Prisma.InputJsonValue,
+        causedBy: 'settle',
+        reason: 'Original settlement.',
+        requestedBy: requesterId,
+      },
+    });
+
     // Settling creates money records, so it leaves a trace like every edit,
     // deletion and restore already does.
     //
