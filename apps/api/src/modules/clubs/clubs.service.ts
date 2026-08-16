@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../middleware/errorHandler.js";
 import type { RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule } from "../offlineSessions/settlementEngine.js";
+import { emitToClub } from "../../realtime/socket.js";
+import * as notificationsService from "../notifications/notifications.service.js";
 
 const MAX_ADMINS_EXCLUDING_OWNER = 2; // owner + up to 2 promoted admins = 3 total
 
@@ -291,11 +293,30 @@ export async function listRelevantJoinRequests(userId: string, isSuperAdmin: boo
   });
 }
 
-export async function decideJoinRequest(clubId: string, requestId: string, ownerUserId: string, isSuperAdmin: boolean, accept: boolean) {
+/**
+ * Accepts or rejects a request to join a club.
+ *
+ * WHO DECIDES: any Club Admin, or the Owner.
+ *
+ * This was owner-only, on the reasoning that admins "run the table but don't
+ * get a say in who's let into the club". That left admins seeing requests in
+ * their queue that they got a 403 for touching, which is a worse position than
+ * either extreme. The line now follows REVERSIBILITY rather than seniority:
+ * membership can be removed afterwards, so one Admin or Owner is enough.
+ * Overwriting settled money cannot be undone by the same means, and that is
+ * where the second-admin requirement stays.
+ *
+ * EXACTLY ONE DECISION, EVER. The status check and the write are a single
+ * conditional UPDATE — `WHERE id = ? AND status = 'pending'` — and a row count
+ * of zero means somebody else decided first. Reading the status and then
+ * writing would be a check-then-act race: two admins tapping at once both read
+ * `pending`, both write, and the request is decided twice. The membership
+ * upsert would hide it, but the audit log would carry two contradictory
+ * entries for one request, which is the record people would later argue over.
+ */
+export async function decideJoinRequest(clubId: string, requestId: string, deciderUserId: string, isSuperAdmin: boolean, accept: boolean) {
   const club = await getClubOrThrow(clubId);
-  // Only the owner decides join requests — admins can run the table but
-  // don't get a say in who's let into the club.
-  assertClubOwner(club, ownerUserId, isSuperAdmin);
+  assertClubAdmin(club, deciderUserId, isSuperAdmin);
 
   const request = await prisma.clubJoinRequest.findUnique({ where: { id: requestId } });
   if (!request || request.clubId !== clubId) throw new HttpError(404, "Join request not found");
@@ -305,11 +326,25 @@ export async function decideJoinRequest(clubId: string, requestId: string, owner
     throw new HttpError(400, `This club is already at its maximum of ${club.maxCapacity} players`);
   }
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.clubJoinRequest.update({
-      where: { id: requestId },
+  const [decider, requester] = await Promise.all([
+    prisma.user.findUnique({ where: { id: deciderUserId }, select: { displayName: true } }),
+    prisma.user.findUnique({ where: { id: request.userId }, select: { displayName: true } }),
+  ]);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    /*
+     * The race is decided here and nowhere else. `updateMany` with the status
+     * in the WHERE clause is atomic: Postgres will match the row for exactly
+     * one of two concurrent callers, and the loser sees count 0.
+     */
+    const claimed = await tx.clubJoinRequest.updateMany({
+      where: { id: requestId, clubId, status: "pending" },
       data: { status: accept ? "accepted" : "rejected" },
     });
+    if (claimed.count !== 1) {
+      throw new HttpError(409, "This request has already been decided");
+    }
+
     if (accept) {
       await tx.clubMember.upsert({
         where: { clubId_userId: { clubId, userId: request.userId } },
@@ -317,8 +352,54 @@ export async function decideJoinRequest(clubId: string, requestId: string, owner
         update: {},
       });
     }
-    return updated;
+
+    /*
+     * Audited in the same transaction as the decision, so a club can never
+     * gain a member with no record of who let them in. Every other path that
+     * changes who is in a club or what they are owed does this; membership was
+     * the one that did not.
+     */
+    await tx.auditLog.create({
+      data: {
+        clubId,
+        sessionId: requestId,
+        sessionTitle: `Join request — ${requester?.displayName ?? "Unknown"}`,
+        action: accept ? "accept_join_request" : "reject_join_request",
+        changedBy: deciderUserId,
+        changedByName: decider?.displayName ?? "Unknown",
+        details:
+          `${accept ? "Accepted" : "Rejected"} ${requester?.displayName ?? "a player"}'s request to join ` +
+          `${club.name}${accept ? ` — club is now at ${club.members.length + 1} of ${club.maxCapacity}` : ""}.`,
+        changes: {
+          requestId,
+          requesterId: request.userId,
+          requesterName: requester?.displayName ?? null,
+          clubId,
+          clubName: club.name,
+          decision: accept ? "accepted" : "rejected",
+          decidedBy: deciderUserId,
+          decidedByName: decider?.displayName ?? null,
+          decidedByRole: club.ownerId === deciderUserId ? "owner" : "admin",
+        } as never,
+      },
+    });
+
+    return tx.clubJoinRequest.findUniqueOrThrow({ where: { id: requestId } });
   });
+
+  /*
+   * Both of these are after the commit, deliberately. A messaging outage or a
+   * dropped socket must not roll back a decision that has already been made —
+   * the requester would then be told nothing AND left pending.
+   */
+  emitToClub(clubId, "club:join-request-decided", { requestId, accepted: accept });
+  void notificationsService.notifyJoinRequestDecided({
+    userId: request.userId,
+    clubId,
+    accepted: accept,
+  });
+
+  return updated;
 }
 
 export async function promoteAdmin(clubId: string, ownerId: string, isSuperAdmin: boolean, targetUserId: string) {
