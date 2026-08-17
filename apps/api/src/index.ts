@@ -37,6 +37,22 @@ initSocket(httpServer);
  * The database line is an actual query rather than "a URL is set" — the point of
  * the summary is to report what is true, not what is configured.
  */
+/*
+ * MIGRATIONS ARE NOT RUN HERE, and that is deliberate.
+ *
+ * They run as Railway's pre-deploy command (see railway.json), which executes
+ * between the build and the container starting. A failed migration is therefore
+ * a failed DEPLOYMENT with the previous version still serving, rather than an
+ * app that boots against a schema nobody has described.
+ *
+ * Putting `prisma migrate deploy` in the start command would run it once per
+ * replica and once per restart, so a crash loop becomes a migration loop and a
+ * slow migration is spent inside the healthcheck budget — the failure then
+ * reports as "unhealthy" rather than "migration failed", which is the wrong
+ * diagnosis at the worst moment. See MIGRATION-RELEASE-PROPOSAL.md §3.
+ *
+ * The startup summary below reports what is TRUE at boot; it does not act.
+ */
 async function printStartupSummary() {
   let database = "connected";
   try {
