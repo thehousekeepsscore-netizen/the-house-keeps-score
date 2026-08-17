@@ -3,6 +3,6 @@
   "deploy": {
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,
-    "preDeployCommand": ["npm run prisma:status --workspace=@poker/api"]
+    "preDeployCommand": ["npm run prisma:deploy --workspace=@poker/api"]
   }
 }
