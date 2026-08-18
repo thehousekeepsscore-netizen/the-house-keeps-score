@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { sendMessageSafely } from '../../lib/messaging.js';
-import { buyInApprovedMessage, sessionSettledMessage } from '../../lib/messageTemplates.js';
+import { buyInApprovedMessage, joinRequestDecidedMessage, sessionSettledMessage } from '../../lib/messageTemplates.js';
 
 // Player-facing messages. Two triggers only, per the product decision:
 //   1. a buy-in was approved — SMS/WhatsApp only, never email (too frequent)
@@ -178,5 +178,52 @@ export async function notifySessionSettled(params: {
     }
   } catch (err) {
     console.error('[notifications] notifySessionSettled failed:', err);
+  }
+}
+
+/**
+ * Tells someone the answer to their request to join a club.
+ *
+ * Both outcomes are sent. A rejection that goes unsent leaves the requester
+ * watching a "pending" badge that will never move, which is worse than the
+ * answer they did not want.
+ *
+ * NOT a socket event. The requester is not in the club's socket room — on
+ * rejection they never will be, and on acceptance they only join it on their
+ * next connection — so `emitToClub` would reach every admin and miss the one
+ * person the message is for. Messaging is the channel that reaches them.
+ *
+ * Failures are swallowed, as everywhere else in this file: the decision is
+ * already committed, and a messaging outage must not make it look otherwise.
+ */
+export async function notifyJoinRequestDecided(params: {
+  userId: string;
+  clubId: string;
+  accepted: boolean;
+}): Promise<void> {
+  try {
+    const [user, club] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: params.userId },
+        select: { displayName: true, email: true, phoneNumber: true },
+      }),
+      prisma.club.findUnique({ where: { id: params.clubId }, select: { name: true } }),
+    ]);
+    if (!user) return;
+
+    const message = joinRequestDecidedMessage({
+      firstName: (user.displayName || 'Player').split(' ')[0],
+      clubName: club?.name || 'the club',
+      accepted: params.accepted,
+    });
+
+    // Email included, unlike a buy-in: this happens once per club, not several
+    // times a night, so it cannot read as spam — and it is the one message a
+    // requester may be waiting on while not in the app.
+    await sendMessageSafely(user, message, `join decision to ${params.userId}`, {
+      channels: ['email', 'sms', 'whatsapp'],
+    });
+  } catch (err) {
+    console.error('[notifications] notifyJoinRequestDecided failed:', err);
   }
 }
