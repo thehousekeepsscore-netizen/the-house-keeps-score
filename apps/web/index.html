@@ -17,6 +17,40 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f2116' stroke='%23d4af37' stroke-width='4'/%3E%3Cpath d='M15 11c-2.8 2.6-5 4.6-5 6.9a3 3 0 0 0 4.3 2.7c-.2 1-.8 1.9-1.6 2.4h4.6c-.8-.5-1.4-1.4-1.6-2.4a3 3 0 0 0 4.3-2.7c0-2.3-2.2-4.3-5-6.9z' fill='%23d4af37'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' font-weight='700' fill='%23d4af37' text-anchor='middle'%3EH%3C/text%3E%3Cpath d='M49 53.5c-6-4.2-8-6.4-8-9a3.6 3.6 0 0 1 6.4-2.2l1.6 2 1.6-2A3.6 3.6 0 0 1 57 44.5c0 2.6-2 4.8-8 9z' fill='%23d4af37'/%3E%3C/svg%3E"
     />
+    <!--
+      PWA / iOS HOME SCREEN.
+
+      The manifest carries the same name, colours and mark the app already uses;
+      nothing here introduces a second identity. `theme_color` matches the
+      meta above and `background_color` is --color-bg from index.css, so the
+      launch screen is the room the app already lives in rather than white.
+
+      iOS reads its own meta tags rather than the manifest for several of these,
+      which is why both exist:
+
+        apple-mobile-web-app-capable       launch without Safari chrome
+        apple-mobile-web-app-status-bar-style
+                                           black-translucent — the page draws
+                                           behind the status bar, which is why
+                                           the safe-area utilities in index.css
+                                           exist and why viewport-fit=cover
+                                           above is load-bearing
+        apple-mobile-web-app-title         Home Screen label
+        apple-touch-icon                   iOS ignores SVG favicons entirely,
+                                           so the PNG below is the only thing
+                                           that can become the Home Screen icon
+
+      There is deliberately no `orientation` in the manifest: portrait and
+      landscape both stay available until the real device testing says
+      otherwise.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="The House Keeps Score" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet" />
