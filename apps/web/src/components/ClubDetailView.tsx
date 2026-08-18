@@ -2209,7 +2209,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const sitBackDown = () =>
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
-      applySession(await offlineSessionsApi.requestSitIn(club.id, activeSession.id));
+      // The sheet's subject, not whoever is holding the phone. Omitting this is
+      // what made an admin pressing "Sit back down" on Rahul's sheet ask for a
+      // seat for the admin — and, being seated already, get told so.
+      // Same shape as takeBank above.
+      const forSelf = sheetUid === currentUser.uid;
+      applySession(
+        await offlineSessionsApi.requestSitIn(club.id, activeSession.id, forSelf ? undefined : sheetUid)
+      );
     }, 'Please try again.');
 
   const confirmCount = (amount: number) =>
