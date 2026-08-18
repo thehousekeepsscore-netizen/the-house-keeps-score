@@ -272,6 +272,71 @@ describe('capacity', () => {
     const out = await decideJoinRequest(clubId, req.id, adminId, false, false);
     expect(out.status).toBe('rejected');
   });
+
+  it('TWO ADMINS, TWO DIFFERENT REQUESTS, ONE SEAT — the club cannot end up over capacity', async () => {
+    /*
+     * A DIFFERENT RACE FROM THE ONE ABOVE, and the reason the capacity check
+     * had to move inside the transaction.
+     *
+     * The conditional UPDATE that settles simultaneous decisions only helps
+     * when both callers want the SAME request. Here they want different ones:
+     * each matches its own row, so both legitimately win the status race, and
+     * both then go on to insert a member. With one seat left that is one member
+     * too many — and the guard that should have caught it was reading a member
+     * count taken before either transaction opened, so both saw the same stale
+     * number and both passed.
+     *
+     * Repeated, because a race that only sometimes loses is a race that passes
+     * on the first attempt.
+     */
+    for (let round = 0; round < 8; round += 1) {
+      // 3 seeded members, capacity 4 — exactly one seat left.
+      await seed(4);
+      const secondHopefulId = await user(`hopeful2-r${round}`, `${Date.now()}-${round}`);
+
+      const reqA = await pendingRequest(hopefulId);
+      const reqB = await pendingRequest(secondHopefulId);
+
+      const results = await Promise.allSettled([
+        decideJoinRequest(clubId, reqA.id, adminId, false, true),
+        decideJoinRequest(clubId, reqB.id, otherAdminId, false, true),
+      ]);
+
+      const won = results.filter((r) => r.status === 'fulfilled');
+      const lost = results.filter((r) => r.status === 'rejected');
+
+      expect(won, `round ${round}: winners`).toHaveLength(1);
+      expect(lost, `round ${round}: losers`).toHaveLength(1);
+      expect(
+        (lost[0] as PromiseRejectedResult).reason.message,
+        `round ${round}: the loser is told it is a capacity problem, not a stale-request one`
+      ).toMatch(/maximum of 4 players/);
+
+      // The whole point: never 5.
+      const finalCount = await prisma.clubMember.count({ where: { clubId } });
+      expect(finalCount, `round ${round}: final membership`).toBe(4);
+
+      // Exactly one of the two got in, and the other request is still pending —
+      // refused for want of a seat is not the same as decided.
+      const seated = (await memberships(hopefulId)) + (await memberships(secondHopefulId));
+      expect(seated, `round ${round}: exactly one hopeful seated`).toBe(1);
+
+      const stillPending = await prisma.clubJoinRequest.count({
+        where: { clubId, status: 'pending' },
+      });
+      expect(stillPending, `round ${round}: the refused request stays pending`).toBe(1);
+
+      // One decision, one audit row.
+      expect(await auditRows(), `round ${round}: audit rows`).toHaveLength(1);
+
+      await prisma.auditLog.deleteMany({ where: { clubId } });
+      await prisma.clubJoinRequest.deleteMany({ where: { clubId } });
+      await prisma.clubAdmin.deleteMany({ where: { clubId } });
+      await prisma.clubMember.deleteMany({ where: { clubId } });
+      await prisma.club.deleteMany({ where: { id: clubId } });
+      clubId = '';
+    }
+  });
 });
 
 describe('a failed decision leaves nothing behind', () => {

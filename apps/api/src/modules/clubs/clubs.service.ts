@@ -322,16 +322,41 @@ export async function decideJoinRequest(clubId: string, requestId: string, decid
   if (!request || request.clubId !== clubId) throw new HttpError(404, "Join request not found");
   if (request.status !== "pending") throw new HttpError(409, "This request has already been decided");
 
-  if (accept && club.members.length >= club.maxCapacity) {
-    throw new HttpError(400, `This club is already at its maximum of ${club.maxCapacity} players`);
-  }
-
   const [decider, requester] = await Promise.all([
     prisma.user.findUnique({ where: { id: deciderUserId }, select: { displayName: true } }),
     prisma.user.findUnique({ where: { id: request.userId }, select: { displayName: true } }),
   ]);
 
+  // Set inside the transaction, under the club lock, and read by the audit
+  // line below so the recorded figure is the one that was actually true.
+  let seatedNow = 0;
+
   const updated = await prisma.$transaction(async (tx) => {
+    /*
+     * CAPACITY IS DECIDED UNDER A LOCK, not before the transaction.
+     *
+     * The status race below and the capacity race are different races, and
+     * fixing the first does not touch the second. Two admins accepting two
+     * DIFFERENT requests never contend for a row: each conditional UPDATE
+     * matches its own, both legitimately win, and both then insert a member.
+     * With one seat left, that is one member too many — and the check that was
+     * supposed to stop it ran against `club.members.length`, read before the
+     * transaction opened, so both callers saw the same stale count.
+     *
+     * Counting inside the transaction is not enough on its own either. Under
+     * READ COMMITTED, two concurrent transactions both count `maxCapacity - 1`
+     * and neither can see the other's uncommitted insert.
+     *
+     * So accepts serialise on the club row itself. The lock makes the count a
+     * decision rather than an observation: the second caller blocks until the
+     * first commits, then counts and sees the seat is gone.
+     *
+     * Rejections take the lock too, which costs nothing — they are rare, and
+     * per-club rather than global — and keeps this one code path instead of
+     * two that could drift.
+     */
+    await tx.$queryRaw`SELECT id FROM "Club" WHERE id = ${clubId} FOR UPDATE`;
+
     /*
      * The race is decided here and nowhere else. `updateMany` with the status
      * in the WHERE clause is atomic: Postgres will match the row for exactly
@@ -346,11 +371,28 @@ export async function decideJoinRequest(clubId: string, requestId: string, decid
     }
 
     if (accept) {
+      /*
+       * Counted here, under the lock, from the table rather than from the club
+       * object loaded earlier. Throwing rolls the whole transaction back, so
+       * the request the line above just claimed returns to `pending` — which is
+       * what should happen: a request refused for want of a seat has not been
+       * decided, and can be accepted later once somebody leaves.
+       */
+      const memberCount = await tx.clubMember.count({ where: { clubId } });
+      if (memberCount >= club.maxCapacity) {
+        throw new HttpError(400, `This club is already at its maximum of ${club.maxCapacity} players`);
+      }
+
       await tx.clubMember.upsert({
         where: { clubId_userId: { clubId, userId: request.userId } },
         create: { clubId, userId: request.userId },
         update: {},
       });
+
+      // Read back under the same lock. Saying "now at N of M" from a count taken
+      // before the transaction would print a number that was never true — the
+      // exact class of mistake the lock above exists to prevent.
+      seatedNow = await tx.clubMember.count({ where: { clubId } });
     }
 
     /*
@@ -369,7 +411,7 @@ export async function decideJoinRequest(clubId: string, requestId: string, decid
         changedByName: decider?.displayName ?? "Unknown",
         details:
           `${accept ? "Accepted" : "Rejected"} ${requester?.displayName ?? "a player"}'s request to join ` +
-          `${club.name}${accept ? ` — club is now at ${club.members.length + 1} of ${club.maxCapacity}` : ""}.`,
+          `${club.name}${accept ? ` — club is now at ${seatedNow} of ${club.maxCapacity}` : ""}.`,
         changes: {
           requestId,
           requesterId: request.userId,
