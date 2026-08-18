@@ -117,9 +117,23 @@ export async function joinSession(req: Request, res: Response) {
   return res.json(session);
 }
 
+// Optional, and optional is the whole compatibility story: a client that sends
+// no body still asks for its own seat exactly as before. Shaped like buyInSchema
+// below, which already carries an optional userId for the same reason.
+const sitInRequestSchema = z.object({ userId: z.string().min(1).optional() });
+
 export async function requestSitIn(req: Request, res: Response) {
   await assertMemberOfClub(req);
-  const session = await offlineSessionsService.requestSitIn(req.params.sessionId, req.params.clubId, req.user!.sub);
+  const { userId } = sitInRequestSchema.parse(req.body ?? {});
+  const session = await offlineSessionsService.requestSitIn(
+    req.params.sessionId,
+    req.params.clubId,
+    // The actor, from the token. The body names who is being seated and is
+    // never consulted about who may do it.
+    req.user!.sub,
+    req.user!.isSuperAdmin,
+    userId || req.user!.sub
+  );
   return res.status(201).json(session);
 }
 
