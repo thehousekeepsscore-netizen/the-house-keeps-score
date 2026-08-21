@@ -408,6 +408,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [cashOutInputs, setCashOutInputs] = useState<Record<string, string>>({});
   const [buyInInputs, setBuyInInputs] = useState<Record<string, string>>({});
   const [manualWinnerInputs, setManualWinnerInputs] = useState<Record<string, boolean>>({});
+  /*
+   * An acknowledgement belongs to the figures it was made against.
+   *
+   * It is a bare boolean, and it used to be cleared in exactly one place —
+   * openCashoutModal. The checkbox that sets it lives INSIDE the preview
+   * panel, and ticking it makes the engine return requiresManualResolution
+   * false, which unmounts the block and takes the ticked box off screen. So:
+   * acknowledge a 300 shortfall, notice a typo, correct a cash-out from 2,000
+   * to 32,000, re-calculate — the night now carries a 30,000 mismatch, no
+   * warning renders because the flag is still true, and Settle is enabled. The
+   * admin acknowledged a different number.
+   *
+   * Every path that moves a figure now clears it, which is precisely what
+   * cashoutCalculated already did. That is the coherent rule rather than the
+   * convenient one: the acknowledgement is made by reading the preview, so it
+   * cannot outlive the preview.
+   *
+   * Binding it to the mismatch AMOUNT instead was considered and rejected as
+   * machinery for a case that does not arise — no single edit leaves the
+   * acknowledged state materially unchanged. Any buy-in or cash-out edit moves
+   * mismatchAmount by construction (settlementEngine: totalCashOuts −
+   * totalBuyIns), and the winner checkbox changes who an excess is charged to
+   * (applyExcessToWinners), which is the other half of what was acknowledged.
+   */
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
   const [settlementError, setSettlementError] = useState('');
   const [settlementSuccess, setSettlementSuccess] = useState('');
@@ -756,6 +780,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return changed ? next : prev;
     });
   }, [confirmedCashOutByUid]);
+
+  /*
+   * A confirmed cash-out arriving or being amended is a figure change too.
+   *
+   * The effect above mirrors it into the form — deliberately, because the
+   * server settles on that number whatever the field says. But it is not the
+   * admin typing: it comes from somebody else's phone, through the socket,
+   * while this screen is open. So none of the three onChange handlers run, and
+   * before this nothing was invalidated at all: not the preview, and not an
+   * acknowledgement made against it.
+   *
+   * That is the same defect as the typed paths and strictly harder to notice,
+   * because the admin did not do anything.
+   *
+   * Keyed on the memo, which is itself keyed on JSON.stringify(sessionCashOuts)
+   * — so this fires when a cash-out genuinely changes and not on every render.
+   * Clearing on mount is harmless: openCashoutModal resets all three anyway.
+   */
+  useEffect(() => {
+    setMismatchAcknowledged(false);
+    setCashoutCalculated(false);
+    setConfirmingSettle(false);
+  }, [confirmedCashOutByUid]);
+
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
   const night = useMemo(
@@ -1705,10 +1753,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       : null;
 
   // Any edit invalidates a calculated preview — the admin must re-run it
-  // before the record button unlocks again.
+  // before the record button unlocks again — and with it any acknowledgement
+  // made by reading that preview. See the note on the live flow's own
+  // invalidation: an acknowledgement that outlives its figures is an
+  // acknowledgement of a different night.
   useEffect(() => {
     setPastCalculated(false);
     setPastConfirming(false);
+    setPastMismatchAcknowledged(false);
   }, [JSON.stringify(pastRows), pastDate]);
 
   const preview = calculateSettlement();
@@ -3688,7 +3740,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             <input
                               type="checkbox"
                               checked={!!manualWinnerInputs[uid]}
-                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               className="w-3.5 h-3.5 accent-accent rounded cursor-pointer"
                             />
                             Winner
@@ -3704,7 +3756,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             type="number"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
-                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                             className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                           />
                         </div>
@@ -3732,7 +3784,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               type="number"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
-                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               placeholder="Enter cash-out"
                               className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                             />
