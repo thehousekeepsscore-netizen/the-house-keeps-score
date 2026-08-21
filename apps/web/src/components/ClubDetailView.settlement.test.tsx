@@ -164,9 +164,13 @@ const buyIn = (id: string, userId: string, amount: number): BuyInRequest => ({
   createdAt: ago(80),
 });
 
-function renderClub(over: Partial<PokerSession> = {}) {
+function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
   const active = { ...session, ...over };
-  vi.mocked(clubsApi.getClub).mockResolvedValue(club);
+  // Additive second argument, defaulted, so every existing caller is unchanged.
+  // Needed only to prove the winner control ignores the club — which cannot be
+  // shown while the club and the night's snapshot always agree.
+  const theClub = { ...club, ...clubOver } as Club;
+  vi.mocked(clubsApi.getClub).mockResolvedValue(theClub);
   vi.mocked(clubsApi.getClubRoster).mockResolvedValue({
     host: { displayName: 'Host' },
     priya: { displayName: 'Priya' },
@@ -202,7 +206,7 @@ function renderClub(over: Partial<PokerSession> = {}) {
         element: (
           <ResourceCacheProvider>
             <ClubDetailView
-              club={club}
+              club={theClub}
               currentUser={currentUser}
               playerAvatarUrl=""
               onBackToDashboard={vi.fn()}
@@ -223,8 +227,8 @@ function renderClub(over: Partial<PokerSession> = {}) {
  * carries it while the night runs, and the frozen band carries it once it does
  * not. Both call the same handler.
  */
-async function openSettlement(over: Partial<PokerSession> = {}) {
-  renderClub(over);
+async function openSettlement(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
+  renderClub(over, clubOver);
   await waitFor(() => {
     expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled();
   });
@@ -523,6 +527,55 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 
     expect(screen.getByText('1,000 chips')).toBeInTheDocument();
     expect(screen.getByText('5%')).toBeInTheDocument();
+  });
+
+  /*
+   * WHO COUNTS AS A WINNER IS THE NIGHT'S QUESTION, NOT THE CLUB'S.
+   *
+   * The winner checkbox read `club.winnerDefinition` while the engine is handed
+   * the night's frozen snapshot — and the rules panel at the top of the same
+   * modal already printed the snapshot's value. The club's setting stays
+   * editable while a night is running, so the two drift apart mid-count.
+   *
+   * The fixture below is the dangerous direction: the night agreed to MANUAL,
+   * the club has since been changed to PROFIT_POSITIVE. Under the old code no
+   * checkbox rendered at all, every entry submitted `manualWinner` undefined,
+   * MANUAL marked nobody a winner, and any excess had nobody to charge — the
+   * engine logs "no winners to deduct from" and the money leaves the books.
+   *
+   * The whole suite is otherwise PROFIT_POSITIVE, which is exactly why this
+   * went unseen: the checkbox never rendered in any test.
+   */
+  it('THE NIGHT SAYS MANUAL — the winner control appears, though the club has moved on', async () => {
+    await openSettlement({ settlementRules: { ...RULES, winnerDefinition: 'MANUAL' } });
+
+    // The club fixture is PROFIT_POSITIVE. Reading it would render nothing.
+    const winners = screen.getAllByRole('checkbox');
+    expect(winners, 'one per player, from the night\'s rules').toHaveLength(2);
+    expect(screen.getAllByText(/^Winner$/i).length).toBeGreaterThan(0);
+
+    // And it is the control, not a badge: it must be tickable.
+    fireEvent.click(winners[0]);
+    expect((winners[0] as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('THE CLUB SAYS MANUAL — still no winner control, because the night did not', async () => {
+    /*
+     * The mirror direction, and the reason the club override exists. Under the
+     * old code a checkbox rendered here and ticking it invalidated the preview
+     * and changed nothing — a control that lies about affecting money, because
+     * the engine is handed PROFIT_POSITIVE and never reads manualWinner at all.
+     */
+    await openSettlement({ settlementRules: RULES }, { winnerDefinition: 'MANUAL' });
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('the rules panel and the winner control agree with each other', async () => {
+    // They read the same object now. Before, the panel showed the snapshot and
+    // the control obeyed the club, inside one modal.
+    await openSettlement({ settlementRules: { ...RULES, winnerDefinition: 'MANUAL' } });
+    expect(screen.getByText(/^manual$/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
   });
 
   it('computes Auto Calculate from those rules, not the club\'s', async () => {
