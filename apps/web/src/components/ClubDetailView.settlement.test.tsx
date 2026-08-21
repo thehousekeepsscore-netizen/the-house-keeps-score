@@ -546,6 +546,133 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
    * The whole suite is otherwise PROFIT_POSITIVE, which is exactly why this
    * went unseen: the checkbox never rendered in any test.
    */
+  /*
+   * AN ACKNOWLEDGEMENT BELONGS TO THE FIGURES IT WAS MADE AGAINST.
+   *
+   * Under MANUAL, a mismatch hard-blocks the settle button on the client and
+   * the server until an admin ticks "I have reconciled this". The tick used to
+   * be cleared in exactly one place — reopening the modal — so it survived
+   * every subsequent edit.
+   *
+   * That is worse than it sounds, because ticking the box makes the engine
+   * return requiresManualResolution false, which UNMOUNTS the warning and
+   * takes the ticked box off screen with it. The acknowledgement then has no
+   * representation anywhere: a 300 mismatch is acknowledged, a cash-out is
+   * corrected to make it 30,000, and the screen shows no warning at all
+   * because the stale flag is still suppressing it.
+   *
+   * These drive the real screen through the real controls, because the bug is
+   * in the wiring between them and not in any single value.
+   */
+  const MANUAL_RULES = { ...RULES, mismatchStrategy: 'MANUAL' };
+
+  /** Cash-outs that do not sum to the buy-ins, so the engine has a mismatch. */
+  async function openWithMismatch() {
+    await openSettlement({ settlementRules: MANUAL_RULES });
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // 10,300 out vs 10,000 in
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    return await screen.findByRole('checkbox');
+  }
+
+  it('TEST 1 — changing a figure withdraws the acknowledgement', async () => {
+    const ack = await openWithMismatch();
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    // The typo correction. This is the exact sequence that shipped: the figure
+    // moves, and the acknowledgement used to stay behind.
+    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    // The warning must be back, and unticked. If the flag had survived, the
+    // engine would still be told the mismatch was acknowledged and nothing
+    // would render here at all.
+    const again = await screen.findByRole('checkbox');
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('TEST 2 — a change that leaves the mismatch identical still withdraws it', async () => {
+    /*
+     * Deliberate, and the smaller of two evils.
+     *
+     * The acknowledgement is made by reading the preview, and any edit already
+     * invalidates that preview (cashoutCalculated). Letting the tick outlive
+     * the panel it was made on is the whole defect. Binding it to the mismatch
+     * AMOUNT would preserve this case — but it is a case worth very little:
+     * every single-field edit moves mismatchAmount by construction
+     * (totalCashOuts − totalBuyIns), so keeping it identical takes two
+     * offsetting edits, and the winner tick changes who an excess is charged
+     * to, which is the other half of what was acknowledged.
+     *
+     * So this asserts the conservative behaviour on purpose, rather than
+     * claiming a distinction the settlement model does not really support.
+     *
+     * (Re-typing the SAME value into one field is not a test of this: React
+     * fires no change event when the value has not moved, so the handler never
+     * runs and nothing is exercised.)
+     */
+    const ack = await openWithMismatch();
+    expect(screen.getByText(/reconcile the 300 difference/i)).toBeInTheDocument();
+
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    // +1,000 on one buy-in and +1,000 on one cash-out. Both totals move; the
+    // difference between them does not.
+    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '9000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    const again = await screen.findByRole('checkbox');
+    expect(
+      screen.getByText(/reconcile the 300 difference/i),
+      'the mismatch really is unchanged'
+    ).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked, 'and it is still withdrawn').toBe(false);
+  });
+
+  it('TEST 3 — changing a figure back leaves it withdrawn, not restored', async () => {
+    // Determinism: the state depends on what has been acknowledged since the
+    // last edit, never on how the figures got where they are.
+    const ack = await openWithMismatch();
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    fireEvent.change(amountFields()[3], { target: { value: '9999' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // back to the acknowledged night
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    const again = await screen.findByRole('checkbox');
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('and the settle button stays blocked until the new mismatch is acknowledged', async () => {
+    // The consequence that makes this a money issue rather than a display one:
+    // requiresManualResolution gates the arm control (and the server).
+    const ack = await openWithMismatch();
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled()
+    );
+
+    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await screen.findByRole('checkbox');
+
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
+  });
+
   it('THE NIGHT SAYS MANUAL — the winner control appears, though the club has moved on', async () => {
     await openSettlement({ settlementRules: { ...RULES, winnerDefinition: 'MANUAL' } });
 
