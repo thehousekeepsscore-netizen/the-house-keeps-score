@@ -3656,7 +3656,34 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <div className="text-xs font-medium text-text">
                           {uid === currentUser.uid ? 'You' : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 6)})`)}
                         </div>
-                        {club.winnerDefinition === 'MANUAL' ? (
+                        {/*
+                          The NIGHT's definition, not the club's.
+
+                          This read the club while the engine two hundred lines
+                          up is handed `sessionSettlementRules.winnerDefinition`
+                          — and the rules panel at the top of this very modal
+                          already prints the snapshot's value. So the modal
+                          stated one rule and obeyed another, and the club's
+                          setting stays editable while a night is running.
+
+                          Both directions lose money quietly:
+
+                            snapshot MANUAL, club since changed
+                              no checkbox renders, every entry submits
+                              manualWinner undefined, MANUAL marks nobody a
+                              winner, and an excess has nobody to be charged to
+                              — it is left unresolved and simply leaves the books
+
+                            club MANUAL, snapshot not
+                              a checkbox appears and ticking it invalidates the
+                              preview and changes nothing, because the engine is
+                              not reading MANUAL at all
+
+                          The snapshot exists precisely so the night settles by
+                          what it agreed to. This is the one line on the screen
+                          that was still asking the club.
+                        */}
+                        {sessionSettlementRules?.winnerDefinition === 'MANUAL' ? (
                           <label className="flex items-center gap-1.5 text-[10px] font-medium text-text-muted uppercase cursor-pointer">
                             <input
                               type="checkbox"
