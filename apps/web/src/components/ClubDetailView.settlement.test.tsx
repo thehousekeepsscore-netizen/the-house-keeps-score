@@ -375,6 +375,86 @@ describe('settling a night', () => {
     });
   });
 
+  /*
+   * WHAT THE HOST IS TOLD WHEN THE MOST IRREVERSIBLE ACT IN THE PRODUCT
+   * SUCCEEDS OR FAILS.
+   *
+   * Success said nothing: the message was written to `settlementSuccess`, a
+   * state with no render site anywhere in the file, and the modal simply
+   * vanished. Failure said it at the TOP of a modal that runs to several
+   * thousand pixels, while the admin was at the bottom where the button they
+   * pressed had just returned to "Confirm & Settle".
+   *
+   * On a money screen "nothing happened" reads as "press it again", which is
+   * the behaviour use-action.ts exists to prevent.
+   */
+  async function commitSettlement() {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await findPreview();
+    fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
+  }
+
+  it('SUCCESS — says the night was settled, and names the figures committed', async () => {
+    await commitSettlement();
+
+    // The acknowledgement itself, through the app's own success channel.
+    expect(await screen.findByText(/night settled/i)).toBeInTheDocument();
+    // Reported from the settlement that was actually committed: 10,000 in
+    // (5,000 each) against 10,000 out (8,000 + 2,000).
+    expect(screen.getByText(/10,000 Chips in, 10,000 Chips out/i)).toBeInTheDocument();
+  });
+
+  it('SUCCESS — still closes the settlement screen, exactly as before', async () => {
+    await commitSettlement();
+    // The toast is the acknowledgement; the modal is not kept open to carry it.
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /settle night/i })).not.toBeInTheDocument()
+    );
+  });
+
+  it('FAILURE — shows the server\'s reason beside the button that was pressed', async () => {
+    vi.mocked(offlineSessionsApi.settleSession).mockRejectedValueOnce(
+      new Error('Session is already settled')
+    );
+    await commitSettlement();
+
+    const message = await screen.findByText(/session is already settled/i);
+    expect(message).toBeInTheDocument();
+
+    /*
+     * Position is the point of this fix, so it is asserted rather than assumed.
+     * The error must sit with the commit control, not at the top of the modal:
+     * in DOM order it comes AFTER the preview and BEFORE the button.
+     */
+    const preview = screen.getAllByText(/^Profit \/ loss$/i)[0];
+    const button = screen.getByRole('button', { name: /^settle session$/i });
+    expect(
+      preview.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'error renders after the preview, not above it'
+    ).toBeTruthy();
+    expect(
+      message.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'and immediately before the control that failed'
+    ).toBeTruthy();
+  });
+
+  it('FAILURE — never claims success, and leaves the screen open to correct it', async () => {
+    vi.mocked(offlineSessionsApi.settleSession).mockRejectedValueOnce(
+      new Error('Session is already settled')
+    );
+    await commitSettlement();
+    await screen.findByText(/session is already settled/i);
+
+    // The safety property: a failed settlement must not produce a success
+    // message, and must not close the screen out from under the correction.
+    expect(screen.queryByText(/night settled/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /settle night/i })).toBeInTheDocument();
+  });
+
   it('re-locks the preview when a figure changes underneath it', async () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
