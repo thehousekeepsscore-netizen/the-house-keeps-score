@@ -434,7 +434,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
   const [settlementError, setSettlementError] = useState('');
-  const [settlementSuccess, setSettlementSuccess] = useState('');
   const [showCashoutModal, setShowCashoutModal] = useState(false);
   const [cashoutCalculated, setCashoutCalculated] = useState(false);
   const [confirmingSettle, setConfirmingSettle] = useState(false);
@@ -1808,7 +1807,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setManualWinnerInputs({});
     setMismatchAcknowledged(false);
     setSettlementError('');
-    setSettlementSuccess('');
     setCashoutCalculated(false); setConfirmingSettle(false);
     setShowCashoutModal(true);
   };
@@ -1853,7 +1851,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return;
     }
     setSettlementError('');
-    setSettlementSuccess('');
+
+    /*
+     * Captured BEFORE the awaits, because they are gone afterwards.
+     *
+     * Settling ends the night: refreshActiveSession then resolves to no active
+     * session, and `preview` recomputes from a form that is about to unmount.
+     * The toast has to describe the night that was just committed, not whatever
+     * the screen holds a tick later.
+     *
+     * Both are non-null here — every guard above returns rather than falling
+     * through.
+     */
+    const settledNight = activeSession.sessionName;
+    const settled = preview;
 
     try {
       const entries = settlementUids.map(uid => ({
@@ -1864,7 +1875,32 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       }));
       await offlineSessionsApi.settleSession(club.id, activeSession.id, { entries, mismatchAcknowledged });
       await Promise.all([refreshActiveSession(), refreshHistory(), refreshLeaderboard(), refreshPotLog(), refreshClub()]);
-      setSettlementSuccess('🎉 Session successfully settled! Financial transactions recorded & Club Pot updated.');
+      /*
+       * The most irreversible act in the product used to say nothing at all.
+       *
+       * This message was written to `settlementSuccess`, a state with no render
+       * site anywhere in the file — so the modal simply vanished. On a money
+       * screen "nothing happened" reads as "press it again", which is the
+       * behaviour use-action.ts exists to prevent and which once produced
+       * twenty duplicate rows.
+       *
+       * Toast, because that is already this app's success channel for every
+       * other money action — the bank request, the cash-out, opening the table.
+       * Pushed BEFORE the modal closes, and ToastContainer sits at z-[60] above
+       * the modal, so the acknowledgement is on screen as the surface leaves.
+       *
+       * Figures come from the settlement that was actually committed, through
+       * the same unit-aware formatter the screen uses, so a club reading in
+       * rupees is told in rupees.
+       */
+      pushToast(
+        'Night settled',
+        `${settledNight} — ${formatUnit(settled.totalBuyIns)} in, ${formatUnit(settled.totalCashOuts)} out.` +
+          (settled.potContribution !== 0
+            ? ` Club Pot ${formatSignedUnit(settled.potContribution)}.`
+            : ''),
+        'success'
+      );
       setShowCashoutModal(false);
     } catch (err) {
       // The server's message is the useful part — "a session needs at least two
@@ -3644,11 +3680,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             </div>
 
             <div className="p-5 space-y-4">
-              {settlementError && (
-                <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
-                  {settlementError}
-                </div>
-              )}
 
               {/* Says the thing that makes the figures below trustworthy. A host
                   counting a stack needs to know the numbers cannot move while
@@ -3838,6 +3869,29 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       onChange: (checked) => { setMismatchAcknowledged(checked); setConfirmingSettle(false); },
                   }}
                 />
+              )}
+
+              {/*
+                The failure, where the person who caused it is looking.
+
+                This rendered at the TOP of the modal body — and settling is the
+                last control on a screen that runs to several thousand pixels at
+                a full table, so the admin pressed Confirm & Settle, stayed at
+                the bottom, and saw nothing change. The button returned to
+                "Confirm & Settle" and the explanation sat a screen and a half
+                above, unread.
+
+                Same element, same styling, same text — the server's own message,
+                which is the useful part. Only its position moved.
+
+                Deliberately NOT inside the confirming branch below: the commit
+                handler sets confirmingSettle false before it runs, so that
+                branch has already unmounted by the time a failure arrives.
+              */}
+              {settlementError && (
+                <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
+                  {settlementError}
+                </div>
               )}
 
               {/* Settling is irreversible and moves real money, so it takes a
