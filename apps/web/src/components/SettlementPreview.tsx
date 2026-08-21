@@ -158,27 +158,39 @@ export function SettlementPreview({
         </div>
       </div>
 
-      {/* House take, by source. The session rake is a seat fee charged to every
-          player, and it is folded into each of their rakeDeduction figures
-          above — so this restates it as rate × heads, the only place the total
-          and how it was reached are both visible. */}
+      {/*
+        House take, by source — TAKEN FROM THE ENGINE, not reconstructed.
+
+        Both figures used to be derived here, and both were wrong:
+
+            winners' cut  =  totalRakeCollected − flatRake      ← one seat fee
+            session rake  =  flatRake × players.length          ← ignores capping
+
+        The first subtracted ONE seat fee from a total containing N of them, so
+        it overstated the cut by flatRake × (N−1) — 7,000 chips at eight players
+        and a 1,000 seat fee. The two lines then visibly failed to sum to the
+        House take printed directly beneath them, which is the one place this
+        panel exists to reconcile.
+
+        The second assumed every player pays the full fee. The engine caps it:
+        `seatFee = min(seatFeeCharged, rakeDeduction)`, because a player cannot
+        be charged more for the chair than the house took from them at all.
+
+        The engine already returns both, precisely so this does not have to
+        guess — and its own invariant is `seatFee + winnersCut === rakeDeduction`
+        per player, so these two lines sum to the total by construction.
+
+        The label lost its "× N players" with the arithmetic that justified it:
+        once the figure is the capped total, rate × heads is no longer what it
+        says.
+      */}
       {showHouseTake && (
         <div className="space-y-1 text-[11px] font-mono tabular-nums pt-1 border-t border-line">
           {cutPercent > 0 && (
-            <Row
-              label={`Winners' cut (${cutPercent}%)`}
-              amount={formatAmount(Math.max(0, result.totalRakeCollected - flatRake))}
-            />
+            <Row label={`Winners' cut (${cutPercent}%)`} amount={formatAmount(result.totalWinnersCut)} />
           )}
           {flatRake > 0 && (
-            <Row
-              // "× N players" rather than the rate spelled out: formatAmount
-              // carries its own unit, so folding it in reads as
-              // "(1,000 Chips × 2)" — the per-seat figure is already on every
-              // player's own row above.
-              label={`Session rake × ${result.players.length} ${result.players.length === 1 ? 'player' : 'players'}`}
-              amount={formatAmount(flatRake * result.players.length)}
-            />
+            <Row label="Session rake" amount={formatAmount(result.totalSeatFees)} />
           )}
           <div className="pt-1 border-t border-line">
             <Row label="House take" amount={formatAmount(result.totalRakeCollected)} tone="accent" strong />

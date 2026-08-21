@@ -539,9 +539,14 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     expect(screen.getByText(/^House take$/)).toBeInTheDocument();
     // 1,000 a seat from two players, plus 5% of the winner's 3,000 profit.
     // Neither line exists if the preview is reading the club, which charges 0.
-    // The label restates the arithmetic — rate × heads — so a host can see
-    // where 2,000 came from rather than being handed the total.
-    expect(screen.getByText(/^Session rake × 2 players$/)).toBeInTheDocument();
+    //
+    // The label used to read "× 2 players" and restate the arithmetic. It no
+    // longer does: the figure is now the engine's totalSeatFees, which caps a
+    // seat fee at what the house actually took from that player, so rate ×
+    // heads is not what the line says. SettlementPreview.test.tsx owns the
+    // decomposition; this test only cares that the line exists at all, because
+    // its existence is what proves the night's rules were used.
+    expect(screen.getByText(/^Session rake$/)).toBeInTheDocument();
     expect(screen.getByText(/^Winners' cut \(5%\)$/)).toBeInTheDocument();
   });
 });
