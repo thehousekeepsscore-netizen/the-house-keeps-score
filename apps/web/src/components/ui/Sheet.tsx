@@ -174,6 +174,8 @@ const SheetHistoryEntry: React.FC<{ onClose: () => void }> = ({ onClose }) => {
  * dialog: desktop is an adaptation of the phone design, not its source.
  */
 
+type Size = 'md' | 'lg';
+
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
@@ -183,12 +185,40 @@ export interface SheetProps {
   children?: React.ReactNode;
   /** The action row. Buttons here are within thumb reach by construction. */
   footer?: React.ReactNode;
+  /**
+   * How wide the panel is allowed to get ON DESKTOP, and nothing else.
+   *
+   * Not the same axis as Button's `size`, which is control height and type
+   * scale. Below `sm` the panel is `w-full` either way, so this changes nothing
+   * in the hand — reach for it when a surface has genuinely more to say at a
+   * desk, never to win room for a layout that is tight on a phone.
+   */
+  size?: Size;
 }
+
+/*
+ * Written out in full rather than composed, because Tailwind v4 scans the
+ * source for class names: `sm:max-w-${size}` generates no CSS at all. Exactly
+ * one of these reaches the panel — there is no class-merge helper in this app,
+ * so two max-widths would be settled by stylesheet order rather than by intent.
+ */
+const SIZES: Record<Size, string> = {
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+};
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description, children, footer }) => {
+export const Sheet: React.FC<SheetProps> = ({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+}) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useRef(`sheet-${Math.random().toString(36).slice(2, 9)}`);
@@ -275,8 +305,8 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
         aria-modal="true"
         aria-labelledby={titleId.current}
         tabIndex={-1}
-        className="
- relative w-full sm:max-w-md
+        className={`
+ relative w-full ${SIZES[size]}
  furniture furniture-raised
  rounded-t-3xl sm:rounded-3xl
  outline-none
@@ -284,7 +314,7 @@ export const Sheet: React.FC<SheetProps> = ({ open, onClose, title, description,
  animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
  sm:animate-[fade-in_160ms_ease-out]
  safe-bottom
- "
+ `}
       >
         {/* Grab handle. Purely a signifier that this surface came from the
             bottom and can be dismissed downward — the convention every native
