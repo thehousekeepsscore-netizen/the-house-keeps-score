@@ -17,7 +17,7 @@ import { useConfirm } from '../ui/ConfirmDialog';
  *
  *   WHO      the face and the name
  *   HOW MUCH the figure, because that is what a decision turns on
- *   WHAT     one tag — "Join table", "More chips", "Cash out"
+ *   WHAT     one tag — "Join table", "Add to bank", "Cash out"
  *
  * No sentences. An earlier version wrote "Priya wants to join", which reads
  * well once and is read fifteen times a night. A tag scans: the eye takes the
@@ -63,7 +63,7 @@ const VISIBLE_CARDS = 2;
 function tagOf(row: WaitingRow): string {
   if (row.kind === 'cash-out') return 'Cash out';
   if (row.kind === 'sit-in') return 'Join table';
-  return row.joining ? 'Join table' : 'More chips';
+  return row.joining ? 'Join table' : 'Add to bank';
 }
 
 /**
@@ -177,7 +177,7 @@ export const WaitingForYou: React.FC<{
                       {formatAmount(row.amount)}
                     </span>
                   )}
-                  {/* The tag gives way before the age does. "More chips" is
+                  {/* The tag gives way before the age does. "Add to bank" is
                       guessable from context and the figure beside it; how long
                       somebody has been waiting is the part a host cannot
                       reconstruct, so it never truncates. */}

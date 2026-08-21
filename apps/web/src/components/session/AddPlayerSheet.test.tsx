@@ -37,7 +37,7 @@ describe('it picks a person, not an amount', () => {
   it('offers no way to choose chips here', () => {
     show();
     expect(screen.queryByText(/bank|chips|amount/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^request/i })).not.toBeInTheDocument();
   });
 
   it('hands the person off, so the one bank chooser does the rest', async () => {

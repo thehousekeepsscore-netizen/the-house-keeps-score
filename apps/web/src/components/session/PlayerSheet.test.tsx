@@ -91,13 +91,13 @@ describe('one state, one thing to do', () => {
     show({ seat: seat({ state: 'waitingToSit', totalBuyIn: 0, pendingBuyIn: 5000 }), isSelf: true });
     expect(screen.getByText(/pulling up a chair with 5,000/i)).toBeInTheDocument();
     expect(screen.getByText(/waiting for the host/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /join|buy|stand/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /join|bank|stand/i })).not.toBeInTheDocument();
   });
 
   it('leads a playing seat with more chips, and stands up quietly beneath it', () => {
     show({ seat: seat() });
     expect(screen.getByText('Playing')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /buy more chips/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to bank/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /stand up/i })).toBeInTheDocument();
   });
 
@@ -185,18 +185,18 @@ describe('what they have put in', () => {
  *
  * Tapping your own seat is a general-purpose question — chips, or standing up?
  * Tapping the stud is not: you have already said what you want, and a sheet
- * offering "Buy more chips" would be asking it twice.
+ * offering "Add to bank" would be asking it twice.
  */
 describe('when the stud is the way in', () => {
   it('opens a seated player straight on the amount', () => {
     show({ seat: seat(), isSelf: true, isAdmin: false, askForChips: true });
-    expect(screen.getByText(/how many chips/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /buy more chips/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/how much/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add to bank/i })).not.toBeInTheDocument();
   });
 
   it('still offers the menu when the seat was the way in', () => {
     show({ seat: seat(), isSelf: true, isAdmin: false });
-    expect(screen.getByRole('button', { name: /buy more chips/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add to bank/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /stand up/i })).toBeInTheDocument();
   });
 
@@ -221,7 +221,7 @@ describe('choosing a bank', () => {
   it('picks then confirms, rather than committing money on first touch', async () => {
     const { onJoin } = show({ seat: null, isSelf: true });
 
-    const cont = screen.getByRole('button', { name: /continue/i });
+    const cont = screen.getByRole('button', { name: /^request/i });
     expect(cont).toBeDisabled();
 
     await userEvent.click(screen.getByRole('radio', { name: /3,000/ }));
@@ -235,7 +235,7 @@ describe('choosing a bank', () => {
     const { onJoin } = show({ seat: null, isSelf: true, ceiling: null });
     await userEvent.click(screen.getByRole('radio', { name: /3,000/ }));
     await userEvent.type(screen.getByPlaceholderText(/other amount/i), '4500');
-    await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^request/i }));
     expect(onJoin).toHaveBeenCalledWith(4500);
   });
 });
@@ -291,6 +291,6 @@ describe('someone else’s seat', () => {
   it('has no action blocks at all, rather than greyed ones', () => {
     show({ seat: seat(), isSelf: false, isAdmin: false });
     expect(screen.getByText(/nothing to do here/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /buy|stand|join/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /bank|stand|join/i })).not.toBeInTheDocument();
   });
 });
