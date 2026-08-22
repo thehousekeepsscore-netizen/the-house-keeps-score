@@ -219,3 +219,52 @@ and the options with their tradeoffs are in `RAILWAY-SERVICE-SCOPING.md`. No fix
 is proposed there, because it depends on whether `react-example` is needed at
 all — Vercel serves production and succeeded on every commit this service failed
 on.
+
+---
+
+## Design finding — the seed guard checks NODE_ENV, not the database
+
+**2026-08-22. A documented weakness, not an incident.** Nothing here says this
+has happened; it says it is possible.
+
+`assertSeedingAllowed` (`apps/api/src/lib/seedGuard.ts`) refuses to seed when
+`NODE_ENV === "production"` unless `ALLOW_PRODUCTION_SEED` is set. Its first
+line is:
+
+```ts
+if (env.NODE_ENV !== "production") return;
+```
+
+**The check is on `NODE_ENV`. It never looks at where `DATABASE_URL` points.**
+So the guard protects a production *process*, not a production *database*. A
+seed run from a laptop — `DATABASE_URL` set to production, `NODE_ENV` unset or
+`development` — returns early on that first line and proceeds to write.
+
+For `seed.ts` that write is a super-admin account with access to every club's
+money, created with `SEED_SUPER_ADMIN_PASSWORD`. `seed-history.ts` shares the
+same guard and inserts `HistoricalSessionRecord` rows.
+
+What is currently true of the deployed system, and worth recording so the shape
+of the risk is not overstated:
+
+- the seed is **not wired into any deploy path** — `apps/api/railway.json` runs
+  `prisma migrate deploy` and nothing else, and the start command is
+  `npm run start`;
+- `ALLOW_PRODUCTION_SEED` is **not set** on the `@poker/api` service;
+- the guard has existed since the first commit (3 Aug), and `seed.ts` is
+  byte-identical to that version (`00e0ab24…`), so there is no window in
+  recorded history where an unguarded seed shipped.
+
+The remaining exposure is therefore entirely the local-invocation path above.
+
+**Related and still open:** `SEED_SUPER_ADMIN_EMAIL` and
+`SEED_SUPER_ADMIN_PASSWORD` on the API service still hold the `.env.example`
+defaults — the server says so at every boot — and this repository is public, so
+those values are published. Seeding is create-or-promote only (`seed.ts`): it
+writes `passwordHash` when creating a user and never updates it afterwards, and
+no password-reset mechanism exists anywhere in `apps/api/src`. Changing the
+Railway variable therefore would not alter an account that already exists.
+
+Whether such an account exists in production is **unresolved at the time of
+writing** and can only be answered from the database. Nothing has been changed
+pending that answer.
