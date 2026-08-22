@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { SettlementPreview } from './SettlementPreview';
 import { computeSettlement, SettlementSettings } from '../lib/settlementEngine';
 import { Club } from '../types';
@@ -313,5 +313,80 @@ describe('invariants the settlement redesign must not break', () => {
       player('Rahul', 5000, 2000),
     ]);
     expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * An acknowledgement that is in force has to be visible.
+ *
+ * Ticking the box makes the engine return requiresManualResolution false, which
+ * unmounts the block the box lives in. Between that moment and the commit the
+ * screen carried no record that a mismatch existed, none that somebody had
+ * waved it through, and no way to withdraw it except by disturbing a figure.
+ *
+ * The warning disappearing is correct — it is a demand, and the demand was met.
+ * What was missing is what replaces it.
+ */
+describe('an acknowledged mismatch stays on the screen', () => {
+  const manualAcknowledged = (over = {}) => {
+    const settings = rules({ mismatchStrategy: 'MANUAL' });
+    const result = computeSettlement(
+      [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)],
+      settings,
+      { currentPotBalance: 0, mismatchAcknowledged: true }
+    );
+    const onChange = vi.fn();
+    render(
+      <SettlementPreview
+        result={result}
+        club={club}
+        settings={settings}
+        formatAmount={fmt}
+        formatSigned={signed}
+        mismatchAcknowledgement={{ checked: true, onChange, ...over }}
+      />
+    );
+    return { result, onChange };
+  };
+
+  it('says what was acknowledged, and for how much', () => {
+    const { result } = manualAcknowledged();
+    expect(result.requiresManualResolution, 'the demand is satisfied').toBe(false);
+    expect(result.mismatchAmount, 'but the mismatch has not gone anywhere').not.toBe(0);
+
+    // The warning is gone, and something has taken its place.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByText(/300 more out than in/)).toBeInTheDocument();
+    expect(screen.getByText(/reconciled outside the app/i)).toBeInTheDocument();
+  });
+
+  it('can be withdrawn without touching a single figure', () => {
+    const { onChange } = manualAcknowledged();
+    fireEvent.click(screen.getByRole('button', { name: /undo/i }));
+    expect(onChange).toHaveBeenCalledWith(false);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('never appears when the night is not MANUAL', () => {
+    // Same mismatch, a strategy that resolves it automatically. Nobody
+    // acknowledged anything, so nothing may claim they did.
+    const settings = rules({ mismatchStrategy: 'PROPORTIONAL_WINNERS' });
+    const result = computeSettlement(
+      [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)],
+      settings,
+      { currentPotBalance: 0, mismatchAcknowledged: true }
+    );
+    render(
+      <SettlementPreview
+        result={result}
+        club={club}
+        settings={settings}
+        formatAmount={fmt}
+        formatSigned={signed}
+        mismatchAcknowledgement={{ checked: true, onChange: () => {} }}
+      />
+    );
+    expect(screen.queryByText(/reconciled outside the app/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
   });
 });

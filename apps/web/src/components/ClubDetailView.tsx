@@ -13,7 +13,7 @@ import { selfApprovalBlock, WhoIsHere } from '../lib/approval-rules';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
 import { useAction } from '../lib/use-action';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
 import * as clubsApi from '../lib/clubs-api';
@@ -433,6 +433,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * (applyExcessToWinners), which is the other half of what was acknowledged.
    */
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
+  /** A remote change invalidated what this admin was in the middle of reviewing. */
+  const [remoteFiguresMoved, setRemoteFiguresMoved] = useState(false);
   const [settlementError, setSettlementError] = useState('');
   const [showCashoutModal, setShowCashoutModal] = useState(false);
   const [confirmingSettle, setConfirmingSettle] = useState(false);
@@ -796,9 +798,25 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * — so this fires when a cash-out genuinely changes and not on every render.
    * Clearing on mount is harmless: openCashoutModal resets all three anyway.
    */
+  const confirmingRef = useRef(false);
+  const acknowledgedRef = useRef(false);
+  useEffect(() => { confirmingRef.current = confirmingSettle; }, [confirmingSettle]);
+  useEffect(() => { acknowledgedRef.current = mismatchAcknowledged; }, [mismatchAcknowledged]);
+
   useEffect(() => {
+    /*
+      Clearing both is right — the figures moved, so neither an acknowledgement
+      nor an armed confirmation can stand against them. Doing it in SILENCE was
+      the problem: this admin did nothing, and the screen simply stopped
+      offering to settle. An unexplained refusal on a money screen reads as a
+      bug, and the reflex is to press the button again.
+
+      The refs exist because this effect keys on the cash-outs alone. Putting
+      the two states in its deps would re-run it on every acknowledgement and
+      clear the thing that had just been set.
+    */
+    if (confirmingRef.current || acknowledgedRef.current) setRemoteFiguresMoved(true);
     setMismatchAcknowledged(false);
-   
     setConfirmingSettle(false);
   }, [confirmedCashOutByUid]);
 
@@ -3903,6 +3921,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 handler sets confirmingSettle false before it runs, so that
                 branch has already unmounted by the time a failure arrives.
               */}
+              {remoteFiguresMoved && (
+                <div className="p-3 rounded-xl bg-warning/10 border border-warning/40 text-warning text-[11px] text-center leading-relaxed">
+                  A cash-out was confirmed by someone else while you were reviewing. The figures
+                  above have changed — check them, then settle again.
+                </div>
+              )}
+
               {settlementError && (
                 <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
                   {settlementError}
@@ -3913,7 +3938,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   deliberate second tap that restates the final figures. */}
               {!confirmingSettle ? (
                 <button
-                  onClick={() => setConfirmingSettle(true)}
+                  onClick={() => { setRemoteFiguresMoved(false); setConfirmingSettle(true); }}
                   disabled={!allCashOutsEntered || !preview || preview.requiresManualResolution}
                   className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
                 >
