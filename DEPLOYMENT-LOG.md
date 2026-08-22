@@ -265,6 +265,26 @@ writes `passwordHash` when creating a user and never updates it afterwards, and
 no password-reset mechanism exists anywhere in `apps/api/src`. Changing the
 Railway variable therefore would not alter an account that already exists.
 
-Whether such an account exists in production is **unresolved at the time of
-writing** and can only be answered from the database. Nothing has been changed
-pending that answer.
+**Resolved, 22 Aug 2026.** A production lookup for that address returned **zero
+rows** — no such account was ever created, so there was nothing to reset and the
+production database was not modified.
+
+The remediation was therefore preventative, and was done in this order on
+purpose:
+
+1. **The Railway variables were rotated first**, while the code still compared
+   against the old published pair. The next boot's banner lost its
+   `⚠ Seed credentials` line, which proved the *values* had changed.
+2. **Then the defaults were removed from the repository** (#51 at `c4304cc`) —
+   from both `.env.example` files and from `env.ts` together, because moving
+   only the example file would have published a new working password that
+   `describeSeedCredentialRisk` did not recognise, silencing the warning for the
+   exact string people copy.
+
+That order matters and cannot be repeated: once the constants moved, the warning
+would have gone quiet whether or not anything was rotated, and the check would
+have passed for the wrong reason. `seedGuard.test.ts` now enforces that the
+published values and the constants cannot drift apart again.
+
+`JWT_ACCESS_SECRET` was deliberately not rotated — presence in a container is not
+evidence of exposure, and the cost is logging every session out.
