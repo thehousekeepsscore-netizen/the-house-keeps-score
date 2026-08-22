@@ -30,7 +30,7 @@ type SessionResource = { session: PokerSession | null; buyIns: BuyInRequest[] };
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
 import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
-import { SettlementPreview, SettlementConfirm } from './SettlementPreview';
+import { SettlementPreview, SettlementConfirm, describeMismatch } from './SettlementPreview';
 import {
   Club,
   PokerSession,
@@ -1959,6 +1959,48 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * player's buy-in does not disable the buttons on everyone else's row.
    */
   const settleAction = useAction(handleSettleSession);
+
+  /** Buy-ins are known from the moment the screen opens; cash-outs are not. */
+  const settlementTotalIn = settlementUids.reduce(
+    (sum, uid) => sum + (Number(buyInInputs[uid]) || 0),
+    0
+  );
+
+  /*
+    The action row, in Sheet's footer slot rather than at the bottom of the
+    scroll.
+
+    Sheet renders the footer outside the overflow-y-auto child and in
+    flex-col-reverse, so on a phone the way OUT sits under the thumb and the
+    irreversible one above it. That ordering is the reason ConfirmDialog puts
+    cancel first, and it is why these are in DOM order Go Back → Confirm.
+  */
+  const settlementFooter = !confirmingSettle ? (
+    <button
+      onClick={() => { setRemoteFiguresMoved(false); setConfirmingSettle(true); }}
+      disabled={!allCashOutsEntered || !preview || preview.requiresManualResolution}
+      className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
+    >
+      Settle Session
+    </button>
+  ) : (
+    <>
+      <button
+        onClick={() => setConfirmingSettle(false)}
+        className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
+      >
+        Go Back
+      </button>
+      <button
+        onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
+        disabled={settleAction.pending}
+        className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
+      </button>
+    </>
+  );
+
   const startSessionAction = useAction(handleStartSession);
   const requestBuyInAction = useAction(handleRequestBuyIn);
   const standUpAction = useAction(handleStandUp);
@@ -3679,26 +3721,41 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
       {/* MODAL: CASHOUT & END-OF-SESSION SETTLEMENT (ADMIN ONLY) */}
       {showCashoutModal && isAdmin && activeSession && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="furniture w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
-            <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
-              <div>
-                <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
-                  <Sliders className="w-4 h-4" /> Settle night
-                </h3>
-                <p className="text-[11px] text-text-muted mt-0.5">{activeSession.sessionName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCashoutModal(false)}
-                aria-label="Close"
-                className="shrink-0 w-9 h-9 rounded-xl border border-line text-text-muted hover:text-text hover:border-line-strong transition-colors flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Sheet
+          open={showCashoutModal}
+          onClose={() => setShowCashoutModal(false)}
+          size="lg"
+          title="Settle night"
+          description={activeSession.sessionName}
+          footer={settlementFooter}
+        >
+          <div className="space-y-4">
 
-            <div className="p-5 space-y-4">
+              {/*
+                IN / OUT / DIFF, pinned to the top of the count.
+
+                It is the running total the host checks WHILE typing, which is
+                why it is up here and not in the panel below. OUT and DIFF stay
+                as — until every seat has a figure: an uncounted player's blank
+                is a zero to the engine and takes a share of the mismatch, so a
+                partial total is not a smaller truth, it is a wrong one. IN is
+                honest throughout, because the buy-ins are already known.
+
+                Keyboard behaviour is NOT handled here. On iOS this bar leaves
+                the visible viewport when the keyboard opens, which is measured
+                and is the next commit's problem.
+              */}
+              <div className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line">
+                <div className="flex items-baseline justify-between gap-2 text-[11px] font-mono tabular-nums">
+                  <span className="text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
+                  <span className="text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '—'}</span></span>
+                  <span className={allCashOutsEntered && preview && preview.mismatchAmount !== 0 ? 'text-warning' : 'text-text-muted'}>
+                    {allCashOutsEntered && preview
+                      ? (preview.mismatchAmount === 0 ? 'balanced' : describeMismatch(preview.mismatchAmount, formatVal))
+                      : 'DIFF —'}
+                  </span>
+                </div>
+              </div>
 
               {/* Says the thing that makes the figures below trustworthy. A host
                   counting a stack needs to know the numbers cannot move while
@@ -3934,45 +3991,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 </div>
               )}
 
-              {/* Settling is irreversible and moves real money, so it takes a
-                  deliberate second tap that restates the final figures. */}
-              {!confirmingSettle ? (
-                <button
-                  onClick={() => { setRemoteFiguresMoved(false); setConfirmingSettle(true); }}
-                  disabled={!allCashOutsEntered || !preview || preview.requiresManualResolution}
-                  className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Settle Session
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <SettlementConfirm
-                    result={preview!}
-                    title="Settle this session?"
-                    warning="This locks the results permanently and cannot be undone."
-                    formatSigned={formatSignedVal}
-                  />
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setConfirmingSettle(false)}
-                      className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
-                    >
-                      Go Back
-                    </button>
-                    <button
-                        onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
-                        disabled={settleAction.pending}
-                      className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
-                    </button>
-                  </div>
-                </div>
+              {confirmingSettle && preview && (
+                <SettlementConfirm
+                  result={preview}
+                  title="Settle this session?"
+                  warning="This locks the results permanently and cannot be undone."
+                  formatSigned={formatSignedVal}
+                />
               )}
-            </div>
           </div>
-        </div>
+        </Sheet>
       )}
 
       {/* MODAL: CLUB RULES & INFO */}

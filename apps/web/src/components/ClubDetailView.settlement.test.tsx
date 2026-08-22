@@ -202,7 +202,15 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
   const router = createMemoryRouter(
     [
       {
-        path: '/clubs/:clubId',
+        /*
+          Mounted at '/' rather than '/clubs/:clubId', because Sheet registers
+          its history entry against window.location — which jsdom pins at '/'
+          regardless of where a memory router thinks it is. With the route at
+          the club path, opening the settlement screen pushed to '/', matched
+          nothing, and took the whole view down with it. Sheet.history.test.tsx
+          mounts at '/' for exactly this reason.
+        */
+        path: '/',
         element: (
           <ResourceCacheProvider>
             <ClubDetailView
@@ -215,7 +223,7 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
         ),
       },
     ],
-    { initialEntries: ['/clubs/c1'] }
+    { initialEntries: ['/'] }
   );
   return render(<RouterProvider router={router} />);
 }
@@ -709,7 +717,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
      * runs and nothing is exercised.)
      */
     const ack = await openWithMismatch();
-    expect(screen.getByText(/300\D*more out than in/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/300\D*more out than in/i).length).toBeGreaterThan(0);
 
     fireEvent.click(ack);
     await waitFor(() =>
@@ -723,9 +731,9 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 
     const again = await screen.findByRole('checkbox');
     expect(
-      screen.getByText(/300\D*more out than in/i),
+      screen.getAllByText(/300\D*more out than in/i).length,
       'the mismatch really is unchanged'
-    ).toBeInTheDocument();
+    ).toBeGreaterThan(0);
     expect((again as HTMLInputElement).checked, 'and it is still withdrawn').toBe(false);
   });
 
@@ -950,5 +958,50 @@ describe('a figure nobody has entered is not a figure', () => {
     expect(previewLines()).toHaveLength(0);
     expect(screen.getAllByText('—').length, 'and the seats read as uncounted again').toBeGreaterThan(0);
     expect(screen.queryAllByText(/^[+-][\d,]+/)).toHaveLength(0);
+  });
+});
+
+/**
+ * The structure the device measurement was taken against.
+ *
+ * The iPhone run measured a Sheet: a flex column whose content scrolls in its
+ * own overflow-y-auto child, with the action row OUTSIDE that child so the
+ * keyboard cannot take it away. The settlement screen was a hand-rolled div
+ * with none of that — one scrolling box, actions at the bottom of the scroll.
+ *
+ * So the measurement said nothing about this screen until it had the same
+ * shape. This asserts the shape, so a later refactor cannot quietly return the
+ * screen to a structure the evidence does not cover.
+ *
+ * It does NOT claim the keyboard behaves the same here. That needs the device
+ * again, and it is the next commit's job.
+ */
+describe('the settlement screen is the structure that was measured', () => {
+  it('is a Sheet: scrolling content, with the action row outside it', async () => {
+    await openSettlement();
+    const panel = screen.getByRole('dialog');
+
+    expect(panel).toHaveAttribute('aria-modal', 'true');
+    expect(panel.className, 'the measured height cap').toContain('max-h-[90dvh]');
+    expect(panel.className, 'the wider desktop panel, per size="lg"').toContain('sm:max-w-lg');
+    expect(panel.className).toContain('flex');
+    expect(panel.className).toContain('safe-bottom');
+
+    const scroller = Array.from(panel.children).find((c) =>
+      c.className.includes('overflow-y-auto')
+    );
+    expect(scroller, 'content scrolls in its own child').toBeDefined();
+
+    // The action row is a SIBLING of the scroller, not inside it. This is the
+    // property the keyboard measurement depended on.
+    const settle = screen.getByRole('button', { name: /^settle session$/i });
+    expect(scroller!.contains(settle), 'the commit control must not scroll with the figures').toBe(false);
+    expect(panel.contains(settle)).toBe(true);
+
+    // And the summary is sticky inside the scroller, which is what commit 4
+    // will have to reposition when the keyboard displaces the viewport.
+    const sticky = scroller!.querySelector('.sticky');
+    expect(sticky, 'pinned IN/OUT/DIFF').not.toBeNull();
+    expect(sticky!.textContent).toMatch(/IN/);
   });
 });
