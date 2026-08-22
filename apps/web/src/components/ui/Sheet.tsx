@@ -310,7 +310,7 @@ export const Sheet: React.FC<SheetProps> = ({
  furniture furniture-raised
  rounded-t-3xl sm:rounded-3xl
  outline-none
- max-h-[90vh] flex flex-col
+ max-h-[90dvh] flex flex-col
  animate-[sheet-up_220ms_cubic-bezier(0.32,0.72,0,1)]
  sm:animate-[fade-in_160ms_ease-out]
  safe-bottom
