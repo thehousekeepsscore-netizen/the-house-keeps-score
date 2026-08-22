@@ -219,3 +219,72 @@ and the options with their tradeoffs are in `RAILWAY-SERVICE-SCOPING.md`. No fix
 is proposed there, because it depends on whether `react-example` is needed at
 all — Vercel serves production and succeeded on every commit this service failed
 on.
+
+---
+
+## Design finding — the seed guard checks NODE_ENV, not the database
+
+**2026-08-22. A documented weakness, not an incident.** Nothing here says this
+has happened; it says it is possible.
+
+`assertSeedingAllowed` (`apps/api/src/lib/seedGuard.ts`) refuses to seed when
+`NODE_ENV === "production"` unless `ALLOW_PRODUCTION_SEED` is set. Its first
+line is:
+
+```ts
+if (env.NODE_ENV !== "production") return;
+```
+
+**The check is on `NODE_ENV`. It never looks at where `DATABASE_URL` points.**
+So the guard protects a production *process*, not a production *database*. A
+seed run from a laptop — `DATABASE_URL` set to production, `NODE_ENV` unset or
+`development` — returns early on that first line and proceeds to write.
+
+For `seed.ts` that write is a super-admin account with access to every club's
+money, created with `SEED_SUPER_ADMIN_PASSWORD`. `seed-history.ts` shares the
+same guard and inserts `HistoricalSessionRecord` rows.
+
+What is currently true of the deployed system, and worth recording so the shape
+of the risk is not overstated:
+
+- the seed is **not wired into any deploy path** — `apps/api/railway.json` runs
+  `prisma migrate deploy` and nothing else, and the start command is
+  `npm run start`;
+- `ALLOW_PRODUCTION_SEED` is **not set** on the `@poker/api` service;
+- the guard has existed since the first commit (3 Aug), and `seed.ts` is
+  byte-identical to that version (`00e0ab24…`), so there is no window in
+  recorded history where an unguarded seed shipped.
+
+The remaining exposure is therefore entirely the local-invocation path above.
+
+**Related and still open:** `SEED_SUPER_ADMIN_EMAIL` and
+`SEED_SUPER_ADMIN_PASSWORD` on the API service still hold the `.env.example`
+defaults — the server says so at every boot — and this repository is public, so
+those values are published. Seeding is create-or-promote only (`seed.ts`): it
+writes `passwordHash` when creating a user and never updates it afterwards, and
+no password-reset mechanism exists anywhere in `apps/api/src`. Changing the
+Railway variable therefore would not alter an account that already exists.
+
+**Resolved, 22 Aug 2026.** A production lookup for that address returned **zero
+rows** — no such account was ever created, so there was nothing to reset and the
+production database was not modified.
+
+The remediation was therefore preventative, and was done in this order on
+purpose:
+
+1. **The Railway variables were rotated first**, while the code still compared
+   against the old published pair. The next boot's banner lost its
+   `⚠ Seed credentials` line, which proved the *values* had changed.
+2. **Then the defaults were removed from the repository** (#51 at `c4304cc`) —
+   from both `.env.example` files and from `env.ts` together, because moving
+   only the example file would have published a new working password that
+   `describeSeedCredentialRisk` did not recognise, silencing the warning for the
+   exact string people copy.
+
+That order matters and cannot be repeated: once the constants moved, the warning
+would have gone quiet whether or not anything was rotated, and the check would
+have passed for the wrong reason. `seedGuard.test.ts` now enforces that the
+published values and the constants cannot drift apart again.
+
+`JWT_ACCESS_SECRET` was deliberately not rotated — presence in a container is not
+evidence of exposure, and the cost is logging every session out.

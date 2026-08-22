@@ -259,15 +259,32 @@ because nothing at the root would be found any more — while the frontend servi
 would carry on unaffected. The migration gate would stop running, and the first
 release to notice would be one carrying a pending migration.
 
-**Status — 21 Aug 2026: step 1 is done, and the gap it opens is now live.**
-The `@poker/api` service's config file is set to `/apps/api/railway.json`, which
-did not exist in the repository at that moment. Until the move below is merged,
-the API therefore has **no config-as-code at all** — no `preDeployCommand` and no
-`healthcheckPath` — and falls back to its dashboard settings.
+**Status — 22 Aug 2026: both steps are done. The window is closed.**
+Step 1 set the `@poker/api` config file to `/apps/api/railway.json` while that
+path did not yet exist; step 2 (the move) merged as #49 at `0f78cc9`, and the
+resulting deployment used the new path successfully.
 
-While that window is open, **nothing touching `/apps/api/**` should be merged**:
-such a release would deploy with no migration gate. The window closes when the
-PR carrying the move lands, and not before.
+**What actually happens in that window — corrected from observation.**
+An earlier revision of this document said the API "falls back to its dashboard
+settings" while the configured file is absent. **That was wrong**, and it was
+written before there was any evidence either way.
+
+Changing the config path triggered a redeploy at 06:04:49 on 22 Aug, on a commit
+where `/apps/api/railway.json` did not exist. Railway **failed that deployment
+after 8 seconds**. It did not fall back, and it did not deploy without the
+config:
+
+- the deployment was attempted and failed fast;
+- the previously healthy deployment kept serving production throughout — the
+  health endpoint answered `HTTP 200` mid-window, still reporting commit
+  `a1efedf` with 3.4 days of uptime;
+- no traffic was affected.
+
+So the window is **fail-loud, not fail-silent**, which is materially safer than
+described: a release attempted during it does not quietly go out without its
+migration gate — it does not go out at all. The advice to avoid merging
+`/apps/api/**` during the window still stands, but the reason is a blocked
+release rather than an ungated one.
 
 Ordering matters, and the manual step comes first:
 
