@@ -31,6 +31,7 @@ import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
 import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
 import { SettlementPreview, SettlementConfirm, describeMismatch } from './SettlementPreview';
+import { computeSummaryOffset } from '../lib/summary-offset';
 import {
   Club,
   PokerSession,
@@ -819,6 +820,71 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setMismatchAcknowledged(false);
     setConfirmingSettle(false);
   }, [confirmedCashOutByUid]);
+
+  /*
+    Keep IN / OUT / DIFF on screen while the keyboard is up.
+
+    Measured on an iPhone: with the numeric keyboard open, visualViewport.height
+    went 656 → 356 and offsetTop 0 → 263. Safari shifts the VISUAL viewport to
+    keep the focused field in view, which carries the top of the panel — header
+    and this summary — out of the visible band. dvh does not help; it tracks the
+    layout viewport, which did not move. Sticky does not help either; it sticks
+    to the scroller, and the scroller is what left.
+
+    So the bar is translated back down into the band, by transform rather than
+    top: visualViewport fires continuously through the keyboard animation, and
+    anything that triggers layout chases the keyboard instead of tracking it.
+
+    The base position is read with the transform removed, because the element's
+    own rect includes whatever was applied last — measuring without clearing it
+    first feeds the offset back into itself.
+  */
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = summaryRef.current;
+    if (!vv || !el || !showCashoutModal) return;
+
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      const node = summaryRef.current;
+      if (!node) return;
+
+      node.style.transform = '';
+      const rect = node.getBoundingClientRect();
+
+      const active = document.activeElement as HTMLElement | null;
+      const focusedTop =
+        active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+          ? active.getBoundingClientRect().top
+          : null;
+
+      const offset = computeSummaryOffset({
+        summaryBaseTop: rect.top,
+        summaryHeight: rect.height,
+        viewportOffsetTop: vv.offsetTop,
+        focusedTop,
+      });
+      node.style.transform = offset > 0 ? `translateY(${offset}px)` : '';
+    };
+
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(apply);
+    };
+
+    apply();
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', schedule);
+      vv.removeEventListener('scroll', schedule);
+      const node = summaryRef.current;
+      if (node) node.style.transform = '';
+    };
+  }, [showCashoutModal]);
 
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
@@ -3745,7 +3811,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 the visible viewport when the keyboard opens, which is measured
                 and is the next commit's problem.
               */}
-              <div className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line">
+              <div
+                ref={summaryRef}
+                className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line will-change-transform"
+              >
                 <div className="flex items-baseline justify-between gap-2 text-[11px] font-mono tabular-nums">
                   <span className="text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
                   <span className="text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '—'}</span></span>
