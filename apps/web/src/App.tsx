@@ -575,7 +575,15 @@ export default function App() {
           hero version already. */}
       {authUser && <ChipCardDecoration variant="ambient" />}
 
-      {!authUser ? (
+      {/* PROBE BRANCH ONLY — never merge this to main.
+          The keyboard probe renders fixed fake data, calls no API and touches no
+          session, so there is nothing behind it to protect. Lifting it above the
+          auth gate is what lets it be opened on a phone (and measured in a
+          desktop viewport) without signing in each time. It dies with this
+          branch; every other /debug route stays inside the authenticated tree. */}
+      {window.location.pathname === '/debug/sheet-keyboard' ? (
+        <SheetKeyboardProbe />
+      ) : !authUser ? (
         <LoginPage />
       ) : !authUser.profileComplete ? (
         /* Onboarding is a gate, not a screen you can be sent to at random:
