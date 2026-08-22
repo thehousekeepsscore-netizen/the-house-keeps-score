@@ -174,9 +174,48 @@ that trains people to ignore the alarm.
 - **Database:** Supabase pooler, session mode, ~15 client slots shared by every
   instance. Scripts pin `connection_limit=1`; a script that takes a third of the
   budget to count rows can cause the outage it exists to prevent.
-- **Migrations are manual.** Nothing in the build or start command applies them.
+- **Migrations run as a pre-deploy step**, not manually and not at startup:
+  `preDeployCommand` in `railway.json` runs `prisma migrate deploy` before a
+  release goes live (Stage 3, 2026-08-18). This line previously read "migrations
+  are manual"; that stopped being true and the log did not say so.
+  **Caveat:** that file is read by every service in the project, so the step
+  currently runs on the frontend service too — see `RAILWAY-SERVICE-SCOPING.md`.
 - **History is small:** 5 settled nights, 0 back-dated records, 3 clubs.
 - **Engine versions in production:** v1 ×2, v2 ×1, v3 ×2. All three still run.
 - **One record is permanently uncorrectable** (`cmsf5a2gt…`) until a human
   states the rules that were in force, which would then be audited as their
   statement rather than as data.
+
+---
+
+## Configuration finding — one railway.json applied to two services
+
+**2026-08-21, read-only. Nothing changed on Railway.**
+
+The `react-example` (frontend) service reads the same root `railway.json` as
+`@poker/api`. It is therefore health-checked at `/api/health`, which it does not
+serve, and runs `prisma migrate deploy` against the production database on every
+deployment. Its build succeeds; the healthcheck then fails for five minutes and
+the container is stopped.
+
+Seven failed deployments (#41, #42, #44, #45, #46, #47, #48) each connected to
+production and reported `No pending migrations to apply.` — nothing was applied,
+because the API service had already applied them in the same release. The
+exposure is the permission, not the outcome: a release carrying a pending
+migration would have had two services racing to apply it.
+
+**The correction this log exists to preserve:** #33, #38 and #39 showed green
+checks on GitHub for this service and were read as successful deployments. They
+were **SKIPPED** — the service watches `/apps/web/**` and none of those merges
+touched it. The last genuine success was #26 on 14 Aug, *before* `railway.json`
+existed. The fault was introduced by Stage 1 on 16 Aug; #41 was merely the first
+merge that made the service attempt a deployment.
+
+A green check on a commit is not evidence that a deployment ran.
+
+Full evidence, the two further defects found alongside it (a Vite dev server as
+the production start command, and API secrets present on the frontend service),
+and the options with their tradeoffs are in `RAILWAY-SERVICE-SCOPING.md`. No fix
+is proposed there, because it depends on whether `react-example` is needed at
+all — Vercel serves production and succeeded on every commit this service failed
+on.
