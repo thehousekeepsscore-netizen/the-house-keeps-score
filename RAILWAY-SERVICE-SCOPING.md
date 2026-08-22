@@ -259,6 +259,16 @@ because nothing at the root would be found any more — while the frontend servi
 would carry on unaffected. The migration gate would stop running, and the first
 release to notice would be one carrying a pending migration.
 
+**Status — 21 Aug 2026: step 1 is done, and the gap it opens is now live.**
+The `@poker/api` service's config file is set to `/apps/api/railway.json`, which
+did not exist in the repository at that moment. Until the move below is merged,
+the API therefore has **no config-as-code at all** — no `preDeployCommand` and no
+`healthcheckPath` — and falls back to its dashboard settings.
+
+While that window is open, **nothing touching `/apps/api/**` should be merged**:
+such a release would deploy with no migration gate. The window closes when the
+PR carrying the move lands, and not before.
+
 Ordering matters, and the manual step comes first:
 
 1. **Railway dashboard, `@poker/api` service:** set the config-as-code path to
