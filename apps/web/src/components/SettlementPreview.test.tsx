@@ -196,3 +196,122 @@ describe('the house take reconciles with its parts', () => {
     expect(screen.queryByText(/^House take$/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Which way the difference runs, and three invariants the redesign must not break.
+ *
+ * The first two tests cover a real change: the panel said "the 300 difference"
+ * and now says which side of it you are on. The rest assert properties that
+ * ALREADY HOLD today, and that is deliberate — they are written before the
+ * settlement screen is rebuilt so that the rebuild has to satisfy tests it did
+ * not author. Three of them pass trivially at the moment, for reasons the
+ * redesign removes:
+ *
+ *   - nothing is collapsible yet, so the mismatch steps cannot be hidden;
+ *   - the acknowledgement is already gated on requiresManualResolution;
+ *   - a blank cash-out cannot reach the panel, because Calculate is disabled
+ *     until every figure is entered (that one lives in
+ *     ClubDetailView.settlement.test.tsx, where the inputs are).
+ *
+ * A test that passes for a reason about to be deleted is exactly the test worth
+ * writing down first.
+ */
+describe('the mismatch says which way it runs', () => {
+  const manual = () => rules({ mismatchStrategy: 'MANUAL' });
+
+  it('MORE OUT THAN IN — the club owes more than it collected', () => {
+    // 10,000 in, 10,300 out.
+    const result = show(manual(), [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)]);
+    expect(result.mismatchAmount, 'fixture must be an excess').toBeGreaterThan(0);
+
+    expect(screen.getByText(/300 more out than in/)).toBeInTheDocument();
+    expect(screen.queryByText(/more in than out/), 'must not invert').not.toBeInTheDocument();
+  });
+
+  it('MORE IN THAN OUT — chips nobody claimed', () => {
+    // 10,000 in, 9,700 out. The opposite situation, and the one an unsigned
+    // figure made indistinguishable from the case above.
+    const result = show(manual(), [player('Priya', 5000, 7700), player('Rahul', 5000, 2000)]);
+    expect(result.mismatchAmount, 'fixture must be a shortfall').toBeLessThan(0);
+
+    expect(screen.getByText(/300 more in than out/)).toBeInTheDocument();
+    expect(screen.queryByText(/more out than in/), 'must not invert').not.toBeInTheDocument();
+  });
+
+  it('names the engine\'s own figure, not one recomputed here', () => {
+    const result = show(manual(), [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)]);
+    expect(
+      screen.getByText(new RegExp(`${Math.abs(result.mismatchAmount)} more out than in`))
+    ).toBeInTheDocument();
+  });
+});
+
+describe('invariants the settlement redesign must not break', () => {
+  /*
+   * A9. The Mismatch steps name who was charged — whoPaid() in the engine puts
+   * "Priya -900, Rahul -600" in the detail — and the engine's comment says why:
+   * "Who actually paid for a mismatch is the first thing anyone asks when the
+   * numbers don't look right."
+   *
+   * The redesign collapses "How this was worked out" behind a disclosure. These
+   * steps must not go with it.
+   */
+  it('A9 — who paid for the mismatch is readable without opening anything', () => {
+    const result = show(rules({ mismatchStrategy: 'PROPORTIONAL_WINNERS' }), [
+      player('Priya', 5000, 8300),
+      player('Rahul', 5000, 2000),
+    ]);
+    expect(result.mismatchAmount, 'fixture must produce a mismatch').not.toBe(0);
+
+    const mismatchStep = result.steps.find((s) => s.step === 'Mismatch');
+    expect(mismatchStep, 'engine must have written a Mismatch step').toBeDefined();
+
+    // Present, and reachable with no interaction at all.
+    expect(screen.getByText(mismatchStep!.detail)).toBeInTheDocument();
+    expect(
+      document.querySelector('details'),
+      'nothing on this panel may be behind a disclosure'
+    ).toBeNull();
+  });
+
+  /*
+   * A2. requiresManualResolution is MANUAL-only by construction, and every other
+   * strategy resolves the difference automatically — while still charging named
+   * players. An acknowledgement offered there would invite somebody to tick away
+   * a deduction they never agreed to.
+   */
+  it('A2 — no acknowledgement is offered when the strategy resolves it automatically', () => {
+    const result = computeSettlement(
+      [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)],
+      rules({ mismatchStrategy: 'PROPORTIONAL_WINNERS' }),
+      { currentPotBalance: 0 }
+    );
+    expect(result.mismatchAmount, 'there IS a mismatch').not.toBe(0);
+    expect(result.requiresManualResolution, 'but it does not need a human').toBe(false);
+
+    render(
+      <SettlementPreview
+        result={result}
+        club={club}
+        settings={rules({ mismatchStrategy: 'PROPORTIONAL_WINNERS' })}
+        formatAmount={fmt}
+        formatSigned={signed}
+        // Offered by the caller — the panel must still refuse to show it.
+        mismatchAcknowledgement={{ checked: false, onChange: () => {} }}
+      />
+    );
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument();
+  });
+
+  it('A2 — and it IS offered when the night says MANUAL', () => {
+    // The other half, so the test above cannot pass by the control having been
+    // deleted outright.
+    show(rules({ mismatchStrategy: 'MANUAL' }), [
+      player('Priya', 5000, 8300),
+      player('Rahul', 5000, 2000),
+    ]);
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+  });
+});
