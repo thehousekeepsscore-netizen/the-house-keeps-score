@@ -6,6 +6,7 @@ import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
 import { useOAuthLanding } from './lib/use-oauth-landing';
 import { TablePreview } from './components/session/TablePreview';
 import { SessionPreview } from './components/session/SessionPreview';
+import { SheetKeyboardProbe } from './components/SheetKeyboardProbe';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -574,7 +575,15 @@ export default function App() {
           hero version already. */}
       {authUser && <ChipCardDecoration variant="ambient" />}
 
-      {!authUser ? (
+      {/* PROBE BRANCH ONLY — never merge this to main.
+          The keyboard probe renders fixed fake data, calls no API and touches no
+          session, so there is nothing behind it to protect. Lifting it above the
+          auth gate is what lets it be opened on a phone (and measured in a
+          desktop viewport) without signing in each time. It dies with this
+          branch; every other /debug route stays inside the authenticated tree. */}
+      {window.location.pathname === '/debug/sheet-keyboard' ? (
+        <SheetKeyboardProbe />
+      ) : !authUser ? (
         <LoginPage />
       ) : !authUser.profileComplete ? (
         /* Onboarding is a gate, not a screen you can be sent to at random:
@@ -634,6 +643,7 @@ export default function App() {
           <Route path="/debug/performance" element={<PerformanceDebugView />} />
           <Route path="/debug/table" element={<TablePreview />} />
           <Route path="/debug/session" element={<SessionPreview />} />
+          <Route path="/debug/sheet-keyboard" element={<SheetKeyboardProbe />} />
           <Route path="/setup" element={<Navigate to="/" replace />} />
           {/* Unknown URLs — including the OAuth callback, whose code
               AuthProvider has already consumed and whose URL it has rewritten. */}
