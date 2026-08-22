@@ -308,26 +308,25 @@ describe('settling a night', () => {
     expect(fields[2].value).toBe('5000');
   });
 
-  it('keeps Auto Calculate shut until every player has a cash-out', async () => {
+  it('will not arm the commit until every player has a cash-out', async () => {
     await openSettlement();
 
-    const calc = screen.getByRole('button', { name: /auto calculate/i });
+    const calc = screen.getByRole('button', { name: /^settle session$/i });
     expect(calc).toBeDisabled();
-    expect(screen.getByText(/enter a cash-out for every player/i)).toBeInTheDocument();
+    expect(screen.getByText(/count everyone before you can settle/i)).toBeInTheDocument();
 
     // One of the two is not enough.
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
 
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 
-  it('shows a preview only — nothing is committed by calculating', async () => {
+  it('shows a preview only — nothing is committed by counting', async () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     expect(await findPreview()).not.toHaveLength(0);
     expect(offlineSessionsApi.settleSession).not.toHaveBeenCalled();
@@ -337,7 +336,6 @@ describe('settling a night', () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     await findPreview();
     // Buy-in, cash-out and the difference, per player — the three lines that
@@ -351,7 +349,6 @@ describe('settling a night', () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await findPreview();
 
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
@@ -392,7 +389,6 @@ describe('settling a night', () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await findPreview();
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
@@ -455,19 +451,37 @@ describe('settling a night', () => {
     expect(screen.getByRole('heading', { name: /settle night/i })).toBeInTheDocument();
   });
 
-  it('re-locks the preview when a figure changes underneath it', async () => {
+  it('DISARMS the commit when a figure changes underneath it', async () => {
+    /*
+     * This used to assert that the preview VANISHED, which was a fact about the
+     * old reveal control rather than about safety: changing anything cleared
+     * cashoutCalculated and the whole panel unmounted. Figures now stay on
+     * screen and update live, so the disappearance is gone — and it was never
+     * the property worth protecting.
+     *
+     * The property worth protecting is that a commit armed against one set of
+     * numbers cannot be completed against a different set. That survives the
+     * redesign intact, and it is what this asserts now.
+     */
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await findPreview();
 
-    // The host miscounted a stack. The reviewed figures are no longer the
-    // entered ones, so the commit must not stay armed against them.
+    // Arm it: the second, deliberate tap appears only once armed.
+    fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
+    expect(await screen.findByRole('button', { name: /confirm & settle/i })).toBeInTheDocument();
+
+    // The host miscounted a stack.
     fireEvent.change(amountFields()[3], { target: { value: '2500' } });
 
-    expect(previewLines()).toHaveLength(0);
-    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
+    // The armed confirmation is withdrawn — nothing can be committed against
+    // figures that have moved without arming again.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /confirm & settle/i })).not.toBeInTheDocument()
+    );
+    // And the figures did follow the edit rather than going stale on screen.
+    expect(previewLines().length, 'the panel stays, showing the NEW numbers').toBeGreaterThan(0);
   });
 });
 
@@ -492,12 +506,12 @@ describe('a player who stood up early', () => {
     expect(screen.getByText('7,400')).toBeInTheDocument();
   });
 
-  it('does not hold Auto Calculate shut waiting for a figure it already has', async () => {
+  it('does not hold the commit shut waiting for a figure it already has', async () => {
     await openSettlement(stoodUp);
 
     // Only the host's cash-out is outstanding.
     fireEvent.change(amountFields()[1], { target: { value: '2600' } });
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 });
 
@@ -517,7 +531,6 @@ describe('a night with no rules of its own', () => {
     await openSettlement(noRules());
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     // No preview at all: the admin is never shown numbers the server would
     // refuse to commit.
@@ -651,7 +664,6 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     await openSettlement({ settlementRules: MANUAL_RULES });
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // 10,300 out vs 10,000 in
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     return await screen.findByRole('checkbox');
   }
 
@@ -667,7 +679,6 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // The typo correction. This is the exact sequence that shipped: the figure
     // moves, and the acknowledgement used to stay behind.
     fireEvent.change(amountFields()[3], { target: { value: '32000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     // The warning must be back, and unticked. If the flag had survived, the
     // engine would still be told the mismatch was acknowledged and nothing
@@ -709,7 +720,6 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // difference between them does not.
     fireEvent.change(amountFields()[0], { target: { value: '6000' } });
     fireEvent.change(amountFields()[1], { target: { value: '9000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     const again = await screen.findByRole('checkbox');
     expect(
@@ -730,7 +740,6 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 
     fireEvent.change(amountFields()[3], { target: { value: '9999' } });
     fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // back to the acknowledged night
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     const again = await screen.findByRole('checkbox');
     expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
@@ -747,7 +756,6 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     );
 
     fireEvent.change(amountFields()[3], { target: { value: '32000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await screen.findByRole('checkbox');
 
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
@@ -785,13 +793,12 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     expect(screen.getAllByRole('checkbox')).toHaveLength(2);
   });
 
-  it('computes Auto Calculate from those rules, not the club\'s', async () => {
+  it('computes the figures from those rules, not the club\'s', async () => {
     // The club in this fixture charges nothing. If the preview were reading it,
     // there would be no rake line at all.
     await openSettlement({ settlementRules: RULES });
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
 
     await findPreview();
     // Anchored: the header now carries "House takes" too, and this is about
@@ -842,17 +849,17 @@ describe('entering figures', () => {
     expect((cashOut as HTMLInputElement).value).toBe('5000');
   });
 
-  it('holds Auto Calculate shut while a field is blank', async () => {
+  it('holds the commit shut while a field is blank', async () => {
     await openSettlement();
 
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
 
     // The bug: a cleared field kept its key, so `uid in cashOutInputs` stayed
     // true and this settled somebody at a zero they never agreed to.
     fireEvent.change(amountFields()[3], { target: { value: '' } });
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
   });
 
   it('treats a deliberate zero as a real figure', async () => {
@@ -863,14 +870,13 @@ describe('entering figures', () => {
     fireEvent.change(amountFields()[1], { target: { value: '10000' } });
     fireEvent.change(amountFields()[3], { target: { value: '0' } });
 
-    expect(screen.getByRole('button', { name: /auto calculate/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 
   it('sends the figures as numbers, not as the text that was typed', async () => {
     await openSettlement();
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await findPreview();
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
@@ -917,8 +923,14 @@ describe('a figure nobody has entered is not a figure', () => {
 
     // Nothing is claimed about anybody while a figure is outstanding.
     expect(previewLines(), 'no per-player arithmetic yet').toHaveLength(0);
+    // Positive form: an uncounted seat says so.
+    expect(screen.getAllByText('—').length, 'uncounted seats read as —').toBeGreaterThan(0);
+    // Negative form. NOT anchored at the end: this screen formats with the
+    // club's unit ("+3,000 Chips"), and an anchored digits-only pattern matched
+    // nothing, so an earlier version of this assertion passed against an empty
+    // set while a fabricated net sat on screen beside it.
     expect(
-      screen.queryAllByText(/^[+-][\d,]+$/),
+      screen.queryAllByText(/^[+-][\d,]+/),
       'no signed net may appear while a cash-out is blank'
     ).toHaveLength(0);
   });
@@ -929,7 +941,6 @@ describe('a figure nobody has entered is not a figure', () => {
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
     // The Calculate gate is still here in 7A; 7B is what removes it. The
     // invariant below is about the blank, not about how the figures got shown.
-    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
     await findPreview();
 
     // Blank is not zero. Clearing it must take the results away, not settle
@@ -937,6 +948,7 @@ describe('a figure nobody has entered is not a figure', () => {
     fireEvent.change(amountFields()[3], { target: { value: '' } });
 
     expect(previewLines()).toHaveLength(0);
-    expect(screen.queryAllByText(/^[+-][\d,]+$/)).toHaveLength(0);
+    expect(screen.getAllByText('—').length, 'and the seats read as uncounted again').toBeGreaterThan(0);
+    expect(screen.queryAllByText(/^[+-][\d,]+/)).toHaveLength(0);
   });
 });
