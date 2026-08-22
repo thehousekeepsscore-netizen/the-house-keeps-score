@@ -1,12 +1,26 @@
 import "dotenv/config";
 import { z } from "zod";
 
-// The seed defaults, named once so the schema below, the seed guard and the
-// startup warning all test against the same literals. These values are public —
-// they ship verbatim in .env.example — which is exactly why anything still
-// using them needs to be visible.
-export const SEED_DEFAULT_EMAIL = "admin@poker.local";
-export const SEED_DEFAULT_PASSWORD = "ChangeMe123!";
+/*
+ * The seed defaults, named once so the schema below, the seed guard and the
+ * startup warning all test against the same literals. These values are public —
+ * they ship verbatim in .env.example — which is exactly why anything still
+ * using them needs to be visible.
+ *
+ * They must stay identical to the two SEED_SUPER_ADMIN_* lines in BOTH copies of
+ * .env.example. That equality is the mechanism: what the repository publishes is
+ * exactly what describeSeedCredentialRisk warns about, so a default cannot reach
+ * a deploy unannounced. Change one side without the other and the warning goes
+ * quiet about the string people will actually copy — seedGuard.test.ts fails the
+ * build rather than letting that happen.
+ *
+ * Unusable rather than merely different: `.invalid` is reserved by RFC 2606 and
+ * can never resolve, and the password says what to do instead of looking like
+ * one worth keeping. The pair these replaced read as real credentials, which is
+ * how they came to be set in a production environment of a public repository.
+ */
+export const SEED_DEFAULT_EMAIL = "admin@example.invalid";
+export const SEED_DEFAULT_PASSWORD = "set-a-secure-password";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
