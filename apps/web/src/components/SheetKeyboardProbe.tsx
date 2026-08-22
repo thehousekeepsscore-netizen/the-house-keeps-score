@@ -52,10 +52,30 @@ const makeRows = (n: number): Row[] =>
     cashOut: '',
   }));
 
-/** Live viewport facts. The whole reason the page exists. */
+/**
+ * Live viewport facts. The whole reason the page exists.
+ *
+ * THE INSET IS MEASURED AGAINST A BASELINE, NOT DERIVED FROM innerHeight
+ *
+ * The first version computed `innerHeight - vvHeight - vvOffsetTop`, on the
+ * assumption that the layout viewport holds still while only the visual one
+ * shrinks. A real iPhone said otherwise: Safari moved BOTH. With the keyboard
+ * up it reported innerHeight 456, vvHeight 356, offsetTop 194 — and
+ * 456 - 356 - 194 is -94, which a Math.max(0, ...) then turned into a tidy
+ * `0px` sitting directly beneath an obviously open keyboard.
+ *
+ * A clamp that converts nonsense into a plausible number is worse than no
+ * reading at all, so nothing here clamps. The inset is measured against the
+ * largest visual viewport seen while nothing was focused — the keyboard-closed
+ * state — and if that baseline has not been observed yet, or the arithmetic
+ * lands somewhere impossible, it says so instead of picking a number.
+ */
 function useViewportReadout(footerRef: React.RefObject<HTMLElement | null>, summaryRef: React.RefObject<HTMLElement | null>) {
+  const baselineRef = useRef(0);
   const [readout, setReadout] = useState(() => ({
-    innerHeight: 0, vvHeight: 0, vvOffsetTop: 0, keyboardInset: 0,
+    innerHeight: 0, vvHeight: 0, vvOffsetTop: 0,
+    baseline: 0, keyboardInset: null as number | null, keyboardOpen: false,
+    oldFormula: 0,
     footerBottom: 0, footerCovered: false, summaryTop: 0, summaryVisible: true,
     orientation: 'portrait',
   }));
@@ -66,9 +86,19 @@ function useViewportReadout(footerRef: React.RefObject<HTMLElement | null>, summ
     const measure = () => {
       const vvHeight = vv?.height ?? window.innerHeight;
       const vvOffsetTop = vv?.offsetTop ?? 0;
-      // What the keyboard (and any other browser furniture) has taken away from
-      // the visible area. Zero with the keyboard down.
-      const keyboardInset = Math.max(0, Math.round(window.innerHeight - vvHeight - vvOffsetTop));
+
+      // The keyboard-closed viewport, learned by observation. Only sampled when
+      // nothing is focused, because that is the only moment we can be sure no
+      // keyboard is up.
+      const el = document.activeElement;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+      if (!typing && vvHeight > baselineRef.current) baselineRef.current = vvHeight;
+
+      const baseline = baselineRef.current;
+      const keyboardInset = baseline > 0 ? Math.round(baseline - vvHeight) : null;
+      // A keyboard takes a substantial bite; a URL bar collapsing takes a small
+      // one. 80px keeps the two apart without pretending to be precise.
+      const keyboardOpen = keyboardInset !== null && keyboardInset > 80;
 
       const f = footerRef.current?.getBoundingClientRect();
       const s = summaryRef.current?.getBoundingClientRect();
@@ -80,7 +110,12 @@ function useViewportReadout(footerRef: React.RefObject<HTMLElement | null>, summ
         innerHeight: Math.round(window.innerHeight),
         vvHeight: Math.round(vvHeight),
         vvOffsetTop: Math.round(vvOffsetTop),
+        baseline: Math.round(baseline),
         keyboardInset,
+        keyboardOpen,
+        // Kept visible on purpose: this is what the broken version computed, and
+        // seeing it disagree with the line above is the point.
+        oldFormula: Math.round(window.innerHeight - vvHeight - vvOffsetTop),
         footerBottom: f ? Math.round(f.bottom) : 0,
         footerCovered: f ? f.bottom > visibleBottom + 1 : false,
         summaryTop: s ? Math.round(s.top) : 0,
@@ -229,7 +264,10 @@ function Readout({ r, where }: { r: ReturnType<typeof useViewportReadout>; where
     ['window.innerHeight', `${r.innerHeight}px`],
     ['visualViewport.height', `${r.vvHeight}px`],
     ['visualViewport.offsetTop', `${r.vvOffsetTop}px`],
-    ['keyboard inset', `${r.keyboardInset}px`, r.keyboardInset > 0],
+    ['baseline (no keyboard)', r.baseline > 0 ? `${r.baseline}px` : 'not seen yet', r.baseline === 0],
+    ['keyboard inset', r.keyboardInset === null ? 'INDETERMINATE' : `${r.keyboardInset}px`, r.keyboardInset === null],
+    ['KEYBOARD OPEN', r.keyboardOpen ? 'yes' : 'no'],
+    ['(old broken formula)', `${r.oldFormula}px`],
     ['footer bottom', `${r.footerBottom}px`],
     ['FOOTER COVERED', r.footerCovered ? 'YES' : 'no', r.footerCovered],
     ['SUMMARY VISIBLE', r.summaryVisible ? 'yes' : 'NO', !r.summaryVisible],
