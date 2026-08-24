@@ -31,14 +31,21 @@ vi.mock('../lib/auth-context', async () => {
   };
 });
 
+const socketHandlers = new Map<string, Set<(...a: unknown[]) => void>>();
 const fakeSocket = {
   connected: false,
   active: true,
-  on: vi.fn(),
-  off: vi.fn(),
+  on: vi.fn((e: string, fn: (...a: unknown[]) => void) => {
+    if (!socketHandlers.has(e)) socketHandlers.set(e, new Set());
+    socketHandlers.get(e)!.add(fn);
+  }),
+  off: vi.fn((e: string, fn: (...a: unknown[]) => void) => socketHandlers.get(e)?.delete(fn)),
   emit: vi.fn(),
   connect: vi.fn(),
 };
+function fireSocket(event: string) {
+  [...(socketHandlers.get(event) ?? [])].forEach((fn) => fn());
+}
 vi.mock('../lib/socket', () => ({ getSocket: () => fakeSocket, resetSocket: vi.fn() }));
 
 /** Every request the screen makes, in order. */
@@ -138,6 +145,7 @@ function renderClub() {
 }
 
 beforeEach(() => {
+  socketHandlers.clear();
   requests.length = 0;
   fakeSocket.connected = false;
   fakeSocket.emit.mockClear();
@@ -211,5 +219,51 @@ describe('request volume on resume', () => {
     await waitFor(() => expect(requests.length).toBeGreaterThan(0));
     expect(requests).toContain('/clubs/c1');
     expect(requests).toContain('/clubs/c1/history');
+  });
+});
+
+describe('cold load costs a full second round of requests', () => {
+  /**
+   * DOCUMENTED INEFFICIENCY, not a target to silence.
+   *
+   * On a cold open the socket is not connected when the effect runs, so the
+   * mount fetches everything and the handshake completing a few hundred ms
+   * later fires `connect` -> `resync()`, which forces the same set again.
+   * Forced refreshes skip single-flight, so the in-flight mount requests are
+   * not joined -- they are duplicated.
+   *
+   * Left in place deliberately. The obvious fix (skip the refetch on the first
+   * connect) trades these requests for a staleness window: the client is not in
+   * the club room until `club:join` lands, so events in that gap are missed and
+   * the resync is what currently covers them. On a screen that shows money that
+   * is not a trade worth making blind. Asserted here so the cost is visible and
+   * any change to it is deliberate rather than accidental.
+   */
+  it('issues one mount round and one connect round', async () => {
+    renderClub();
+    await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
+    const mountRound = requests.length;
+
+    fakeSocket.connected = true;
+    await act(async () => {
+      fireSocket('connect');
+    });
+
+    const connectRound = requests.length - mountRound;
+    expect(mountRound).toBe(8);
+    expect(connectRound).toBe(8);
+  });
+
+  it('the connect round asks for the same things the mount round did', async () => {
+    renderClub();
+    await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
+    const mountRound = [...requests];
+
+    fakeSocket.connected = true;
+    await act(async () => {
+      fireSocket('connect');
+    });
+
+    expect(requests.slice(mountRound.length).sort()).toEqual([...mountRound].sort());
   });
 });
