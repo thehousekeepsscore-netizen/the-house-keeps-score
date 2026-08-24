@@ -4,8 +4,6 @@ import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
 import { useOAuthLanding } from './lib/use-oauth-landing';
-import { TablePreview } from './components/session/TablePreview';
-import { SessionPreview } from './components/session/SessionPreview';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -20,6 +18,18 @@ const ClubDetailView = lazy(() =>
 );
 const PerformanceDebugView = lazy(() =>
   import('./components/PerformanceDebugView').then((m) => ({ default: m.PerformanceDebugView }))
+);
+// The other two debug routes, split for the same reason /debug/performance is.
+// They were statically imported, and because they render the real live-session
+// components they pulled the whole session tree — LiveSession, PokerTable, the
+// sheets — into the entry chunk: 38.6 kB of code reachable only from two
+// unlinked developer URLs, on the critical path of every visitor including
+// anyone still looking at the login screen.
+const TablePreview = lazy(() =>
+  import('./components/session/TablePreview').then((m) => ({ default: m.TablePreview }))
+);
+const SessionPreview = lazy(() =>
+  import('./components/session/SessionPreview').then((m) => ({ default: m.SessionPreview }))
 );
 
 /** The skeleton shown while a route chunk loads. */
