@@ -33,9 +33,16 @@ export interface CacheMetrics {
   /** Fetches that rejected. */
   failedRequests: number;
   /**
-   * Responses discarded because a newer request had already written. Expected to
-   * be small but non-zero; a large number means requests for one key are being
-   * issued faster than they come back.
+   * Responses that arrived but were not allowed to become the cache's truth,
+   * for either reason: a newer response had already written, or the request
+   * belonged to a previous authenticated identity and the cache has since been
+   * cleared.
+   *
+   * One counter rather than two because the operational question is the same —
+   * how much of what came back was thrown away. `clears` sitting beside it in
+   * the panel distinguishes the causes: a jump in both means an identity change,
+   * a jump in this alone means requests for one key are being issued faster than
+   * they come back. Expected to be small but non-zero.
    */
   supersededResponses: number;
   /** Whole-cache wipes, i.e. a change of authenticated identity. */
