@@ -89,6 +89,7 @@ export function toClub(c: ApiClub): Club {
     roundingRule: c.roundingRule,
     adminUids: c.admins?.map(a => a.id) ?? [],
     memberUids: c.members?.map(m => m.id) ?? [],
+    roster: buildRoster(c),
     memberCount: c.memberCount,
     adminCount: c.adminCount,
     isMember: c.isMember,
@@ -181,14 +182,25 @@ export interface ClubRosterEntry {
   avatarUrl?: string;
 }
 
-// Rich name/email/avatar lookup for every user this club's ClubDetailView
-// could ever need to display (buy-in requesters, history players, audit log
-// actors are always club members) — replaces the old Firestore "all
-// registered users" listener, which leaked every user in the whole app.
-export async function getClubRoster(clubId: string): Promise<Record<string, ClubRosterEntry>> {
-  const club = await apiFetch<ApiClub>(`/clubs/${clubId}`);
+/**
+ * Rich name/email/avatar lookup for every user this club's ClubDetailView could
+ * ever need to display — buy-in requesters, history players and audit-log
+ * actors are always club members.
+ *
+ * Built from the club payload rather than fetched. It used to be its own
+ * exported helper calling `GET /clubs/:id` a second time, on its own cache key.
+ * The cache single-flights per key, so two keys over one URL could never
+ * collapse into one request: the screen's heaviest endpoint was fetched twice
+ * on every mount and twice again on every resync. Measured at the wire in
+ * ClubDetailView.requests.test.tsx before this changed.
+ *
+ * Returns undefined for the public projection, which carries counts instead of
+ * people — a non-member cannot be handed a roster by asking differently.
+ */
+function buildRoster(c: ApiClub): Record<string, ClubRosterEntry> | undefined {
+  if (!c.owner) return undefined;
   const roster: Record<string, ClubRosterEntry> = {};
-  [club.owner, ...club.admins, ...club.members].forEach((u) => {
+  [c.owner, ...(c.admins ?? []), ...(c.members ?? [])].forEach((u) => {
     roster[u.id] = { uid: u.id, displayName: u.displayName, email: u.email, avatarUrl: u.avatarUrl ?? undefined };
   });
   return roster;
