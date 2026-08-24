@@ -32,6 +32,12 @@ export interface CacheMetrics {
   networkRequests: number;
   /** Fetches that rejected. */
   failedRequests: number;
+  /**
+   * Responses discarded because a newer request had already written. Expected to
+   * be small but non-zero; a large number means requests for one key are being
+   * issued faster than they come back.
+   */
+  supersededResponses: number;
   /** Whole-cache wipes, i.e. a change of authenticated identity. */
   clears: number;
 }
@@ -46,6 +52,7 @@ const counters: CacheMetrics = {
   dedupedRequests: 0,
   networkRequests: 0,
   failedRequests: 0,
+  supersededResponses: 0,
   clears: 0,
 };
 

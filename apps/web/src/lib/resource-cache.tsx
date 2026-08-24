@@ -40,9 +40,42 @@ interface Entry<T = unknown> {
    * touched this entry while a request was in flight — see `restore`.
    */
   version: number;
+  /**
+   * Highest request sequence handed out for this key. Only `load` advances it,
+   * and only when it actually issues a request — a deduplicated caller joins an
+   * existing request and does not take a number.
+   */
+  issuedSeq: number;
+  /**
+   * Highest request sequence that has already settled into this entry.
+   *
+   * Forced fetches skip the in-flight check, so two requests for one key can be
+   * open at once, and nothing makes them come back in the order they went out.
+   * Without this the *last to arrive* won: an older response would overwrite a
+   * newer one and stamp `fetchedAt` with its own arrival time, so the stale data
+   * was recorded as the freshest the cache had and nothing revalidated it. That
+   * is the "stale until you pull to refresh" report.
+   *
+   * The comparison is deliberately against what has *settled*, not against
+   * what is currently in flight. Testing `inFlight` identity instead would also
+   * order the responses, but it would drop a response the moment a newer
+   * request was issued — and under a poll whose responses take longer than the
+   * interval, every tick is superseded before it lands, so the entry would stop
+   * updating entirely. ClubDashboardView polls two keys every 15s, which is
+   * exactly that shape on a slow connection.
+   */
+  settledSeq: number;
 }
 
-const EMPTY: Entry = { data: undefined, fetchedAt: 0, inFlight: null, error: null, version: 0 };
+const EMPTY: Entry = {
+  data: undefined,
+  fetchedAt: 0,
+  inFlight: null,
+  error: null,
+  version: 0,
+  issuedSeq: 0,
+  settledSeq: 0,
+};
 
 interface ResourceCache {
   getEntry: (key: string) => Entry;
@@ -109,16 +142,46 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
 
       bump('networkRequests');
       const startedAt = performance.now();
-      const promise = fetcher()
+      const seq = current.issuedSeq + 1;
+
+      /**
+       * Has a newer request already settled into this entry?
+       *
+       * Only a *newer settled response* disqualifies this one. A newer request
+       * merely being open does not — see `settledSeq` for why that distinction
+       * is what keeps a slow poll alive.
+       */
+      const superseded = (prev: Entry) => seq <= prev.settledSeq;
+
+      /**
+       * Clearing `inFlight` is only ours to do if we are still the request it
+       * points at. When an older response settles first, the newer request is
+       * still running, and blanking its promise here would both report
+       * `isRevalidating: false` while it is in flight and cost the next
+       * unforced caller a deduplication.
+       */
+      const releaseInFlight = (prev: Entry) => (prev.inFlight === promise ? null : prev.inFlight);
+
+      const promise: Promise<unknown> = fetcher()
         .then((data) => {
           recordTiming(key, performance.now() - startedAt);
           const prev = store.current.get(key) ?? EMPTY;
+          if (superseded(prev)) {
+            // Dropped, and deliberately without touching the entry: not
+            // `version` (a pending rollback reads it to detect interference),
+            // not `fetchedAt`, not `data`. Callers still get the value they
+            // asked for; it just does not become the cache's truth.
+            bump('supersededResponses');
+            return data;
+          }
           store.current.set(key, {
+            ...prev,
             data,
             fetchedAt: Date.now(),
-            inFlight: null,
+            inFlight: releaseInFlight(prev),
             error: null,
             version: prev.version + 1,
+            settledSeq: seq,
           });
           if (prev.data !== data || prev.inFlight) notify(key);
           return data;
@@ -130,12 +193,24 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
           recordTiming(key, performance.now() - startedAt);
           bump('failedRequests');
           const prev = store.current.get(key) ?? EMPTY;
-    store.current.set(key, { ...prev, inFlight: null, error });
+          if (superseded(prev)) {
+            // A failure that has already been overtaken must not post its error
+            // over a newer success, for the same reason a stale success must not
+            // post its data.
+            bump('supersededResponses');
+            throw error;
+          }
+          store.current.set(key, {
+            ...prev,
+            inFlight: releaseInFlight(prev),
+            error,
+            settledSeq: seq,
+          });
           notify(key);
           throw error;
         });
 
-      store.current.set(key, { ...current, inFlight: promise });
+      store.current.set(key, { ...current, inFlight: promise, issuedSeq: seq });
       return promise;
     },
     [getEntry, notify]
