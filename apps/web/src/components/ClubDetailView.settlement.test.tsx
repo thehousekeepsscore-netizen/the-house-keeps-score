@@ -64,7 +64,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
   };
 });
 
@@ -170,10 +169,10 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
   // Needed only to prove the winner control ignores the club — which cannot be
   // shown while the club and the night's snapshot always agree.
   const theClub = { ...club, ...clubOver } as Club;
-  vi.mocked(clubsApi.getClub).mockResolvedValue(theClub);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({
-    host: { displayName: 'Host' },
-    priya: { displayName: 'Priya' },
+  // The roster travels on the club record now, not a second request.
+  vi.mocked(clubsApi.getClub).mockResolvedValue({
+    ...theClub,
+    roster: { host: { displayName: 'Host' }, priya: { displayName: 'Priya' } },
   } as never);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);

@@ -881,12 +881,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const canSeeAudit = isOwner || isSuperUser;
 
-  const rosterRes = useResource<Record<string, ClubRosterEntry>>(
-    `${clubKey}:roster`,
-    () => clubsApi.getClubRoster(initialClub.id)
-  );
-  const allUsers = rosterRes.data ?? EMPTY_ROSTER;
-  const refreshRoster = rosterRes.refresh;
+  // Comes with the club record now, on the same payload the ids come from, so
+  // there is no second request and nothing separate to refresh: whatever
+  // refreshes the club refreshes the roster with it.
+  const allUsers = club.roster ?? EMPTY_ROSTER;
 
 
 
@@ -960,7 +958,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     const socket = getSocket();
     socket.emit('club:join', initialClub.id);
     refreshClub();
-    refreshRoster();
     refreshActiveSession();
     refreshHistory();
     refreshLeaderboard();
@@ -970,7 +967,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   }, [
     initialClub.id,
     refreshClub,
-    refreshRoster,
     refreshActiveSession,
     refreshHistory,
     refreshLeaderboard,
@@ -1138,7 +1134,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
+  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([

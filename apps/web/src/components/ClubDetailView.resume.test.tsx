@@ -73,7 +73,7 @@ vi.mock('../lib/clubRecords-api', async () => {
 
 vi.mock('../lib/clubs-api', async () => {
   const actual = await vi.importActual<typeof import('../lib/clubs-api')>('../lib/clubs-api');
-  return { ...actual, getClub: vi.fn(), getClubRoster: vi.fn() };
+  return { ...actual, getClub: vi.fn() };
 });
 
 import { ClubDetailView } from './ClubDetailView';
@@ -114,7 +114,6 @@ function fireVisibility(state: DocumentVisibilityState) {
 
 function renderClub() {
   vi.mocked(clubsApi.getClub).mockResolvedValue(club);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({});
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listPotLog).mockResolvedValue([]);
