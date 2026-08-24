@@ -17,6 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
 import { useSocketConnection } from '../lib/socket-connection';
+import { useForegroundRecovery } from '../lib/use-foreground-recovery';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
@@ -948,6 +949,51 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // fetches, stale data revalidates behind the content, and fresh data does
   // neither. Resources gated to admins have a null key and are skipped entirely.
 
+  /**
+   * Re-join this club's room and refetch everything the room could have changed.
+   *
+   * Lifted to component scope because two separate paths need it and must stay
+   * identical: a socket `connect`, and the user returning to the app. Defining
+   * it twice would let them drift.
+   */
+  const resync = useCallback(() => {
+    const socket = getSocket();
+    socket.emit('club:join', initialClub.id);
+    refreshClub();
+    refreshRoster();
+    refreshActiveSession();
+    refreshHistory();
+    refreshLeaderboard();
+    refreshPotLog();
+    refreshPendingChanges();
+    refreshAuditTrail();
+  }, [
+    initialClub.id,
+    refreshClub,
+    refreshRoster,
+    refreshActiveSession,
+    refreshHistory,
+    refreshLeaderboard,
+    refreshPotLog,
+    refreshPendingChanges,
+    refreshAuditTrail,
+  ]);
+
+  /**
+   * Coming back to the app makes the data current again.
+   *
+   * This screen has no polling and no timer, so without this its only route to
+   * fresh data is the socket — and the failure being fixed is a socket that has
+   * died silently while the tab was backgrounded, still reporting `connected`.
+   * The refetch therefore runs on every resume regardless of that flag; see
+   * use-foreground-recovery.ts for why trusting it is the bug.
+   */
+  useForegroundRecovery({
+    socket: getSocket(),
+    authFailed: socketConnection.state === 'auth-error',
+    onResume: resync,
+  });
+
   // Live sync: join this club's room and refetch the affected slice on each
   // event, rather than trusting the socket payload as full state — same
   // pattern as VirtualTableView's club/session room sync.
@@ -964,20 +1010,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // were away are gone for good, so the only way back to the truth is to
     // ask for it. This is what makes the view converge after a drop rather
     // than resuming from a stale snapshot.
-    const resync = () => {
-      socket.emit('club:join', initialClub.id);
-      refreshClub();
-      refreshRoster();
-      refreshActiveSession();
-      refreshHistory();
-      refreshLeaderboard();
-      refreshPotLog();
-      refreshPendingChanges();
-      refreshAuditTrail();
-    };
-
     // Connection state is tracked by useSocketConnection; this listener exists
-    // only for the re-join and refetch.
+    // only for the re-join and refetch. `resync` is shared with the foreground
+    // recovery path above so the two cannot diverge.
     const onConnect = () => { resync(); };
 
     socket.on('connect', onConnect);
@@ -1103,7 +1138,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
+  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([
