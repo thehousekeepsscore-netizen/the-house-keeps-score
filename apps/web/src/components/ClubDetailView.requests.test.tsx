@@ -267,3 +267,45 @@ describe('cold load costs a full second round of requests', () => {
     expect(requests.slice(mountRound.length).sort()).toEqual([...mountRound].sort());
   });
 });
+
+describe('a socket that is already connected costs one round, not two', () => {
+  /**
+   * The payoff of starting the handshake in ClubRoute.
+   *
+   * When the socket is up before this screen mounts, the effect takes the
+   * branch that emits `club:join` directly and registers `connect` for later.
+   * No first-connect event fires, so no second round of forced refreshes
+   * follows the mount round.
+   *
+   * The room is still joined — that is asserted, not assumed. A version that
+   * saved the requests by never joining would pass a request count and quietly
+   * stop receiving live updates.
+   */
+  it('issues one round and joins the room', async () => {
+    fakeSocket.connected = true;
+    renderClub();
+    await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(requests.length).toBe(8);
+    expect(fakeSocket.emit).toHaveBeenCalledWith('club:join', 'c1');
+  });
+
+  it('still resyncs on a genuine reconnect after the room was joined', async () => {
+    // The saving must not cost the reconnect guarantee: a socket that drops
+    // after joining has missed events, and re-joining alone does not recover
+    // them.
+    fakeSocket.connected = true;
+    renderClub();
+    await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
+    const afterMount = requests.length;
+
+    await act(async () => {
+      fireSocket('connect');
+    });
+
+    expect(requests.length - afterMount).toBe(8);
+  });
+});

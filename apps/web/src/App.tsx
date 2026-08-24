@@ -39,6 +39,7 @@ import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { Club } from './types';
 import * as clubsApi from './lib/clubs-api';
+import { getSocket } from './lib/socket';
 import { useResource, useResourceCache } from './lib/resource-cache';
 
 const SUITS: Suit[] = [
@@ -674,12 +675,38 @@ const RouteBoundary: React.FC<{ title: string; children: React.ReactNode }> = ({
  * a deep link, a refresh, a shared URL — has nothing cached, so it fetches and
  * shows a skeleton exactly once.
  */
-const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>['user']>; playerAvatarUrl: string }> = ({
+export const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>['user']>; playerAvatarUrl: string }> = ({
   currentUser,
   playerAvatarUrl,
 }) => {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
+
+  /**
+   * Start the socket handshake here, before the club screen exists.
+   *
+   * ClubDetailView is lazily loaded, so opening a club spends a chunk download
+   * and a club fetch in this component first. The handshake used to begin after
+   * all that, when ClubDetailView's effect called getSocket() for the first
+   * time — which meant the socket was reliably *not* connected when that effect
+   * ran. That path fetches everything, then connects a few hundred milliseconds
+   * later, and `connect` fires `resync()` which forces the same eight requests
+   * again: sixteen for one cold open, measured.
+   *
+   * Connecting here overlaps the handshake with work that was happening anyway,
+   * so by the time ClubDetailView mounts the socket is usually already up. It
+   * then takes the branch that emits `club:join` directly and issues no second
+   * round — the same path every warm navigation already takes.
+   *
+   * This does not remove the reconnect resync, and must not: a socket that
+   * drops after the room is joined still has to re-join and refetch, because
+   * events during the gap are gone. It only stops the *first* connect from
+   * repeating work the mount just did.
+   */
+  useEffect(() => {
+    getSocket();
+  }, []);
+
   const { data: club, status, error } = useResource<Club>(
     clubId ? `club:${clubId}` : null,
     () => clubsApi.getClub(clubId!)
