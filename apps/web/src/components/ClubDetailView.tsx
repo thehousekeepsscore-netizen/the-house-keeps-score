@@ -16,6 +16,7 @@ import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
+import { useSocketConnection } from '../lib/socket-connection';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
@@ -241,7 +242,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // header because the failure mode is silent: a dropped socket leaves the
   // table looking perfectly normal while it quietly stops changing, and an
   // admin has no way to tell they're settling against a stale view.
-  const [socketLive, setSocketLive] = useState(true);
+  //
+  // Read from the socket rather than assumed. This used to be a boolean
+  // initialised to `true`, so a socket that had never connected once still
+  // displayed as live — the exact case the badge exists to catch.
+  const socketConnection = useSocketConnection(getSocket());
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
@@ -255,8 +260,45 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       window.removeEventListener('offline', off);
     };
   }, []);
-  const connection: 'live' | 'reconnecting' | 'offline' =
-    !browserOnline ? 'offline' : socketLive ? 'live' : 'reconnecting';
+  const connection: 'live' | 'reconnecting' | 'offline' | 'auth-error' = !browserOnline
+    ? 'offline'
+    : socketConnection.state === 'auth-error'
+      ? 'auth-error'
+      : socketConnection.state === 'connected'
+        ? 'live'
+        : 'reconnecting';
+
+  /**
+   * The badge's copy, decided here rather than in three parallel ternaries in
+   * the markup.
+   *
+   * `auth-error` reads as danger rather than warning because nothing is going to
+   * retry it: socket.io-client destroys a socket whose handshake the server
+   * refused. "Reconnecting" would promise a recovery that is never coming. The
+   * server's own wording stays in the tooltip — it names the cause precisely
+   * (missing token versus expired one) and that is worth keeping reachable —
+   * but it is not what a player reads first.
+   */
+  const connectionBadge =
+    connection === 'offline'
+      ? {
+          label: 'Offline',
+          tone: 'danger' as const,
+          title: 'This device is offline — figures may be out of date.',
+        }
+      : connection === 'auth-error'
+        ? {
+            label: 'Session expired',
+            tone: 'danger' as const,
+            title: `Live updates have stopped and will not resume on their own. Sign in again to restore them.${
+              socketConnection.message ? ` (${socketConnection.message})` : ''
+            }`,
+          }
+        : {
+            label: 'Reconnecting',
+            tone: 'warning' as const,
+            title: 'Reconnecting — figures may be out of date until this clears.',
+          };
 
   // Core Scorekeeper Tabs
   /**
@@ -934,15 +976,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       refreshAuditTrail();
     };
 
-    const onConnect = () => { setSocketLive(true); resync(); };
-    const onDisconnect = () => setSocketLive(false);
+    // Connection state is tracked by useSocketConnection; this listener exists
+    // only for the re-join and refetch.
+    const onConnect = () => { resync(); };
 
     socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
 
     // Already connected when this mounted — 'connect' won't fire again.
     if (socket.connected) socket.emit('club:join', initialClub.id);
-    setSocketLive(socket.connected);
 
     // A request that times out is auto-rejected server-side and simply
     // disappears from the table. Tell whoever it belonged to why, otherwise it
@@ -1053,7 +1094,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     return () => {
       socket.emit('club:leave', initialClub.id);
       socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
       socket.off('club:session-started', onSessionStarted);
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
@@ -2454,19 +2494,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     appears only on trouble keeps its meaning. */}
                 {connection !== 'live' && (
                   <span
-                    title={
-                      connection === 'offline'
-                        ? 'This device is offline — figures may be out of date.'
-                        : 'Reconnecting — figures may be out of date until this clears.'
-                    }
+                    title={connectionBadge.title}
                     className={`px-2 py-0.5 border font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1.5 ${
- connection === 'offline'
+                      connectionBadge.tone === 'danger'
                         ? 'bg-danger/10 border-danger text-danger'
                         : 'bg-warning/10 border-warning text-warning'
                     }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${connection === 'offline' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
-                    {connection === 'offline' ? 'Offline' : 'Reconnecting'}
+                    <span className={`w-1.5 h-1.5 rounded-full ${connectionBadge.tone === 'danger' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
+                    {connectionBadge.label}
                   </span>
                 )}
                 {/* Balances display in Chips everywhere, so the cash rate has

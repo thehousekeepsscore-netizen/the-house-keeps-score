@@ -40,7 +40,7 @@ export interface LiveSessionProps {
   /** Display names and photos, keyed by uid. */
   users: Record<string, { displayName?: string; avatarUrl?: string } | undefined>;
   /** Surfaced only when it is not 'live' — see below. */
-  connection: 'live' | 'reconnecting' | 'offline';
+  connection: 'live' | 'reconnecting' | 'offline' | 'auth-error';
   onStartSession: () => void;
   onSelectPlayer: (userId: string) => void;
   /** Built by the screen that owns the mutations, not by the queue. */
@@ -405,9 +405,27 @@ const Header: React.FC<{
         the felt down to say something the dot and one word already say. It
         stays in the header's own rhythm, beside the other reference figures. */}
     {connection !== 'live' && (
-      <p role="status" className="mt-1 flex items-center gap-1.5 text-xs text-warning">
-        <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
-        {connection === 'offline' ? 'Offline — may be out of date' : 'Reconnecting…'}
+      // 'auth-error' reads danger rather than warning, and does not say
+      // "Reconnecting": the server refused the handshake, so socket.io-client
+      // has destroyed the socket and nothing is retrying. Promising a recovery
+      // that will never arrive is the failure this indicator exists to prevent.
+      <p
+        role="status"
+        className={`mt-1 flex items-center gap-1.5 text-xs ${
+          connection === 'auth-error' ? 'text-danger' : 'text-warning'
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+            connection === 'auth-error' ? 'bg-danger' : 'bg-warning'
+          }`}
+        />
+        {connection === 'offline'
+          ? 'Offline — may be out of date'
+          : connection === 'auth-error'
+            ? 'Session expired — sign in again for live updates'
+            : 'Reconnecting…'}
       </p>
     )}
 
