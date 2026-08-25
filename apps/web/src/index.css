@@ -175,6 +175,46 @@
 }
 
 /*
+ * The other three insets, for the mobile shell that comes next.
+ *
+ * NOTHING USES THESE YET, deliberately. This PR is the PWA foundation: it adds
+ * the manifest and the iOS metadata that make `black-translucent` — and
+ * therefore non-zero insets — possible at all, and stops there. Applying
+ * padding across existing screens is a layout change, and layout changes belong
+ * in the shell PR where they can be looked at on a device.
+ *
+ * They exist now so that PR reaches for one definition instead of writing
+ * env() by hand in six components, which is how two screens end up disagreeing
+ * about where the notch is.
+ *
+ * NO FLOOR ON THESE, unlike .safe-bottom above, and the difference is
+ * intentional. The home indicator needs clearance even where there is no inset,
+ * so 1rem is a sensible minimum. The top and sides do not: a header already
+ * has its own padding, and a 1rem floor would silently add a second helping of
+ * it on every desktop browser. These add the inset and nothing else.
+ *
+ * All four require viewport-fit=cover, which index.html sets.
+ */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Landscape on a notched iPhone insets BOTH sides; the notch is only on one,
+   but the rounded corners are on both. */
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/*
  * The only repeating animation in the application.
  *
  * A seat waiting on a decision — someone who has asked for chips or for a seat.

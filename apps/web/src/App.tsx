@@ -4,8 +4,6 @@ import { Suit, Card, Seat, Board, ToastMessage } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TAB_TO_PATH as DASHBOARD_TAB_TO_PATH } from './lib/dashboard-tabs';
 import { useOAuthLanding } from './lib/use-oauth-landing';
-import { TablePreview } from './components/session/TablePreview';
-import { SessionPreview } from './components/session/SessionPreview';
 
 // Split out of the entry chunk. None of these is reachable until the user is
 // signed in, so shipping them with the login page delays the one screen every
@@ -20,6 +18,18 @@ const ClubDetailView = lazy(() =>
 );
 const PerformanceDebugView = lazy(() =>
   import('./components/PerformanceDebugView').then((m) => ({ default: m.PerformanceDebugView }))
+);
+// The other two debug routes, split for the same reason /debug/performance is.
+// They were statically imported, and because they render the real live-session
+// components they pulled the whole session tree — LiveSession, PokerTable, the
+// sheets — into the entry chunk: 38.6 kB of code reachable only from two
+// unlinked developer URLs, on the critical path of every visitor including
+// anyone still looking at the login screen.
+const TablePreview = lazy(() =>
+  import('./components/session/TablePreview').then((m) => ({ default: m.TablePreview }))
+);
+const SessionPreview = lazy(() =>
+  import('./components/session/SessionPreview').then((m) => ({ default: m.SessionPreview }))
 );
 
 /** The skeleton shown while a route chunk loads. */
@@ -39,6 +49,7 @@ import { soundFx } from './utils/audio';
 import { useAuth } from './lib/auth-context';
 import { Club } from './types';
 import * as clubsApi from './lib/clubs-api';
+import { getSocket } from './lib/socket';
 import { useResource, useResourceCache } from './lib/resource-cache';
 
 const SUITS: Suit[] = [
@@ -674,12 +685,38 @@ const RouteBoundary: React.FC<{ title: string; children: React.ReactNode }> = ({
  * a deep link, a refresh, a shared URL — has nothing cached, so it fetches and
  * shows a skeleton exactly once.
  */
-const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>['user']>; playerAvatarUrl: string }> = ({
+export const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof useAuth>['user']>; playerAvatarUrl: string }> = ({
   currentUser,
   playerAvatarUrl,
 }) => {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
+
+  /**
+   * Start the socket handshake here, before the club screen exists.
+   *
+   * ClubDetailView is lazily loaded, so opening a club spends a chunk download
+   * and a club fetch in this component first. The handshake used to begin after
+   * all that, when ClubDetailView's effect called getSocket() for the first
+   * time — which meant the socket was reliably *not* connected when that effect
+   * ran. That path fetches everything, then connects a few hundred milliseconds
+   * later, and `connect` fires `resync()` which forces the same eight requests
+   * again: sixteen for one cold open, measured.
+   *
+   * Connecting here overlaps the handshake with work that was happening anyway,
+   * so by the time ClubDetailView mounts the socket is usually already up. It
+   * then takes the branch that emits `club:join` directly and issues no second
+   * round — the same path every warm navigation already takes.
+   *
+   * This does not remove the reconnect resync, and must not: a socket that
+   * drops after the room is joined still has to re-join and refetch, because
+   * events during the gap are gone. It only stops the *first* connect from
+   * repeating work the mount just did.
+   */
+  useEffect(() => {
+    getSocket();
+  }, []);
+
   const { data: club, status, error } = useResource<Club>(
     clubId ? `club:${clubId}` : null,
     () => clubsApi.getClub(clubId!)

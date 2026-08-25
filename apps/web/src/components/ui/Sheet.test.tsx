@@ -122,6 +122,58 @@ describe('Sheet', () => {
     // padding renders correctly on a device. That needs a phone.
     expect(screen.getByRole('dialog').className).toContain('safe-bottom');
   });
+
+  /*
+   * Width is the only thing about this surface a caller can change — everything
+   * else in SheetProps is content. So these two say what happens when it does
+   * and when it does not.
+   *
+   * Both assertions in each test earn their place: `toContain` alone still
+   * passes if a second max-width is appended beside the first, and `not.toContain`
+   * alone still passes if the class is dropped altogether. Together they fail on
+   * a flipped default, on a double emit, and on a deletion.
+   *
+   * Same limit as the safe-bottom test above — this reads the class, not a
+   * computed width. jsdom lays nothing out; 448 against 512 needs a browser.
+   */
+  /*
+   * vh is measured against the TALLER state — the viewport as it would be with
+   * the browser's chrome slid away. On a phone with the address bar showing,
+   * 90vh can therefore exceed what is actually visible, and a sheet tall enough
+   * to hit its cap puts its own footer below the fold. The footer is where the
+   * confirm button lives.
+   *
+   * dvh tracks the viewport as it currently is. ClubDetailView and
+   * SessionPreview already size the live table with h-[100dvh] for the same
+   * reason; this brings the one shared surface that did not.
+   *
+   * Asserts the class, not a computed height — jsdom has no viewport to shrink,
+   * and the browser-chrome behaviour this is about cannot be reproduced in it at
+   * all. What it catches is the unit being changed back.
+   */
+  it('measures its height against the visible viewport, not the taller one', () => {
+    render(<Sheet open onClose={() => {}} title="Buy in" />);
+    const { className } = screen.getByRole('dialog');
+    expect(className).toContain('max-h-[90dvh]');
+    expect(className).not.toContain('max-h-[90vh]');
+  });
+
+  it('is the narrower panel unless a caller asks for more', () => {
+    render(<Sheet open onClose={() => {}} title="Buy in" />);
+    const { className } = screen.getByRole('dialog');
+    expect(className).toContain('sm:max-w-md');
+    expect(className).not.toContain('sm:max-w-lg');
+  });
+
+  it('widens on desktop when it is asked to, and only there', () => {
+    render(<Sheet open onClose={() => {}} title="Buy in" size="lg" />);
+    const { className } = screen.getByRole('dialog');
+    expect(className).toContain('sm:max-w-lg');
+    expect(className).not.toContain('sm:max-w-md');
+    // The `sm:` prefix is the point, not incidental: on a phone the panel is
+    // full-width at either size, so this prop cannot buy room in the hand.
+    expect(className).toContain('w-full');
+  });
 });
 
 describe('Button', () => {

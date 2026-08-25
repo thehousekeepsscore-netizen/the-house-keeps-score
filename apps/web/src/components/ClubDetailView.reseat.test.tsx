@@ -76,7 +76,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
   };
 });
 
@@ -183,10 +182,13 @@ function sessionWith(standing: string, seated: string[]): PokerSession {
 }
 
 function renderClub(session: PokerSession) {
-  vi.mocked(clubsApi.getClub).mockResolvedValue(club);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({
-    host: { displayName: 'Host', avatarUrl: '' },
-    rahul: { displayName: 'Rahul', avatarUrl: '' },
+  // The roster travels on the club record now, not a second request.
+  vi.mocked(clubsApi.getClub).mockResolvedValue({
+    ...club,
+    roster: {
+      host: { displayName: 'Host', avatarUrl: '' },
+      rahul: { displayName: 'Rahul', avatarUrl: '' },
+    },
   } as never);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);
