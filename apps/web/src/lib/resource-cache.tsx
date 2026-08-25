@@ -40,9 +40,42 @@ interface Entry<T = unknown> {
    * touched this entry while a request was in flight — see `restore`.
    */
   version: number;
+  /**
+   * Highest request sequence handed out for this key. Only `load` advances it,
+   * and only when it actually issues a request — a deduplicated caller joins an
+   * existing request and does not take a number.
+   */
+  issuedSeq: number;
+  /**
+   * Highest request sequence that has already settled into this entry.
+   *
+   * Forced fetches skip the in-flight check, so two requests for one key can be
+   * open at once, and nothing makes them come back in the order they went out.
+   * Without this the *last to arrive* won: an older response would overwrite a
+   * newer one and stamp `fetchedAt` with its own arrival time, so the stale data
+   * was recorded as the freshest the cache had and nothing revalidated it. That
+   * is the "stale until you pull to refresh" report.
+   *
+   * The comparison is deliberately against what has *settled*, not against
+   * what is currently in flight. Testing `inFlight` identity instead would also
+   * order the responses, but it would drop a response the moment a newer
+   * request was issued — and under a poll whose responses take longer than the
+   * interval, every tick is superseded before it lands, so the entry would stop
+   * updating entirely. ClubDashboardView polls two keys every 15s, which is
+   * exactly that shape on a slow connection.
+   */
+  settledSeq: number;
 }
 
-const EMPTY: Entry = { data: undefined, fetchedAt: 0, inFlight: null, error: null, version: 0 };
+const EMPTY: Entry = {
+  data: undefined,
+  fetchedAt: 0,
+  inFlight: null,
+  error: null,
+  version: 0,
+  issuedSeq: 0,
+  settledSeq: 0,
+};
 
 interface ResourceCache {
   getEntry: (key: string) => Entry;
@@ -77,6 +110,26 @@ const ResourceCacheContext = createContext<ResourceCache | null>(null);
 export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const store = useRef(new Map<string, Entry>());
   const listeners = useRef(new Map<string, Set<() => void>>());
+  /**
+   * Which identity the cache currently belongs to, as a counter rather than a
+   * user id — `clear()` is the only thing that advances it, and identity change
+   * is the only thing that calls `clear()`.
+   *
+   * A request captures this when it is issued and re-checks it when it settles.
+   * Without that, a request still open across a sign-out or account switch
+   * lands afterwards and writes the previous user's data into the wiped cache,
+   * recreating the entry `clear()` had just deleted. It also left the entry
+   * incoherent — rebuilt from EMPTY with `issuedSeq: 0` but carrying the
+   * straggler's higher `settledSeq` — so the next user's first requests were
+   * refused as superseded and their data stayed hidden behind the previous
+   * user's for three fetches.
+   *
+   * Provider-scoped, not per-entry: `clear()` deletes entries, so an epoch
+   * stored on one would be destroyed by the event it exists to detect. One
+   * counter invalidates every in-flight request across every key at once,
+   * which is what an identity change means.
+   */
+  const epoch = useRef(0);
   const { user } = useAuth();
 
   const notify = useCallback((key: string) => {
@@ -109,16 +162,61 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
 
       bump('networkRequests');
       const startedAt = performance.now();
-      const promise = fetcher()
+      const seq = current.issuedSeq + 1;
+
+      /**
+       * Has a newer request already settled into this entry?
+       *
+       * Only a *newer settled response* disqualifies this one. A newer request
+       * merely being open does not — see `settledSeq` for why that distinction
+       * is what keeps a slow poll alive.
+       */
+      const superseded = (prev: Entry) => seq <= prev.settledSeq;
+
+      /**
+       * Does this response still belong to the identity that asked for it?
+       *
+       * Checked before anything is written, so a request open across a sign-out
+       * or account switch cannot recreate the entry `clear()` deleted — and
+       * cannot leave a fresh entry carrying its sequence number, which is what
+       * made the next user's own requests look superseded.
+       */
+      const issuedEpoch = epoch.current;
+      const fromPreviousIdentity = () => issuedEpoch !== epoch.current;
+
+      /**
+       * Clearing `inFlight` is only ours to do if we are still the request it
+       * points at. When an older response settles first, the newer request is
+       * still running, and blanking its promise here would both report
+       * `isRevalidating: false` while it is in flight and cost the next
+       * unforced caller a deduplication.
+       */
+      const releaseInFlight = (prev: Entry) => (prev.inFlight === promise ? null : prev.inFlight);
+
+      const promise: Promise<unknown> = fetcher()
         .then((data) => {
           recordTiming(key, performance.now() - startedAt);
           const prev = store.current.get(key) ?? EMPTY;
+          if (fromPreviousIdentity()) {
+            bump('supersededResponses');
+            return data;
+          }
+          if (superseded(prev)) {
+            // Dropped, and deliberately without touching the entry: not
+            // `version` (a pending rollback reads it to detect interference),
+            // not `fetchedAt`, not `data`. Callers still get the value they
+            // asked for; it just does not become the cache's truth.
+            bump('supersededResponses');
+            return data;
+          }
           store.current.set(key, {
+            ...prev,
             data,
             fetchedAt: Date.now(),
-            inFlight: null,
+            inFlight: releaseInFlight(prev),
             error: null,
             version: prev.version + 1,
+            settledSeq: seq,
           });
           if (prev.data !== data || prev.inFlight) notify(key);
           return data;
@@ -130,12 +228,29 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
           recordTiming(key, performance.now() - startedAt);
           bump('failedRequests');
           const prev = store.current.get(key) ?? EMPTY;
-    store.current.set(key, { ...prev, inFlight: null, error });
+          if (fromPreviousIdentity()) {
+            // The previous identity's failure is not this one's to report.
+            bump('supersededResponses');
+            throw error;
+          }
+          if (superseded(prev)) {
+            // A failure that has already been overtaken must not post its error
+            // over a newer success, for the same reason a stale success must not
+            // post its data.
+            bump('supersededResponses');
+            throw error;
+          }
+          store.current.set(key, {
+            ...prev,
+            inFlight: releaseInFlight(prev),
+            error,
+            settledSeq: seq,
+          });
           notify(key);
           throw error;
         });
 
-      store.current.set(key, { ...current, inFlight: promise });
+      store.current.set(key, { ...current, inFlight: promise, issuedSeq: seq });
       return promise;
     },
     [getEntry, notify]
@@ -209,6 +324,9 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const clear = useCallback(() => {
     bump('clears');
+    // Before the store is emptied, so nothing issued for the old identity can
+    // settle into the new one — see `epoch`.
+    epoch.current += 1;
     const keys = [...store.current.keys()];
     store.current.clear();
     keys.forEach(notify);

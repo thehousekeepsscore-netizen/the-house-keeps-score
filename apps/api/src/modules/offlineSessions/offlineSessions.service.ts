@@ -482,22 +482,112 @@ export async function joinSession(sessionId: string, userId: string) {
   return session;
 }
 
-// A member who isn't seated yet asks to be dealt in. Admins already at the
-// table approve it — self-seating stays available via joinSession for the
-// admin who started the session.
-export async function requestSitIn(sessionId: string, clubId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+/**
+ * A member who isn't seated yet asks to be dealt in, or an admin asks on their
+ * behalf. Admins already at the table approve it either way — self-seating
+ * stays available via joinSession for the admin who started the session.
+ *
+ * TWO CALLERS, ONE REQUEST. `targetUserId` defaults to the requester, so the
+ * self path is unchanged: same call, same state, same event.
+ *
+ * The admin path exists because the sheet already offered it and could not do
+ * it. An admin opening the sheet of somebody who had stood up saw "Sit back
+ * down", pressed it, and asked for a seat FOR THEMSELVES — the player's id was
+ * never sent. An admin already at the table (the normal case) got
+ * "You are already seated at this table" for pressing a button about somebody
+ * else, and the player stayed standing with no way back except their own phone.
+ *
+ * WHO IS ALLOWED IS DECIDED FROM THE TOKEN, NEVER FROM THE BODY. The body says
+ * who is being seated; `requesterId` comes from the authenticated session and is
+ * the only thing consulted for permission. Acting for somebody else is an admin
+ * capability, so it is checked against the club — matching decideSitIn, which
+ * already guards the other half of this exchange.
+ */
+export async function requestSitIn(
+  sessionId: string,
+  clubId: string,
+  requesterId: string,
+  // Both default, so `requestSitIn(sessionId, clubId, userId)` still compiles
+  // and still means exactly what it did: that person, asking for themselves.
+  // `isSuperAdmin` is only ever read on the on-behalf path, which cannot be
+  // reached without passing the fifth argument — so the default cannot grant
+  // anything, only withhold it.
+  isSuperAdmin: boolean = false,
+  targetUserId: string = requesterId
+) {
+  const onBehalf = targetUserId !== requesterId;
+
+  if (onBehalf) {
+    const club = await clubsService.getClubOrThrow(clubId);
+    clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+  }
+
+  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
-    if ((state.activePlayerUids || []).includes(userId)) {
-      throw new HttpError(409, 'You are already seated at this table');
+
+    if ((state.activePlayerUids || []).includes(targetUserId)) {
+      throw new HttpError(
+        409,
+        onBehalf ? 'That player is already seated at this table' : 'You are already seated at this table'
+      );
     }
 
-    const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), userId]));
-    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}), [userId]: new Date().toISOString() };
+    /*
+     * One pending request per person.
+     *
+     * The old code deduplicated silently with a Set, so pressing twice returned
+     * 201 and changed nothing. That is defensible for one person tapping their
+     * own phone and wrong the moment two admins can ask for the same player:
+     * both are told it worked, and the timestamp below quietly becomes the
+     * second one's. Saying so costs nothing and is the same answer
+     * decideBuyInRequest gives for the same situation.
+     */
+    if ((state.pendingSitInUids || []).includes(targetUserId)) {
+      throw new HttpError(
+        409,
+        onBehalf ? 'That player has already asked for a seat' : 'You have already asked for a seat'
+      );
+    }
+
+    /*
+     * Only somebody who is actually part of tonight.
+     *
+     * Checked for the admin path specifically. A self-request is how a member
+     * joins a night they were never in, which is the feature — but an admin
+     * naming an arbitrary id must name somebody the night already knows, or
+     * this becomes a way to seat any club member from a request they never
+     * made. The two ways to belong are having stood up (there are chips to
+     * carry back) and having banked (they are playing).
+     *
+     * decideSitIn's own guard still applies afterwards: it refuses to seat
+     * anyone who is not in pendingSitInUids, so nothing here bypasses it.
+     */
+    if (onBehalf) {
+      const stoodUp = (state.cashOuts || []).some(
+        (c) => c.userId === targetUserId && c.status === 'confirmed'
+      );
+      if (!stoodUp) {
+        const banked = await tx.buyInRequest.count({
+          where: { sessionId, userId: targetUserId, status: 'approved' },
+        });
+        if (banked === 0) throw new HttpError(404, 'That player is not part of this night');
+      }
+    }
+
+    // The Set is redundant now the guard above refuses duplicates, and kept
+    // anyway: it costs nothing and the invariant is worth two defences.
+    const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), targetUserId]));
+    const sitInRequestedAt = {
+      ...(state.sitInRequestedAt || {}),
+      [targetUserId]: new Date().toISOString(),
+    };
     return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: null };
   });
 
-  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId, session });
+  // The person being seated, not the person who asked — the queue and the felt
+  // both key off this, and sending the requester put an admin's own face on a
+  // row about somebody else.
+  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId: targetUserId, session });
   return session;
 }
 

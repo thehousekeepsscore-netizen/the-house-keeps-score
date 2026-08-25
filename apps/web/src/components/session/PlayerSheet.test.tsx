@@ -142,6 +142,28 @@ describe('sitting back down', () => {
     show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }), isSelf: true });
     expect(screen.getByText(/buy more once you're sitting/i)).toBeInTheDocument();
   });
+
+  /*
+   * An admin looking at somebody else is looking at somebody else's evening.
+   *
+   * The button read "Sit back down with 7,200" whoever was holding the phone,
+   * which described the wrong person — and, while the player's id was not being
+   * sent, did the wrong person's action too. It also has to ask rather than
+   * promise: this joins the queue, and an admin approves it there.
+   */
+  it('names the player when an admin is looking at their sheet', () => {
+    show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }), isSelf: false, isAdmin: true });
+    expect(
+      screen.getByRole('button', { name: /ask for priya to sit back down with 7,200/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/approve it in the queue to seat them/i)).toBeInTheDocument();
+  });
+
+  it('says nothing about asking when it is your own seat', () => {
+    show({ seat: seat({ state: 'cashedOut', confirmedCashOut: 7200 }), isSelf: true });
+    expect(screen.getByRole('button', { name: /^sit back down with 7,200$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/approve it in the queue/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('what they have put in', () => {

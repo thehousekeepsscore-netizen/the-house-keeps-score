@@ -16,6 +16,8 @@ import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
+import { useSocketConnection } from '../lib/socket-connection';
+import { useForegroundRecovery } from '../lib/use-foreground-recovery';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
@@ -241,7 +243,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // header because the failure mode is silent: a dropped socket leaves the
   // table looking perfectly normal while it quietly stops changing, and an
   // admin has no way to tell they're settling against a stale view.
-  const [socketLive, setSocketLive] = useState(true);
+  //
+  // Read from the socket rather than assumed. This used to be a boolean
+  // initialised to `true`, so a socket that had never connected once still
+  // displayed as live — the exact case the badge exists to catch.
+  const socketConnection = useSocketConnection(getSocket());
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
@@ -255,8 +261,45 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       window.removeEventListener('offline', off);
     };
   }, []);
-  const connection: 'live' | 'reconnecting' | 'offline' =
-    !browserOnline ? 'offline' : socketLive ? 'live' : 'reconnecting';
+  const connection: 'live' | 'reconnecting' | 'offline' | 'auth-error' = !browserOnline
+    ? 'offline'
+    : socketConnection.state === 'auth-error'
+      ? 'auth-error'
+      : socketConnection.state === 'connected'
+        ? 'live'
+        : 'reconnecting';
+
+  /**
+   * The badge's copy, decided here rather than in three parallel ternaries in
+   * the markup.
+   *
+   * `auth-error` reads as danger rather than warning because nothing is going to
+   * retry it: socket.io-client destroys a socket whose handshake the server
+   * refused. "Reconnecting" would promise a recovery that is never coming. The
+   * server's own wording stays in the tooltip — it names the cause precisely
+   * (missing token versus expired one) and that is worth keeping reachable —
+   * but it is not what a player reads first.
+   */
+  const connectionBadge =
+    connection === 'offline'
+      ? {
+          label: 'Offline',
+          tone: 'danger' as const,
+          title: 'This device is offline — figures may be out of date.',
+        }
+      : connection === 'auth-error'
+        ? {
+            label: 'Session expired',
+            tone: 'danger' as const,
+            title: `Live updates have stopped and will not resume on their own. Sign in again to restore them.${
+              socketConnection.message ? ` (${socketConnection.message})` : ''
+            }`,
+          }
+        : {
+            label: 'Reconnecting',
+            tone: 'warning' as const,
+            title: 'Reconnecting — figures may be out of date until this clears.',
+          };
 
   // Core Scorekeeper Tabs
   /**
@@ -408,9 +451,32 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [cashOutInputs, setCashOutInputs] = useState<Record<string, string>>({});
   const [buyInInputs, setBuyInInputs] = useState<Record<string, string>>({});
   const [manualWinnerInputs, setManualWinnerInputs] = useState<Record<string, boolean>>({});
+  /*
+   * An acknowledgement belongs to the figures it was made against.
+   *
+   * It is a bare boolean, and it used to be cleared in exactly one place —
+   * openCashoutModal. The checkbox that sets it lives INSIDE the preview
+   * panel, and ticking it makes the engine return requiresManualResolution
+   * false, which unmounts the block and takes the ticked box off screen. So:
+   * acknowledge a 300 shortfall, notice a typo, correct a cash-out from 2,000
+   * to 32,000, re-calculate — the night now carries a 30,000 mismatch, no
+   * warning renders because the flag is still true, and Settle is enabled. The
+   * admin acknowledged a different number.
+   *
+   * Every path that moves a figure now clears it, which is precisely what
+   * cashoutCalculated already did. That is the coherent rule rather than the
+   * convenient one: the acknowledgement is made by reading the preview, so it
+   * cannot outlive the preview.
+   *
+   * Binding it to the mismatch AMOUNT instead was considered and rejected as
+   * machinery for a case that does not arise — no single edit leaves the
+   * acknowledged state materially unchanged. Any buy-in or cash-out edit moves
+   * mismatchAmount by construction (settlementEngine: totalCashOuts −
+   * totalBuyIns), and the winner checkbox changes who an excess is charged to
+   * (applyExcessToWinners), which is the other half of what was acknowledged.
+   */
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
   const [settlementError, setSettlementError] = useState('');
-  const [settlementSuccess, setSettlementSuccess] = useState('');
   const [showCashoutModal, setShowCashoutModal] = useState(false);
   const [cashoutCalculated, setCashoutCalculated] = useState(false);
   const [confirmingSettle, setConfirmingSettle] = useState(false);
@@ -756,6 +822,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return changed ? next : prev;
     });
   }, [confirmedCashOutByUid]);
+
+  /*
+   * A confirmed cash-out arriving or being amended is a figure change too.
+   *
+   * The effect above mirrors it into the form — deliberately, because the
+   * server settles on that number whatever the field says. But it is not the
+   * admin typing: it comes from somebody else's phone, through the socket,
+   * while this screen is open. So none of the three onChange handlers run, and
+   * before this nothing was invalidated at all: not the preview, and not an
+   * acknowledgement made against it.
+   *
+   * That is the same defect as the typed paths and strictly harder to notice,
+   * because the admin did not do anything.
+   *
+   * Keyed on the memo, which is itself keyed on JSON.stringify(sessionCashOuts)
+   * — so this fires when a cash-out genuinely changes and not on every render.
+   * Clearing on mount is harmless: openCashoutModal resets all three anyway.
+   */
+  useEffect(() => {
+    setMismatchAcknowledged(false);
+    setCashoutCalculated(false);
+    setConfirmingSettle(false);
+  }, [confirmedCashOutByUid]);
+
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
   const night = useMemo(
@@ -791,12 +881,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const canSeeAudit = isOwner || isSuperUser;
 
-  const rosterRes = useResource<Record<string, ClubRosterEntry>>(
-    `${clubKey}:roster`,
-    () => clubsApi.getClubRoster(initialClub.id)
-  );
-  const allUsers = rosterRes.data ?? EMPTY_ROSTER;
-  const refreshRoster = rosterRes.refresh;
+  // Comes with the club record now, on the same payload the ids come from, so
+  // there is no second request and nothing separate to refresh: whatever
+  // refreshes the club refreshes the roster with it.
+  const allUsers = club.roster ?? EMPTY_ROSTER;
 
 
 
@@ -859,6 +947,49 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // fetches, stale data revalidates behind the content, and fresh data does
   // neither. Resources gated to admins have a null key and are skipped entirely.
 
+  /**
+   * Re-join this club's room and refetch everything the room could have changed.
+   *
+   * Lifted to component scope because two separate paths need it and must stay
+   * identical: a socket `connect`, and the user returning to the app. Defining
+   * it twice would let them drift.
+   */
+  const resync = useCallback(() => {
+    const socket = getSocket();
+    socket.emit('club:join', initialClub.id);
+    refreshClub();
+    refreshActiveSession();
+    refreshHistory();
+    refreshLeaderboard();
+    refreshPotLog();
+    refreshPendingChanges();
+    refreshAuditTrail();
+  }, [
+    initialClub.id,
+    refreshClub,
+    refreshActiveSession,
+    refreshHistory,
+    refreshLeaderboard,
+    refreshPotLog,
+    refreshPendingChanges,
+    refreshAuditTrail,
+  ]);
+
+  /**
+   * Coming back to the app makes the data current again.
+   *
+   * This screen has no polling and no timer, so without this its only route to
+   * fresh data is the socket — and the failure being fixed is a socket that has
+   * died silently while the tab was backgrounded, still reporting `connected`.
+   * The refetch therefore runs on every resume regardless of that flag; see
+   * use-foreground-recovery.ts for why trusting it is the bug.
+   */
+  useForegroundRecovery({
+    socket: getSocket(),
+    authFailed: socketConnection.state === 'auth-error',
+    onResume: resync,
+  });
+
   // Live sync: join this club's room and refetch the affected slice on each
   // event, rather than trusting the socket payload as full state — same
   // pattern as VirtualTableView's club/session room sync.
@@ -875,27 +1006,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // were away are gone for good, so the only way back to the truth is to
     // ask for it. This is what makes the view converge after a drop rather
     // than resuming from a stale snapshot.
-    const resync = () => {
-      socket.emit('club:join', initialClub.id);
-      refreshClub();
-      refreshRoster();
-      refreshActiveSession();
-      refreshHistory();
-      refreshLeaderboard();
-      refreshPotLog();
-      refreshPendingChanges();
-      refreshAuditTrail();
-    };
-
-    const onConnect = () => { setSocketLive(true); resync(); };
-    const onDisconnect = () => setSocketLive(false);
+    // Connection state is tracked by useSocketConnection; this listener exists
+    // only for the re-join and refetch. `resync` is shared with the foreground
+    // recovery path above so the two cannot diverge.
+    const onConnect = () => { resync(); };
 
     socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
 
     // Already connected when this mounted — 'connect' won't fire again.
     if (socket.connected) socket.emit('club:join', initialClub.id);
-    setSocketLive(socket.connected);
 
     // A request that times out is auto-rejected server-side and simply
     // disappears from the table. Tell whoever it belonged to why, otherwise it
@@ -1006,7 +1125,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     return () => {
       socket.emit('club:leave', initialClub.id);
       socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
       socket.off('club:session-started', onSessionStarted);
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
@@ -1016,7 +1134,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
+  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([
@@ -1705,10 +1823,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       : null;
 
   // Any edit invalidates a calculated preview — the admin must re-run it
-  // before the record button unlocks again.
+  // before the record button unlocks again — and with it any acknowledgement
+  // made by reading that preview. See the note on the live flow's own
+  // invalidation: an acknowledgement that outlives its figures is an
+  // acknowledgement of a different night.
   useEffect(() => {
     setPastCalculated(false);
     setPastConfirming(false);
+    setPastMismatchAcknowledged(false);
   }, [JSON.stringify(pastRows), pastDate]);
 
   const preview = calculateSettlement();
@@ -1756,7 +1878,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setManualWinnerInputs({});
     setMismatchAcknowledged(false);
     setSettlementError('');
-    setSettlementSuccess('');
     setCashoutCalculated(false); setConfirmingSettle(false);
     setShowCashoutModal(true);
   };
@@ -1801,7 +1922,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       return;
     }
     setSettlementError('');
-    setSettlementSuccess('');
+
+    /*
+     * Captured BEFORE the awaits, because they are gone afterwards.
+     *
+     * Settling ends the night: refreshActiveSession then resolves to no active
+     * session, and `preview` recomputes from a form that is about to unmount.
+     * The toast has to describe the night that was just committed, not whatever
+     * the screen holds a tick later.
+     *
+     * Both are non-null here — every guard above returns rather than falling
+     * through.
+     */
+    const settledNight = activeSession.sessionName;
+    const settled = preview;
 
     try {
       const entries = settlementUids.map(uid => ({
@@ -1812,7 +1946,32 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       }));
       await offlineSessionsApi.settleSession(club.id, activeSession.id, { entries, mismatchAcknowledged });
       await Promise.all([refreshActiveSession(), refreshHistory(), refreshLeaderboard(), refreshPotLog(), refreshClub()]);
-      setSettlementSuccess('🎉 Session successfully settled! Financial transactions recorded & Club Pot updated.');
+      /*
+       * The most irreversible act in the product used to say nothing at all.
+       *
+       * This message was written to `settlementSuccess`, a state with no render
+       * site anywhere in the file — so the modal simply vanished. On a money
+       * screen "nothing happened" reads as "press it again", which is the
+       * behaviour use-action.ts exists to prevent and which once produced
+       * twenty duplicate rows.
+       *
+       * Toast, because that is already this app's success channel for every
+       * other money action — the bank request, the cash-out, opening the table.
+       * Pushed BEFORE the modal closes, and ToastContainer sits at z-[60] above
+       * the modal, so the acknowledgement is on screen as the surface leaves.
+       *
+       * Figures come from the settlement that was actually committed, through
+       * the same unit-aware formatter the screen uses, so a club reading in
+       * rupees is told in rupees.
+       */
+      pushToast(
+        'Night settled',
+        `${settledNight} — ${formatUnit(settled.totalBuyIns)} in, ${formatUnit(settled.totalCashOuts)} out.` +
+          (settled.potContribution !== 0
+            ? ` Club Pot ${formatSignedUnit(settled.potContribution)}.`
+            : ''),
+        'success'
+      );
       setShowCashoutModal(false);
     } catch (err) {
       // The server's message is the useful part — "a session needs at least two
@@ -2209,7 +2368,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const sitBackDown = () =>
     runSheet(async () => {
       if (!activeSession || !sheetUid) return;
-      applySession(await offlineSessionsApi.requestSitIn(club.id, activeSession.id));
+      // The sheet's subject, not whoever is holding the phone. Omitting this is
+      // what made an admin pressing "Sit back down" on Rahul's sheet ask for a
+      // seat for the admin — and, being seated already, get told so.
+      // Same shape as takeBank above.
+      const forSelf = sheetUid === currentUser.uid;
+      applySession(
+        await offlineSessionsApi.requestSitIn(club.id, activeSession.id, forSelf ? undefined : sheetUid)
+      );
     }, 'Please try again.');
 
   const confirmCount = (amount: number) =>
@@ -2359,19 +2525,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     appears only on trouble keeps its meaning. */}
                 {connection !== 'live' && (
                   <span
-                    title={
-                      connection === 'offline'
-                        ? 'This device is offline — figures may be out of date.'
-                        : 'Reconnecting — figures may be out of date until this clears.'
-                    }
+                    title={connectionBadge.title}
                     className={`px-2 py-0.5 border font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1.5 ${
- connection === 'offline'
+                      connectionBadge.tone === 'danger'
                         ? 'bg-danger/10 border-danger text-danger'
                         : 'bg-warning/10 border-warning text-warning'
                     }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${connection === 'offline' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
-                    {connection === 'offline' ? 'Offline' : 'Reconnecting'}
+                    <span className={`w-1.5 h-1.5 rounded-full ${connectionBadge.tone === 'danger' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
+                    {connectionBadge.label}
                   </span>
                 )}
                 {/* Balances display in Chips everywhere, so the cash rate has
@@ -3585,11 +3747,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             </div>
 
             <div className="p-5 space-y-4">
-              {settlementError && (
-                <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
-                  {settlementError}
-                </div>
-              )}
 
               {/* Says the thing that makes the figures below trustworthy. A host
                   counting a stack needs to know the numbers cannot move while
@@ -3649,12 +3806,39 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <div className="text-xs font-medium text-text">
                           {uid === currentUser.uid ? 'You' : (allUsers[uid]?.displayName || `Player (${uid.slice(0, 6)})`)}
                         </div>
-                        {club.winnerDefinition === 'MANUAL' ? (
+                        {/*
+                          The NIGHT's definition, not the club's.
+
+                          This read the club while the engine two hundred lines
+                          up is handed `sessionSettlementRules.winnerDefinition`
+                          — and the rules panel at the top of this very modal
+                          already prints the snapshot's value. So the modal
+                          stated one rule and obeyed another, and the club's
+                          setting stays editable while a night is running.
+
+                          Both directions lose money quietly:
+
+                            snapshot MANUAL, club since changed
+                              no checkbox renders, every entry submits
+                              manualWinner undefined, MANUAL marks nobody a
+                              winner, and an excess has nobody to be charged to
+                              — it is left unresolved and simply leaves the books
+
+                            club MANUAL, snapshot not
+                              a checkbox appears and ticking it invalidates the
+                              preview and changes nothing, because the engine is
+                              not reading MANUAL at all
+
+                          The snapshot exists precisely so the night settles by
+                          what it agreed to. This is the one line on the screen
+                          that was still asking the club.
+                        */}
+                        {sessionSettlementRules?.winnerDefinition === 'MANUAL' ? (
                           <label className="flex items-center gap-1.5 text-[10px] font-medium text-text-muted uppercase cursor-pointer">
                             <input
                               type="checkbox"
                               checked={!!manualWinnerInputs[uid]}
-                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               className="w-3.5 h-3.5 accent-accent rounded cursor-pointer"
                             />
                             Winner
@@ -3670,7 +3854,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             type="number"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
-                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                             className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                           />
                         </div>
@@ -3698,7 +3882,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               type="number"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
-                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); }}
+                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               placeholder="Enter cash-out"
                               className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                             />
@@ -3752,6 +3936,29 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       onChange: (checked) => { setMismatchAcknowledged(checked); setConfirmingSettle(false); },
                   }}
                 />
+              )}
+
+              {/*
+                The failure, where the person who caused it is looking.
+
+                This rendered at the TOP of the modal body — and settling is the
+                last control on a screen that runs to several thousand pixels at
+                a full table, so the admin pressed Confirm & Settle, stayed at
+                the bottom, and saw nothing change. The button returned to
+                "Confirm & Settle" and the explanation sat a screen and a half
+                above, unread.
+
+                Same element, same styling, same text — the server's own message,
+                which is the useful part. Only its position moved.
+
+                Deliberately NOT inside the confirming branch below: the commit
+                handler sets confirmingSettle false before it runs, so that
+                branch has already unmounted by the time a failure arrives.
+              */}
+              {settlementError && (
+                <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
+                  {settlementError}
+                </div>
               )}
 
               {/* Settling is irreversible and moves real money, so it takes a
