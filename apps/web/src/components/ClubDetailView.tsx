@@ -13,7 +13,7 @@ import { selfApprovalBlock, WhoIsHere } from '../lib/approval-rules';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
 import { useAction } from '../lib/use-action';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { JoinRequestList } from './JoinRequestList';
 import { getSocket } from '../lib/socket';
@@ -33,7 +33,8 @@ type SessionResource = { session: PokerSession | null; buyIns: BuyInRequest[] };
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
 import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
-import { SettlementPreview, SettlementConfirm } from './SettlementPreview';
+import { SettlementPreview, SettlementConfirm, describeMismatch } from './SettlementPreview';
+import { computeSummaryOffset } from '../lib/summary-offset';
 import {
   Club,
   PokerSession,
@@ -476,9 +477,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * (applyExcessToWinners), which is the other half of what was acknowledged.
    */
   const [mismatchAcknowledged, setMismatchAcknowledged] = useState(false);
+  /** A remote change invalidated what this admin was in the middle of reviewing. */
+  const [remoteFiguresMoved, setRemoteFiguresMoved] = useState(false);
   const [settlementError, setSettlementError] = useState('');
   const [showCashoutModal, setShowCashoutModal] = useState(false);
-  const [cashoutCalculated, setCashoutCalculated] = useState(false);
   const [confirmingSettle, setConfirmingSettle] = useState(false);
   const [showClubInfoModal, setShowClubInfoModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -840,11 +842,92 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * — so this fires when a cash-out genuinely changes and not on every render.
    * Clearing on mount is harmless: openCashoutModal resets all three anyway.
    */
+  const confirmingRef = useRef(false);
+  const acknowledgedRef = useRef(false);
+  useEffect(() => { confirmingRef.current = confirmingSettle; }, [confirmingSettle]);
+  useEffect(() => { acknowledgedRef.current = mismatchAcknowledged; }, [mismatchAcknowledged]);
+
   useEffect(() => {
+    /*
+      Clearing both is right — the figures moved, so neither an acknowledgement
+      nor an armed confirmation can stand against them. Doing it in SILENCE was
+      the problem: this admin did nothing, and the screen simply stopped
+      offering to settle. An unexplained refusal on a money screen reads as a
+      bug, and the reflex is to press the button again.
+
+      The refs exist because this effect keys on the cash-outs alone. Putting
+      the two states in its deps would re-run it on every acknowledgement and
+      clear the thing that had just been set.
+    */
+    if (confirmingRef.current || acknowledgedRef.current) setRemoteFiguresMoved(true);
     setMismatchAcknowledged(false);
-    setCashoutCalculated(false);
     setConfirmingSettle(false);
   }, [confirmedCashOutByUid]);
+
+  /*
+    Keep IN / OUT / DIFF on screen while the keyboard is up.
+
+    Measured on an iPhone: with the numeric keyboard open, visualViewport.height
+    went 656 → 356 and offsetTop 0 → 263. Safari shifts the VISUAL viewport to
+    keep the focused field in view, which carries the top of the panel — header
+    and this summary — out of the visible band. dvh does not help; it tracks the
+    layout viewport, which did not move. Sticky does not help either; it sticks
+    to the scroller, and the scroller is what left.
+
+    So the bar is translated back down into the band, by transform rather than
+    top: visualViewport fires continuously through the keyboard animation, and
+    anything that triggers layout chases the keyboard instead of tracking it.
+
+    The base position is read with the transform removed, because the element's
+    own rect includes whatever was applied last — measuring without clearing it
+    first feeds the offset back into itself.
+  */
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = summaryRef.current;
+    if (!vv || !el || !showCashoutModal) return;
+
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      const node = summaryRef.current;
+      if (!node) return;
+
+      node.style.transform = '';
+      const rect = node.getBoundingClientRect();
+
+      const active = document.activeElement as HTMLElement | null;
+      const focusedTop =
+        active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+          ? active.getBoundingClientRect().top
+          : null;
+
+      const offset = computeSummaryOffset({
+        summaryBaseTop: rect.top,
+        summaryHeight: rect.height,
+        viewportOffsetTop: vv.offsetTop,
+        focusedTop,
+      });
+      node.style.transform = offset > 0 ? `translateY(${offset}px)` : '';
+    };
+
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(apply);
+    };
+
+    apply();
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', schedule);
+      vv.removeEventListener('scroll', schedule);
+      const node = summaryRef.current;
+      if (node) node.style.transform = '';
+    };
+  }, [showCashoutModal]);
 
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
@@ -1914,7 +1997,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setManualWinnerInputs({});
     setMismatchAcknowledged(false);
     setSettlementError('');
-    setCashoutCalculated(false); setConfirmingSettle(false);
+    setConfirmingSettle(false);
     setShowCashoutModal(true);
   };
 
@@ -1945,8 +2028,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('Missing cash-outs', 'Enter a cash-out for every player before settling.', 'warning');
       return;
     }
-    if (!cashoutCalculated || !preview) {
-      pushToast('Calculate first', 'Run the numbers so you can check them before settling.', 'warning');
+    // `preview` is null when the night has no rules of its own, which is the
+    // one case the count being complete does not cover.
+    if (!preview) {
+      pushToast('No rules for this night', 'It cannot be settled until somebody sets its rake and winners\' cut.', 'warning');
       return;
     }
     if (preview.requiresManualResolution) {
@@ -2047,6 +2132,48 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * player's buy-in does not disable the buttons on everyone else's row.
    */
   const settleAction = useAction(handleSettleSession);
+
+  /** Buy-ins are known from the moment the screen opens; cash-outs are not. */
+  const settlementTotalIn = settlementUids.reduce(
+    (sum, uid) => sum + (Number(buyInInputs[uid]) || 0),
+    0
+  );
+
+  /*
+    The action row, in Sheet's footer slot rather than at the bottom of the
+    scroll.
+
+    Sheet renders the footer outside the overflow-y-auto child and in
+    flex-col-reverse, so on a phone the way OUT sits under the thumb and the
+    irreversible one above it. That ordering is the reason ConfirmDialog puts
+    cancel first, and it is why these are in DOM order Go Back → Confirm.
+  */
+  const settlementFooter = !confirmingSettle ? (
+    <button
+      onClick={() => { setRemoteFiguresMoved(false); setConfirmingSettle(true); }}
+      disabled={!allCashOutsEntered || !preview || preview.requiresManualResolution}
+      className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
+    >
+      Settle Session
+    </button>
+  ) : (
+    <>
+      <button
+        onClick={() => setConfirmingSettle(false)}
+        className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
+      >
+        Go Back
+      </button>
+      <button
+        onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
+        disabled={settleAction.pending}
+        className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
+      </button>
+    </>
+  );
+
   const startSessionAction = useAction(handleStartSession);
   const requestBuyInAction = useAction(handleRequestBuyIn);
   const standUpAction = useAction(handleStandUp);
@@ -3812,26 +3939,44 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
       {/* MODAL: CASHOUT & END-OF-SESSION SETTLEMENT (ADMIN ONLY) */}
       {showCashoutModal && isAdmin && activeSession && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="furniture w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl">
-            <div className="sticky top-0 bg-surface border-b border-line px-5 py-4 flex items-center justify-between z-10">
-              <div>
-                <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
-                  <Sliders className="w-4 h-4" /> Settle night
-                </h3>
-                <p className="text-[11px] text-text-muted mt-0.5">{activeSession.sessionName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCashoutModal(false)}
-                aria-label="Close"
-                className="shrink-0 w-9 h-9 rounded-xl border border-line text-text-muted hover:text-text hover:border-line-strong transition-colors flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+        <Sheet
+          open={showCashoutModal}
+          onClose={() => setShowCashoutModal(false)}
+          size="lg"
+          title="Settle night"
+          description={activeSession.sessionName}
+          footer={settlementFooter}
+        >
+          <div className="space-y-4">
 
-            <div className="p-5 space-y-4">
+              {/*
+                IN / OUT / DIFF, pinned to the top of the count.
+
+                It is the running total the host checks WHILE typing, which is
+                why it is up here and not in the panel below. OUT and DIFF stay
+                as — until every seat has a figure: an uncounted player's blank
+                is a zero to the engine and takes a share of the mismatch, so a
+                partial total is not a smaller truth, it is a wrong one. IN is
+                honest throughout, because the buy-ins are already known.
+
+                Keyboard behaviour is NOT handled here. On iOS this bar leaves
+                the visible viewport when the keyboard opens, which is measured
+                and is the next commit's problem.
+              */}
+              <div
+                ref={summaryRef}
+                className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line will-change-transform"
+              >
+                <div className="flex items-baseline justify-between gap-2 text-[11px] font-mono tabular-nums">
+                  <span className="text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
+                  <span className="text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '—'}</span></span>
+                  <span className={allCashOutsEntered && preview && preview.mismatchAmount !== 0 ? 'text-warning' : 'text-text-muted'}>
+                    {allCashOutsEntered && preview
+                      ? (preview.mismatchAmount === 0 ? 'balanced' : describeMismatch(preview.mismatchAmount, formatVal))
+                      : 'DIFF —'}
+                  </span>
+                </div>
+              </div>
 
               {/* Says the thing that makes the figures below trustworthy. A host
                   counting a stack needs to know the numbers cannot move while
@@ -3884,7 +4029,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               {/* Player Rows: Buy-in (editable) / Cash-out (editable) */}
               <div className="space-y-3">
                 {settlementUids.map(uid => {
-                  const summary = cashoutCalculated ? preview?.players.find(p => p.userId === uid) : undefined;
+                  /*
+                    Nothing derived is shown until every seat has a figure.
+
+                    calculateSettlement coerces a blank with `Number(x || 0)`,
+                    and the engine has no way to say "not counted yet" — a blank
+                    IS a zero to it. While one player is missing, every other
+                    player's net is provisional too: the mismatch is distributed
+                    across them, so an uncounted seat quietly changes what the
+                    counted ones appear to have won.
+                    So the whole table reads `—` until the count is complete,
+                    rather than showing confident figures that are about to move.
+                  */
+                  const summary = allCashOutsEntered ? preview?.players.find(p => p.userId === uid) : undefined;
+                  // netResult, not grossProfit: what the player actually leaves with,
+                  // after the mismatch share and the house's cut.
+                  const net = summary ? formatSignedVal(summary.netResult) : '—';
                   return (
                     <div key={uid} className="p-3.5 bg-bg border border-line rounded-2xl space-y-2.5">
                       <div className="flex items-center justify-between">
@@ -3918,12 +4078,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           what it agreed to. This is the one line on the screen
                           that was still asking the club.
                         */}
+                        <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`text-xs font-mono tabular-nums ${
+                            summary ? (summary.netResult >= 0 ? 'text-success' : 'text-danger') : 'text-text-faint'
+                          }`}
+                        >
+                          {net}
+                        </span>
                         {sessionSettlementRules?.winnerDefinition === 'MANUAL' ? (
                           <label className="flex items-center gap-1.5 text-[10px] font-medium text-text-muted uppercase cursor-pointer">
                             <input
                               type="checkbox"
                               checked={!!manualWinnerInputs[uid]}
-                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
+                              onChange={(e) => { setManualWinnerInputs({ ...manualWinnerInputs, [uid]: e.target.checked }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               className="w-3.5 h-3.5 accent-accent rounded cursor-pointer"
                             />
                             Winner
@@ -3931,6 +4099,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         ) : summary?.isWinner ? (
                           <span className="px-2 py-0.5 bg-accent/15 border border-accent/40 text-accent text-[9px] font-semibold uppercase rounded-full">Winner</span>
                         ) : null}
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="space-y-1">
@@ -3939,7 +4108,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             type="number"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
-                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
+                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                             className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                           />
                         </div>
@@ -3967,7 +4136,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               type="number"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
-                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setCashoutCalculated(false); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
+                              onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               placeholder="Enter cash-out"
                               className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
                             />
@@ -3984,20 +4153,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               {!allCashOutsEntered && (
                 <p className="text-[11px] text-text-muted text-center">
-                  Enter a cash-out for every player before calculating.
+                  Count everyone before you can settle.
                 </p>
               )}
 
-              <button
-                onClick={() => { setCashoutCalculated(true); setConfirmingSettle(false); }}
-                disabled={!allCashOutsEntered || !liveSettlementSettings}
-                className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-semibold py-3 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent/10 transition-colors"
-              >
-                <Scale className="w-4 h-4" /> Auto Calculate
-              </button>
-
-              {/* Settlement Summary — only revealed after Calculate */}
-              {cashoutCalculated && preview && (
+              {/* The figures, as soon as there are figures to show. The reveal
+                  control this used to sit behind was doing two jobs, and only
+                  one of them was real: it gated the arithmetic, which the count
+                  itself gates better. */}
+              {allCashOutsEntered && preview && (
                 <SettlementPreview
                   result={preview}
                   club={club}
@@ -4008,16 +4172,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   formatSigned={formatSignedVal}
                   mismatchAcknowledgement={{
                     checked: mismatchAcknowledged,
-                    // Deliberately does NOT reset cashoutCalculated, which is what the
-                      // past-night flow above already gets right. The acknowledgement is an
-                      // input to computeSettlement, and `preview` is recomputed on every
-                      // render — so ticking the box updates the figures and clears
-                      // requiresManualResolution live. Resetting it unmounted the block this
-                      // checkbox lives inside, so the preview vanished the instant it was
-                      // ticked and Settle stayed disabled with no visible way forward.
-                      //
-                      // confirmingSettle IS reset: the figures just changed, so an already
-                      // armed confirmation must be re-armed against the new numbers.
+                    // confirmingSettle IS reset: the figures just changed, so an
+                      // already armed confirmation must be re-armed against the new
+                      // numbers. (This comment used to explain why ticking the box
+                      // must not reset cashoutCalculated — unmounting the block the
+                      // checkbox lived in. That state is gone, and with it the trap.)
                       onChange: (checked) => { setMismatchAcknowledged(checked); setConfirmingSettle(false); },
                   }}
                 />
@@ -4040,51 +4199,29 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 handler sets confirmingSettle false before it runs, so that
                 branch has already unmounted by the time a failure arrives.
               */}
+              {remoteFiguresMoved && (
+                <div className="p-3 rounded-xl bg-warning/10 border border-warning/40 text-warning text-[11px] text-center leading-relaxed">
+                  A cash-out was confirmed by someone else while you were reviewing. The figures
+                  above have changed — check them, then settle again.
+                </div>
+              )}
+
               {settlementError && (
                 <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs text-center">
                   {settlementError}
                 </div>
               )}
 
-              {/* Settling is irreversible and moves real money, so it takes a
-                  deliberate second tap that restates the final figures. */}
-              {!confirmingSettle ? (
-                <button
-                  onClick={() => setConfirmingSettle(true)}
-                  disabled={!cashoutCalculated || !allCashOutsEntered || !preview || preview.requiresManualResolution}
-                  className="w-full bg-accent hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed text-accent-contrast font-semibold py-3.5 rounded-xl text-xs cursor-pointer shadow-lg"
-                >
-                  Settle Session
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  <SettlementConfirm
-                    result={preview!}
-                    title="Settle this session?"
-                    warning="This locks the results permanently and cannot be undone."
-                    formatSigned={formatSignedVal}
-                  />
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setConfirmingSettle(false)}
-                      className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
-                    >
-                      Go Back
-                    </button>
-                    <button
-                        onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
-                        disabled={settleAction.pending}
-                      className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
-                    </button>
-                  </div>
-                </div>
+              {confirmingSettle && preview && (
+                <SettlementConfirm
+                  result={preview}
+                  title="Settle this session?"
+                  warning="This locks the results permanently and cannot be undone."
+                  formatSigned={formatSignedVal}
+                />
               )}
-            </div>
           </div>
-        </div>
+        </Sheet>
       )}
 
       {/* MODAL: CLUB RULES & INFO */}

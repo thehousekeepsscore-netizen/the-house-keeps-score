@@ -259,6 +259,40 @@ export function SettlementPreview({
         </div>
       )}
 
+      {/*
+        An acknowledgement that is in force, said out loud.
+
+        Ticking the box makes the engine return requiresManualResolution false,
+        which unmounts the block the box lives in. Between that moment and the
+        commit there was NO record on screen that a mismatch existed, none that
+        somebody had waved it through, and no way to withdraw it except by
+        disturbing a figure — which is a strange thing to have to do on purpose.
+
+        `manual_pending` is the engine's own word for "this night's strategy is
+        MANUAL", and it is set whether or not the admin has acknowledged. Gating
+        on it rather than on `settings` matters: the past-night flow does not
+        pass settings at all, so a settings-based check would have quietly
+        excluded the one flow that also offers this control.
+      */}
+      {!result.requiresManualResolution &&
+        result.mismatchResolution === 'manual_pending' &&
+        result.mismatchAmount !== 0 &&
+        mismatchAcknowledgement?.checked && (
+          <div className="p-3 bg-warning/10 border border-warning/30 rounded-xl flex items-start justify-between gap-3">
+            <p className="text-warning text-[11px] font-mono min-w-0">
+              {describeMismatch(result.mismatchAmount, formatAmount)} — you said this was
+              reconciled outside the app.
+            </p>
+            <button
+              type="button"
+              onClick={() => mismatchAcknowledgement.onChange(false)}
+              className="shrink-0 min-h-[44px] px-3 -my-1 text-[11px] font-semibold text-warning underline underline-offset-2 cursor-pointer"
+            >
+              Undo
+            </button>
+          </div>
+        )}
+
       {potEnabled && (
         <div className="p-3 bg-surface border border-accent/30 rounded-xl flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-medium text-text min-w-0 flex-1">
