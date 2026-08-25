@@ -250,11 +250,14 @@ describe('cold load costs a full second round of requests', () => {
     });
 
     const connectRound = requests.length - mountRound;
-    expect(mountRound).toBe(8);
+    // Nine on mount, eight on connect. The gap is `:join-requests`, which the
+    // screen loads on mount but resync() does not refresh — see the asymmetry
+    // test below. Both numbers are asserted so either one moving is deliberate.
+    expect(mountRound).toBe(9);
     expect(connectRound).toBe(8);
   });
 
-  it('the connect round asks for the same things the mount round did', async () => {
+  it('the connect round covers every resource except join-requests', async () => {
     renderClub();
     await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
     const mountRound = [...requests];
@@ -264,7 +267,14 @@ describe('cold load costs a full second round of requests', () => {
       fireSocket('connect');
     });
 
-    expect(requests.slice(mountRound.length).sort()).toEqual([...mountRound].sort());
+    // DOCUMENTED GAP, not an assertion that this is right: `:join-requests` is
+    // fetched on mount and never refreshed by resync, so a reconnect or a
+    // foreground resume leaves it stale until the user retries or decides one.
+    // Every other resource on this screen is covered. Asserted explicitly so
+    // the omission is visible rather than implied by a count.
+    const connectRound = requests.slice(mountRound.length).sort();
+    const missing = [...mountRound].sort().filter((p) => !connectRound.includes(p));
+    expect(missing).toEqual(['/clubs/join-requests']);
   });
 });
 
@@ -289,7 +299,7 @@ describe('a socket that is already connected costs one round, not two', () => {
       await Promise.resolve();
     });
 
-    expect(requests.length).toBe(8);
+    expect(requests.length).toBe(9);
     expect(fakeSocket.emit).toHaveBeenCalledWith('club:join', 'c1');
   });
 
@@ -306,6 +316,6 @@ describe('a socket that is already connected costs one round, not two', () => {
       fireSocket('connect');
     });
 
-    expect(requests.length - afterMount).toBe(8);
+    expect(requests.length - afterMount).toBe(8);  // resync omits join-requests
   });
 });

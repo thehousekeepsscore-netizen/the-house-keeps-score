@@ -7,6 +7,7 @@ import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { useAction } from '../lib/use-action';
 import { Club, ClubJoinRequest } from '../types';
+import { JoinRequestList } from './JoinRequestList';
 import { AccountSettingsModal } from './AccountSettingsModal';
 import { BrandLogo } from './BrandLogo';
 import { InfoHint } from './InfoHint';
@@ -258,26 +259,38 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // Admin Approve / Reject Request
   // requestId is the first argument, so each row is guarded independently —
   // approving one request does not disable the buttons on the others.
-  const decideRequest = useAction(async (requestId: string, clubId: string, newStatus: 'accepted' | 'rejected') => {
-    // The row leaves the list on click rather than after two GETs. Nothing
-    // about the outcome needs the server to describe it: a decided request is
-    // simply no longer pending, and this admin is the one who decided it.
-    const previous = cache.snapshot<ClubJoinRequest[]>(JOIN_REQUESTS_KEY);
-    cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, (prev) =>
-      (prev ?? []).filter((r) => r.id !== requestId)
-    );
+  /*
+   * Decides one request, and THROWS on failure.
+   *
+   * Throwing is the contract JoinRequestList needs: it classifies the error so
+   * a 409 ("another admin got there first") reads as a stale list to refresh
+   * rather than as a failure. The previous version swallowed everything into
+   * `alert('Failed to process request.')`, which said the same thing for a
+   * permission problem, a network drop, and a request that was handled
+   * correctly by somebody else two seconds earlier.
+   *
+   * The optimistic removal stays. The row leaves on click rather than after a
+   * round trip, and the snapshot is restored if the decision genuinely failed.
+   */
+  const decideRequest = useCallback(
+    async (request: ClubJoinRequest, accept: boolean) => {
+      const previous = cache.snapshot<ClubJoinRequest[]>(JOIN_REQUESTS_KEY);
+      cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, (prev) =>
+        (prev ?? []).filter((r) => r.id !== request.id)
+      );
 
-    try {
-      await clubsApi.decideJoinRequest(clubId, requestId, newStatus === 'accepted');
-      // Only an acceptance changes club membership, so only an acceptance
-      // needs the club list back. A rejection now costs exactly one request.
-      if (newStatus === 'accepted') await clubsResource.refresh();
-    } catch (err) {
-      cache.restore(JOIN_REQUESTS_KEY, previous);
-      console.error('Failed to update request:', err);
-      alert('Failed to process request.');
-    }
-  });
+      try {
+        await clubsApi.decideJoinRequest(request.clubId, request.id, accept);
+        // Only an acceptance changes club membership, so only an acceptance
+        // needs the club list back. A rejection costs exactly one request.
+        if (accept) await clubsResource.refresh();
+      } catch (err) {
+        cache.restore(JOIN_REQUESTS_KEY, previous);
+        throw err;
+      }
+    },
+    [cache, clubsResource]
+  );
 
   return (
     <div className="min-h-screen bg-bg text-text font-sans flex flex-col">
@@ -834,70 +847,20 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
         {activeTab === 'requests' && (
           <div className="space-y-6 max-w-3xl mx-auto">
 
-            {/* Admin Notifications Box */}
-            <div className="furniture p-6 rounded-3xl space-y-4">
-              <div className="flex items-center justify-between border-b border-line pb-3">
-                <h2 className="text-base font-semibold text-text flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-accent" /> Pending Club Requests (Admin Notifications)
-                </h2>
-                <span className="px-2.5 py-0.5 bg-accent text-accent-contrast font-semibold text-xs rounded-full">
-                  {pendingAdminRequests.length}
-                </span>
-              </div>
-
-              {pendingAdminRequests.length === 0 ? (
-                <div className="p-6 text-center text-xs text-text-muted">
-                  No pending join requests for your managed clubs right now.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {pendingAdminRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="p-4 bg-bg border border-line rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        {req.userAvatarUrl ? (
-                          <img src={req.userAvatarUrl} alt="User" className="w-10 h-10 rounded-full object-cover border border-accent" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-surface-alt text-accent font-medium flex items-center justify-center text-sm border border-line">
-                            {(req.userDisplayName || 'P')[0].toUpperCase()}
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-xs font-medium text-text">
-                            {req.userDisplayName}
-                          </div>
-                          <div className="text-[10px] text-text-muted">
-                            Wants to join <strong className="text-accent">{req.clubName}</strong>
-                          </div>
-                          <div className="text-[9px] text-text-muted font-mono">
-                            Requested: {new Date(req.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => decideRequest.run(req.id, req.clubId, 'accepted')}
-                            disabled={decideRequest.isPending(req.id)}
-                            className="bg-accent hover:bg-accent text-accent-contrast font-medium px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Check className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Accept'}
-                        </button>
-                        <button
-                            onClick={() => decideRequest.run(req.id, req.clubId, 'rejected')}
-                            disabled={decideRequest.isPending(req.id)}
-                            className="bg-danger/15 hover:bg-danger/25 border border-danger/40 text-danger font-medium px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <X className="w-3.5 h-3.5" /> {decideRequest.isPending(req.id) ? 'Working…' : 'Reject'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* One implementation, two contexts. The club-scoped copy lives in
+                ClubDetailView and differs only in not repeating the club name
+                on every row — see JoinRequestList. */}
+            <JoinRequestList
+              requests={pendingAdminRequests}
+              loading={requestsResource.status === 'empty' && !requestsResource.error}
+              loadError={requestsResource.error ? 'Could not load join requests.' : null}
+              onRetryLoad={() => void requestsResource.refresh()}
+              onDecide={decideRequest}
+              onStale={() => void refresh()}
+              showClubName
+              title="Pending club requests"
+              emptyMessage="No pending join requests for your managed clubs right now."
+            />
 
             {/* My Sent Requests Status */}
             <div className="furniture p-6 rounded-3xl space-y-4">
