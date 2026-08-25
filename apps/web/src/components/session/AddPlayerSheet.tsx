@@ -7,7 +7,7 @@ import { PlayerAvatar } from './PlayerAvatar';
  *
  * This sheet chooses a PERSON and nothing else. It deliberately does not ask
  * for an amount, because the moment it did there would be two implementations
- * of "how many chips" — one for a player joining themselves and one for a host
+ * of "how much?" — one for a player joining themselves and one for a host
  * seating them — and they would drift. Picking a name here opens the player's
  * own sheet, which has always opened on the bank chooser for anyone with no
  * seat. One flow, entered from two doors.

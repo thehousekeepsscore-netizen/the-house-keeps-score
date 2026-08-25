@@ -2333,6 +2333,37 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
       );
       await refreshActiveSession();
+
+      /*
+       * Say that it was sent.
+       *
+       * runSheet closes the sheet on success and speaks only on failure, so the
+       * commonest outcome in the night — money requested — was the one nothing
+       * acknowledged. The sheet simply vanished, and the only confirmations were
+       * a "+5,000" caption on a seat the sheet had just been covering, and a row
+       * in a queue that shows the player approve/reject controls rather than a
+       * receipt. "Nothing happened" on a money screen reads as "press it again",
+       * which is precisely the behaviour that once produced twenty duplicate
+       * rows (use-action.ts).
+       *
+       * Toast, because that is already this app's success channel for exactly
+       * this event through the older door ("Buy-in requested", :1503) and for
+       * cash-outs and opening the table. Pushed here rather than by teaching
+       * runSheet a success message: four other callers share that helper and
+       * only this one is in scope.
+       *
+       * Named for the SUBJECT of the sheet, not the holder of the phone. An
+       * admin adding to Rahul's bank must not be told "waiting for the host to
+       * approve" about their own tap — the same mistake the sit-back-down button
+       * made until #41.
+       */
+      pushToast(
+        'Bank requested',
+        forSelf
+          ? `${formatUnit(amount)} — waiting for the host to approve.`
+          : `${formatUnit(amount)} for ${allUsers[sheetUid]?.displayName || 'that player'} — waiting for approval.`,
+        'success'
+      );
     }, 'Please try again.');
 
   /*
@@ -2680,7 +2711,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             {/* Picks a person, and nothing else. Choosing one opens their own
                 sheet, which opens on the bank chooser because they have no
-                seat — so there is exactly one "how many chips" in the app,
+                seat — so there is exactly one "how much?" in the app,
                 entered from two doors. */}
             <AddPlayerSheet
               open={addPlayerOpen}
