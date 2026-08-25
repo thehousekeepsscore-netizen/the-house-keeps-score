@@ -71,6 +71,9 @@ vi.mock('./lib/socket', () => ({
 import App from './App';
 import { ResourceCacheProvider } from './lib/resource-cache';
 
+/** A dynamic import competing with the rest of the suite needs more than 1s. */
+const LAZY_CHUNK_TIMEOUT = 15_000;
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -91,7 +94,13 @@ describe('the code-split developer routes still render', () => {
 
     // findBy* waits for the Suspense boundary: on a lazy route this is the
     // assertion that the dynamic import actually resolved.
-    expect(await screen.findByText('waiting for you')).toBeInTheDocument();
+    //
+    // The timeout is raised from the 1s default because that is not a property
+    // of the code under test: resolving a real dynamic import while the rest of
+    // the suite runs in parallel routinely takes longer than a second, and this
+    // test failed at ~1095ms on a developer machine while passing in isolation
+    // and in CI. A chunk that never resolves still fails, just later.
+    expect(await screen.findByText('waiting for you', {}, { timeout: LAZY_CHUNK_TIMEOUT })).toBeInTheDocument();
   });
 
   it('/debug/session resolves its chunk and paints SessionPreview', async () => {
@@ -100,8 +109,8 @@ describe('the code-split developer routes still render', () => {
     // Text only the real LiveSession tree renders — the felt, the queue and the
     // buy-in ceiling. If the chunk failed to resolve, Suspense would still be
     // showing the skeleton and none of this would exist.
-    expect(await screen.findByText('Max buy-in')).toBeInTheDocument();
-    expect(await screen.findByText('Awaiting approval')).toBeInTheDocument();
+    expect(await screen.findByText('Max buy-in', {}, { timeout: LAZY_CHUNK_TIMEOUT })).toBeInTheDocument();
+    expect(await screen.findByText('Awaiting approval', {}, { timeout: LAZY_CHUNK_TIMEOUT })).toBeInTheDocument();
   });
 
   it('/debug/performance is unaffected and still resolves', async () => {
@@ -109,6 +118,6 @@ describe('the code-split developer routes still render', () => {
     // route it was modelled on.
     renderAt('/debug/performance');
 
-    expect(await screen.findByText('Performance')).toBeInTheDocument();
+    expect(await screen.findByText('Performance', {}, { timeout: LAZY_CHUNK_TIMEOUT })).toBeInTheDocument();
   });
 });
