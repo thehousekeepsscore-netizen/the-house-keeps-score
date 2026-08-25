@@ -156,3 +156,46 @@ export function sessionSettledMessage(args: {
       `Your standing at ${args.clubName} to date: ${args.standing} (${args.rank}).`,
   };
 }
+
+/**
+ * The answer to a request to join a club.
+ *
+ * One template for both outcomes rather than two, because the difference is a
+ * sentence and the shape is identical — and because a rejection that looks
+ * structurally different from an acceptance reads as an afterthought.
+ *
+ * A rejection says nothing about why. The app does not collect a reason, and
+ * inventing a neutral one ("the club is full") would be a guess presented to
+ * the person it is about.
+ */
+export function joinRequestDecidedMessage(args: {
+  firstName: string;
+  clubName: string;
+  accepted: boolean;
+}): OutboundMessage {
+  const headline = args.accepted ? 'You are in' : 'Not this time';
+  return {
+    subject: args.accepted
+      ? `You have joined ${args.clubName}`
+      : `Your request to join ${args.clubName}`,
+    html: shell(`<tr><td style="padding:22px 26px;">
+      <p style="margin:0 0 14px;font-size:15px;color:#f5f3ea;">Hi ${args.firstName},</p>
+      <p style="margin:0 0 18px;font-size:14px;color:#93a296;line-height:1.6;">
+        ${
+          args.accepted
+            ? `Your request to join <strong style="color:#f5f3ea;">${args.clubName}</strong> was accepted. You can see the club and its history now.`
+            : `Your request to join <strong style="color:#f5f3ea;">${args.clubName}</strong> was not accepted.`
+        }
+      </p>
+      <div style="background:#0a150e;border:1px solid #4a3d1e;border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:11px;color:#93a296;text-transform:uppercase;letter-spacing:1px;">${headline}</div>
+        <div style="font-size:20px;font-weight:800;color:#d4af37;margin-top:4px;">${args.clubName}</div>
+      </div>
+    </td></tr>`),
+    templateName: args.accepted ? 'join_request_accepted' : 'join_request_rejected',
+    params: [args.firstName, args.clubName],
+    preview: args.accepted
+      ? `Hi ${args.firstName}, your request to join ${args.clubName} was accepted.`
+      : `Hi ${args.firstName}, your request to join ${args.clubName} was not accepted.`,
+  };
+}

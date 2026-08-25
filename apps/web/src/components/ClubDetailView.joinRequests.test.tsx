@@ -65,7 +65,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
     listJoinRequests: vi.fn(),
     decideJoinRequest: vi.fn(),
   };
@@ -180,7 +179,6 @@ function renderClubAs(role: 'owner' | 'admin' | 'member', entry = '/clubs/c1/pen
   } as unknown as Club;
 
   vi.mocked(clubsApi.getClub).mockResolvedValue(shaped);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({});
   vi.mocked(clubsApi.listJoinRequests).mockResolvedValue([joinRequest]);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);

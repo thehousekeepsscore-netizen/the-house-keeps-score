@@ -205,8 +205,14 @@ export async function joinSession(clubId: string, sessionId: string): Promise<Po
   return toPokerSession(s);
 }
 
-export async function requestSitIn(clubId: string, sessionId: string): Promise<PokerSession> {
-  const s = await apiFetch<ApiOfflineSession>(`/clubs/${clubId}/offline-sessions/${sessionId}/sit-in-requests`, { method: 'POST' });
+/** `userId` asks on somebody else's behalf, which the server allows only to an
+ *  admin. Omitted asks for your own seat — the body is left off entirely, so
+ *  nothing about the existing self-request changes on the wire. */
+export async function requestSitIn(clubId: string, sessionId: string, userId?: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(`/clubs/${clubId}/offline-sessions/${sessionId}/sit-in-requests`, {
+    method: 'POST',
+    ...(userId ? { body: { userId } } : {}),
+  });
   return toPokerSession(s);
 }
 

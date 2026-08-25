@@ -409,5 +409,27 @@ model HandHistory {
   timestamp       String
   createdAt       DateTime     @default(now())
 
+  /// STAGE 3B DEPLOYMENT PROBE — not a product field.
+  ///
+  /// Stage 3 proved that `prisma migrate deploy` RUNS in Railway's pre-deploy
+  /// container. It did not prove it can APPLY anything: production had no
+  /// pending migration, so the run reported "No pending migrations to apply."
+  /// This column exists so that one real migration is applied before the first
+  /// migration that carries money (MIGRATION-RELEASE-PROPOSAL.md §5, deploy 3).
+  ///
+  /// HandHistory was chosen because it is the most inert table in the schema:
+  /// it is written and read only by the Virtual Table module, whose router has
+  /// been unmounted in app.ts since before first deployment.
+  ///
+  /// Nullable, no default, no index, no constraint, and referenced by NO
+  /// application code — so the previously deployed version, which does not know
+  /// this column exists, keeps working while the pre-deploy step adds it. That
+  /// backward compatibility is a requirement of this release model, not a
+  /// courtesy: the migration runs while the old version is still serving.
+  ///
+  /// Removed by a separate later migration, once production has been verified
+  /// to have applied this one. Never in the same release.
+  migrationProbe  String?
+
   @@index([sessionId])
 }

@@ -77,6 +77,19 @@ export interface Club {
   // non-member cannot be handed a roster by asking differently.
   adminUids: string[]; // Up to 2 additional assigned Club Admins (Max 3 total admins including Owner)
   memberUids: string[];
+  /**
+   * Display details for everyone in the club, keyed by uid.
+   *
+   * Carried on the club rather than fetched separately because it comes from
+   * the same `GET /clubs/:id` payload the ids above come from. It used to have
+   * its own helper and its own cache key, which meant that one endpoint was
+   * requested twice on every mount and twice on every resync — the cache
+   * single-flights per key, so two keys over one URL could never be collapsed.
+   *
+   * Undefined for a club the viewer is only browsing: the public projection
+   * carries counts instead of people, so there is nobody to list.
+   */
+  roster?: Record<string, { uid: string; displayName: string; email: string; avatarUrl?: string }>;
   memberCount: number;
   adminCount: number;
   isMember: boolean;

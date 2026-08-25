@@ -64,7 +64,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
   };
 });
 
@@ -164,12 +163,16 @@ const buyIn = (id: string, userId: string, amount: number): BuyInRequest => ({
   createdAt: ago(80),
 });
 
-function renderClub(over: Partial<PokerSession> = {}) {
+function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
   const active = { ...session, ...over };
-  vi.mocked(clubsApi.getClub).mockResolvedValue(club);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({
-    host: { displayName: 'Host' },
-    priya: { displayName: 'Priya' },
+  // Additive second argument, defaulted, so every existing caller is unchanged.
+  // Needed only to prove the winner control ignores the club — which cannot be
+  // shown while the club and the night's snapshot always agree.
+  const theClub = { ...club, ...clubOver } as Club;
+  // The roster travels on the club record now, not a second request.
+  vi.mocked(clubsApi.getClub).mockResolvedValue({
+    ...theClub,
+    roster: { host: { displayName: 'Host' }, priya: { displayName: 'Priya' } },
   } as never);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);
@@ -202,7 +205,7 @@ function renderClub(over: Partial<PokerSession> = {}) {
         element: (
           <ResourceCacheProvider>
             <ClubDetailView
-              club={club}
+              club={theClub}
               currentUser={currentUser}
               playerAvatarUrl=""
               onBackToDashboard={vi.fn()}
@@ -223,8 +226,8 @@ function renderClub(over: Partial<PokerSession> = {}) {
  * carries it while the night runs, and the frozen band carries it once it does
  * not. Both call the same handler.
  */
-async function openSettlement(over: Partial<PokerSession> = {}) {
-  renderClub(over);
+async function openSettlement(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
+  renderClub(over, clubOver);
   await waitFor(() => {
     expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled();
   });
@@ -369,6 +372,86 @@ describe('settling a night', () => {
         })
       );
     });
+  });
+
+  /*
+   * WHAT THE HOST IS TOLD WHEN THE MOST IRREVERSIBLE ACT IN THE PRODUCT
+   * SUCCEEDS OR FAILS.
+   *
+   * Success said nothing: the message was written to `settlementSuccess`, a
+   * state with no render site anywhere in the file, and the modal simply
+   * vanished. Failure said it at the TOP of a modal that runs to several
+   * thousand pixels, while the admin was at the bottom where the button they
+   * pressed had just returned to "Confirm & Settle".
+   *
+   * On a money screen "nothing happened" reads as "press it again", which is
+   * the behaviour use-action.ts exists to prevent.
+   */
+  async function commitSettlement() {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await findPreview();
+    fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
+  }
+
+  it('SUCCESS — says the night was settled, and names the figures committed', async () => {
+    await commitSettlement();
+
+    // The acknowledgement itself, through the app's own success channel.
+    expect(await screen.findByText(/night settled/i)).toBeInTheDocument();
+    // Reported from the settlement that was actually committed: 10,000 in
+    // (5,000 each) against 10,000 out (8,000 + 2,000).
+    expect(screen.getByText(/10,000 Chips in, 10,000 Chips out/i)).toBeInTheDocument();
+  });
+
+  it('SUCCESS — still closes the settlement screen, exactly as before', async () => {
+    await commitSettlement();
+    // The toast is the acknowledgement; the modal is not kept open to carry it.
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /settle night/i })).not.toBeInTheDocument()
+    );
+  });
+
+  it('FAILURE — shows the server\'s reason beside the button that was pressed', async () => {
+    vi.mocked(offlineSessionsApi.settleSession).mockRejectedValueOnce(
+      new Error('Session is already settled')
+    );
+    await commitSettlement();
+
+    const message = await screen.findByText(/session is already settled/i);
+    expect(message).toBeInTheDocument();
+
+    /*
+     * Position is the point of this fix, so it is asserted rather than assumed.
+     * The error must sit with the commit control, not at the top of the modal:
+     * in DOM order it comes AFTER the preview and BEFORE the button.
+     */
+    const preview = screen.getAllByText(/^Profit \/ loss$/i)[0];
+    const button = screen.getByRole('button', { name: /^settle session$/i });
+    expect(
+      preview.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'error renders after the preview, not above it'
+    ).toBeTruthy();
+    expect(
+      message.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'and immediately before the control that failed'
+    ).toBeTruthy();
+  });
+
+  it('FAILURE — never claims success, and leaves the screen open to correct it', async () => {
+    vi.mocked(offlineSessionsApi.settleSession).mockRejectedValueOnce(
+      new Error('Session is already settled')
+    );
+    await commitSettlement();
+    await screen.findByText(/session is already settled/i);
+
+    // The safety property: a failed settlement must not produce a success
+    // message, and must not close the screen out from under the correction.
+    expect(screen.queryByText(/night settled/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /settle night/i })).toBeInTheDocument();
   });
 
   it('re-locks the preview when a figure changes underneath it', async () => {
@@ -525,6 +608,182 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     expect(screen.getByText('5%')).toBeInTheDocument();
   });
 
+  /*
+   * WHO COUNTS AS A WINNER IS THE NIGHT'S QUESTION, NOT THE CLUB'S.
+   *
+   * The winner checkbox read `club.winnerDefinition` while the engine is handed
+   * the night's frozen snapshot — and the rules panel at the top of the same
+   * modal already printed the snapshot's value. The club's setting stays
+   * editable while a night is running, so the two drift apart mid-count.
+   *
+   * The fixture below is the dangerous direction: the night agreed to MANUAL,
+   * the club has since been changed to PROFIT_POSITIVE. Under the old code no
+   * checkbox rendered at all, every entry submitted `manualWinner` undefined,
+   * MANUAL marked nobody a winner, and any excess had nobody to charge — the
+   * engine logs "no winners to deduct from" and the money leaves the books.
+   *
+   * The whole suite is otherwise PROFIT_POSITIVE, which is exactly why this
+   * went unseen: the checkbox never rendered in any test.
+   */
+  /*
+   * AN ACKNOWLEDGEMENT BELONGS TO THE FIGURES IT WAS MADE AGAINST.
+   *
+   * Under MANUAL, a mismatch hard-blocks the settle button on the client and
+   * the server until an admin ticks "I have reconciled this". The tick used to
+   * be cleared in exactly one place — reopening the modal — so it survived
+   * every subsequent edit.
+   *
+   * That is worse than it sounds, because ticking the box makes the engine
+   * return requiresManualResolution false, which UNMOUNTS the warning and
+   * takes the ticked box off screen with it. The acknowledgement then has no
+   * representation anywhere: a 300 mismatch is acknowledged, a cash-out is
+   * corrected to make it 30,000, and the screen shows no warning at all
+   * because the stale flag is still suppressing it.
+   *
+   * These drive the real screen through the real controls, because the bug is
+   * in the wiring between them and not in any single value.
+   */
+  const MANUAL_RULES = { ...RULES, mismatchStrategy: 'MANUAL' };
+
+  /** Cash-outs that do not sum to the buy-ins, so the engine has a mismatch. */
+  async function openWithMismatch() {
+    await openSettlement({ settlementRules: MANUAL_RULES });
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // 10,300 out vs 10,000 in
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    return await screen.findByRole('checkbox');
+  }
+
+  it('TEST 1 — changing a figure withdraws the acknowledgement', async () => {
+    const ack = await openWithMismatch();
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    // The typo correction. This is the exact sequence that shipped: the figure
+    // moves, and the acknowledgement used to stay behind.
+    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    // The warning must be back, and unticked. If the flag had survived, the
+    // engine would still be told the mismatch was acknowledged and nothing
+    // would render here at all.
+    const again = await screen.findByRole('checkbox');
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('TEST 2 — a change that leaves the mismatch identical still withdraws it', async () => {
+    /*
+     * Deliberate, and the smaller of two evils.
+     *
+     * The acknowledgement is made by reading the preview, and any edit already
+     * invalidates that preview (cashoutCalculated). Letting the tick outlive
+     * the panel it was made on is the whole defect. Binding it to the mismatch
+     * AMOUNT would preserve this case — but it is a case worth very little:
+     * every single-field edit moves mismatchAmount by construction
+     * (totalCashOuts − totalBuyIns), so keeping it identical takes two
+     * offsetting edits, and the winner tick changes who an excess is charged
+     * to, which is the other half of what was acknowledged.
+     *
+     * So this asserts the conservative behaviour on purpose, rather than
+     * claiming a distinction the settlement model does not really support.
+     *
+     * (Re-typing the SAME value into one field is not a test of this: React
+     * fires no change event when the value has not moved, so the handler never
+     * runs and nothing is exercised.)
+     */
+    const ack = await openWithMismatch();
+    expect(screen.getByText(/300\D*more out than in/i)).toBeInTheDocument();
+
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    // +1,000 on one buy-in and +1,000 on one cash-out. Both totals move; the
+    // difference between them does not.
+    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '9000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    const again = await screen.findByRole('checkbox');
+    expect(
+      screen.getByText(/300\D*more out than in/i),
+      'the mismatch really is unchanged'
+    ).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked, 'and it is still withdrawn').toBe(false);
+  });
+
+  it('TEST 3 — changing a figure back leaves it withdrawn, not restored', async () => {
+    // Determinism: the state depends on what has been acknowledged since the
+    // last edit, never on how the figures got where they are.
+    const ack = await openWithMismatch();
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
+    );
+
+    fireEvent.change(amountFields()[3], { target: { value: '9999' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // back to the acknowledged night
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+
+    const again = await screen.findByRole('checkbox');
+    expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
+    expect((again as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('and the settle button stays blocked until the new mismatch is acknowledged', async () => {
+    // The consequence that makes this a money issue rather than a display one:
+    // requiresManualResolution gates the arm control (and the server).
+    const ack = await openWithMismatch();
+    fireEvent.click(ack);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled()
+    );
+
+    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await screen.findByRole('checkbox');
+
+    expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
+  });
+
+  it('THE NIGHT SAYS MANUAL — the winner control appears, though the club has moved on', async () => {
+    await openSettlement({ settlementRules: { ...RULES, winnerDefinition: 'MANUAL' } });
+
+    // The club fixture is PROFIT_POSITIVE. Reading it would render nothing.
+    const winners = screen.getAllByRole('checkbox');
+    expect(winners, 'one per player, from the night\'s rules').toHaveLength(2);
+    expect(screen.getAllByText(/^Winner$/i).length).toBeGreaterThan(0);
+
+    // And it is the control, not a badge: it must be tickable.
+    fireEvent.click(winners[0]);
+    expect((winners[0] as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('THE CLUB SAYS MANUAL — still no winner control, because the night did not', async () => {
+    /*
+     * The mirror direction, and the reason the club override exists. Under the
+     * old code a checkbox rendered here and ticking it invalidated the preview
+     * and changed nothing — a control that lies about affecting money, because
+     * the engine is handed PROFIT_POSITIVE and never reads manualWinner at all.
+     */
+    await openSettlement({ settlementRules: RULES }, { winnerDefinition: 'MANUAL' });
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('the rules panel and the winner control agree with each other', async () => {
+    // They read the same object now. Before, the panel showed the snapshot and
+    // the control obeyed the club, inside one modal.
+    await openSettlement({ settlementRules: { ...RULES, winnerDefinition: 'MANUAL' } });
+    expect(screen.getByText(/^manual$/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  });
+
   it('computes Auto Calculate from those rules, not the club\'s', async () => {
     // The club in this fixture charges nothing. If the preview were reading it,
     // there would be no rake line at all.
@@ -539,9 +798,14 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     expect(screen.getByText(/^House take$/)).toBeInTheDocument();
     // 1,000 a seat from two players, plus 5% of the winner's 3,000 profit.
     // Neither line exists if the preview is reading the club, which charges 0.
-    // The label restates the arithmetic — rate × heads — so a host can see
-    // where 2,000 came from rather than being handed the total.
-    expect(screen.getByText(/^Session rake × 2 players$/)).toBeInTheDocument();
+    //
+    // The label used to read "× 2 players" and restate the arithmetic. It no
+    // longer does: the figure is now the engine's totalSeatFees, which caps a
+    // seat fee at what the house actually took from that player, so rate ×
+    // heads is not what the line says. SettlementPreview.test.tsx owns the
+    // decomposition; this test only cares that the line exists at all, because
+    // its existence is what proves the night's rules were used.
+    expect(screen.getByText(/^Session rake$/)).toBeInTheDocument();
     expect(screen.getByText(/^Winners' cut \(5%\)$/)).toBeInTheDocument();
   });
 });
@@ -619,5 +883,59 @@ describe('entering figures', () => {
           ]),
         }));
     });
+  });
+});
+
+/**
+ * A5, locked before the screen that will break it is built.
+ *
+ * calculateSettlement coerces every field with `Number(cashOutInputs[uid] || 0)`,
+ * and the engine has no way to express "not entered yet" — a blank is a zero.
+ * Today nothing shows the consequence, because Calculate stays disabled until
+ * every player has a figure, so a coerced zero never reaches the panel.
+ *
+ * The redesign removes that control and renders results continuously. At that
+ * point a half-counted table would show confident nets for players nobody has
+ * counted, each one a real-looking loss of exactly their bank.
+ *
+ * So this asserts the property rather than the mechanism: with a figure missing,
+ * NO signed net appears for anyone. It passes today because of the gate, and it
+ * has to keep passing when the gate is gone — which is the whole reason for
+ * writing it now rather than alongside the code that needs it.
+ *
+ * The file's own history is the argument: "`uid in cashOutInputs` was the whole
+ * test, so a field the host had cleared still counted... Auto Calculate unlocked
+ * and settled somebody at zero they never agreed to."
+ */
+describe('a figure nobody has entered is not a figure', () => {
+  it('A5 — with one cash-out missing, no player shows a net', async () => {
+    await openSettlement();
+
+    // Two players; count only the first.
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+
+    // Nothing is claimed about anybody while a figure is outstanding.
+    expect(previewLines(), 'no per-player arithmetic yet').toHaveLength(0);
+    expect(
+      screen.queryAllByText(/^[+-][\d,]+$/),
+      'no signed net may appear while a cash-out is blank'
+    ).toHaveLength(0);
+  });
+
+  it('A5 — a cleared field withdraws the figures again', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    // The Calculate gate is still here in 7A; 7B is what removes it. The
+    // invariant below is about the blank, not about how the figures got shown.
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await findPreview();
+
+    // Blank is not zero. Clearing it must take the results away, not settle
+    // that player at nothing.
+    fireEvent.change(amountFields()[3], { target: { value: '' } });
+
+    expect(previewLines()).toHaveLength(0);
+    expect(screen.queryAllByText(/^[+-][\d,]+$/)).toHaveLength(0);
   });
 });

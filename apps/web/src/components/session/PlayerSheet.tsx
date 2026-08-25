@@ -18,7 +18,7 @@ import { PlayerAvatar } from './PlayerAvatar';
  *
  *   not at the table   choose a bank — the sheet opens straight into it
  *   pulling up a chair nothing — they have asked, and are waiting
- *   playing            Buy more chips  (Stand up, quieter)
+ *   playing            Add to bank  (Stand up, quieter)
  *   standing up        the count, editable, for an admin to confirm
  *   stood up           Join again
  *
@@ -60,7 +60,7 @@ export interface PlayerSheetProps {
    *
    * Set by the brass stud on the felt, which already means "chips": a seated
    * player who taps it has said what they want, and showing them a sheet with
-   * "Buy more chips" on it asks the question twice.
+   * "Add to bank" on it asks the question twice.
    */
   askForChips?: boolean;
   busy?: boolean;
@@ -182,8 +182,12 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
             one-handed at a table. */}
         {mode === 'bank' && (
           <div className="w-full space-y-2">
+            {/* "How much?" rather than "How many chips?" — the same two-word
+                shape OpenTableSheet uses above its own chooser, and it stops
+                reintroducing a second noun for the money one line above a
+                radiogroup already labelled "Bank amount". */}
             <p className="text-sm text-text text-center">
-              {seat ? 'How many chips?' : 'Choose your starting bank'}
+              {seat ? 'How much?' : 'Choose your starting bank'}
             </p>
 
             <div role="radiogroup" aria-label="Bank amount" className="space-y-2">
@@ -240,6 +244,21 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
               </p>
             )}
 
+            {/*
+              The button states the figure, because this one commits money.
+              "Continue" promised a next step and there is none — the tap posts
+              the request. Every other commit in the night already names its
+              amount ("Sit back down with 7,200"), and this was the one that did
+              not.
+
+              Pick-then-confirm is unchanged: the figure moved onto the button,
+              the second tap did not go away.
+
+              `chosen` rather than `choice`, so a typed amount does not label the
+              button with the preset tapped before it — same value submitBank
+              sends, so the label and the payload cannot drift. The null check is
+              for the type: `chosenValid` cannot narrow it.
+            */}
             <Button
               variant="primary"
               size="lg"
@@ -248,7 +267,7 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
               loading={busy}
               onClick={submitBank}
             >
-              Continue
+              {chosen !== null && chosen > 0 ? `Request ${formatAmount(chosen)}` : 'Request'}
             </Button>
           </div>
         )}
@@ -292,7 +311,7 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
             {(state === 'inPlay' || state === 'seatedNoChips') && (
               <>
                 <Button variant="primary" size="lg" fullWidth onClick={() => setMode('bank')}>
-                  Buy more chips
+                  Add to bank
                 </Button>
                 <Button
                   variant="ghost"
@@ -351,13 +370,28 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
               add 7,200 to what they have put in and settle them 7,200 down.
               More chips than that is an ordinary top-up, once they are sitting.
             */}
+            {/*
+              An admin looking at somebody else says so. The button used to read
+              "Sit back down with 7,200" whoever was holding the phone, which
+              described the wrong person's evening and — until the id was
+              actually sent — did the wrong person's action.
+
+              It asks rather than does, and says so, because it is the same
+              request the player would make: it joins the queue and an admin
+              approves it there. Promising a seat here would be a second lie
+              about the same button.
+            */}
             {state === 'cashedOut' && (
               <>
                 <Button variant="primary" size="lg" fullWidth loading={busy} onClick={onSitBackDown}>
-                  Sit back down with {formatAmount(seat?.confirmedCashOut ?? 0)}
+                  {isSelf
+                    ? `Sit back down with ${formatAmount(seat?.confirmedCashOut ?? 0)}`
+                    : `Ask for ${name} to sit back down with ${formatAmount(seat?.confirmedCashOut ?? 0)}`}
                 </Button>
                 <p className="text-xs text-text-faint text-center leading-relaxed">
-                  You take your chips back to the table. Buy more once you're sitting.
+                  {isSelf
+                    ? "You take your chips back to the table. Buy more once you're sitting."
+                    : `${name} takes those chips back to the table. Approve it in the queue to seat them.`}
                 </p>
               </>
             )}

@@ -230,7 +230,94 @@ does not state the default, so setting it could silently change behaviour to
 something other than what the dashboard has today. It stays dashboard-owned
 until someone reads the current value.
 
-## 8. What I recommend
+## 8. Stage 2, executed — what it proved and what it caught
+
+Stage 2 ran for the first time on 2026-08-17 (deployment `a0b14e2c`, commit
+`12d73ce`). It **failed**, and the failure is the most useful result available:
+it exercised every part of the mechanism and then tripped on the one thing that
+was still an assumption.
+
+```
+Starting Container
+npm warn config production Use `--omit=dev` instead.
+Error: Could not find Prisma Schema that is required for this command.
+Checked following paths:
+schema.prisma: file not found
+prisma/schema.prisma: file not found
+Stopping Container
+```
+
+### What is now established rather than assumed
+
+| Question from §1 | Answer |
+|---|---|
+| Is `railway.json`'s `preDeployCommand` actually read and run? | **Yes.** A container started and ran the command, 48s after the merge. |
+| Does the pre-deploy container have the Prisma CLI? | **Yes.** That error is Prisma's own, produced ~130 ms after container start — far too fast to be an `npx` registry download. `prisma` is a *devDependency*, so the image retains dev dependencies. |
+| Does a failed pre-deploy abort the deployment and leave the old version serving? | **Yes**, and this is the property the whole design was bought for. See below. |
+| Which image does it run from? | The application build image — same `node_modules`. |
+
+**The safety property, measured.** Production continued serving `3c5b82e`
+throughout, with `uptimeSeconds` still counting from the *previous* deploy — the
+process never restarted:
+
+```json
+{ "status": "ok", "commitShort": "3c5b82e",
+  "startedAt": "2026-08-17T17:07:51.337Z", "uptimeSeconds": 957 }
+```
+
+A broken release step produced a **failed deployment**, not a running
+application in an undescribed state. That is precisely the outcome that was
+missing on 2026-08-16.
+
+### The actual defect: the command didn't use the workspace idiom
+
+The service builds and starts with:
+
+```
+buildCommand:  npm run build --workspace=@poker/api
+startCommand:  npm run start --workspace=@poker/api
+```
+
+No root directory is set, so **the repo root is the working directory** — and
+the repo root has no `prisma/`, which is exactly the two paths Prisma reported
+checking. The schema lives at `apps/api/prisma/schema.prisma`.
+
+`npx prisma migrate status` was the only one of the three commands that tried to
+address the monorepo by hand. The fix is not to hard-code `--schema`, but to use
+the mechanism already **proven to work in this image**: `apps/api`'s build script
+is `prisma generate && tsc -p tsconfig.json`, and it succeeds on every deploy —
+so `npm run --workspace` already puts `prisma generate` somewhere it finds this
+schema.
+
+```json
+"preDeployCommand": ["npm run prisma:status --workspace=@poker/api"]
+```
+
+All three commands now spell the monorepo the same way, which is the property
+that keeps the next person from reintroducing this.
+
+### Still unproven, and the retry is also the test
+
+Nothing yet demonstrates that the pre-deploy container can **reach the
+database** — the schema error happened before any connection was attempted. It
+also does not yet prove the `prisma/migrations` directory survives into the
+image.
+
+Both are answered by the corrected command, and it stays read-only either way,
+so the fix and the diagnostic are the same deploy.
+
+### One caveat to carry into Stage 3
+
+`prisma migrate status` **exits non-zero when migrations are pending.** As a
+permanent gate that would block every deploy that carries a new migration —
+correct behaviour for a Stage 2 probe whose job is to prove the mechanism, and
+the specific reason Stage 3 replaces it with `migrate deploy` rather than adding
+to it. Production currently has all four migrations applied, so it should exit
+`0`.
+
+---
+
+## 9. What I recommend
 
 Adopt `railway.json` with `preDeployCommand`, rolled out in the three deploys
 above, **before** the correction workflow ships. It is the only option that
