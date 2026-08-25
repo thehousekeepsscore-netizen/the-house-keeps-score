@@ -10,31 +10,31 @@ datasource db {
 // ---------- Auth ----------
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String? // nullable — OAuth-only accounts never set one
-  displayName  String
-  firstName    String?
-  lastName     String?
-  username     String?  @unique
-  avatarUrl    String?
-  phoneNumber  String?
-  themePreference String @default("emerald-gold")
-  isSuperAdmin Boolean  @default(false)
-  isActive     Boolean  @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String? // nullable — OAuth-only accounts never set one
+  displayName     String
+  firstName       String?
+  lastName        String?
+  username        String?   @unique
+  avatarUrl       String?
+  phoneNumber     String?
+  themePreference String    @default("emerald-gold")
+  isSuperAdmin    Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  oauthAccounts  OAuthAccount[]
-  refreshTokens  RefreshToken[]
+  oauthAccounts OAuthAccount[]
+  refreshTokens RefreshToken[]
 
-  ownedClubs      Club[]              @relation("ClubOwner")
+  ownedClubs      Club[]            @relation("ClubOwner")
   clubAdminOf     ClubAdmin[]
   clubMemberOf    ClubMember[]
   joinRequests    ClubJoinRequest[]
-  buyInRequests   BuyInRequest[]      @relation("BuyInRequester")
-  startedSessions PokerSession[]      @relation("SessionStarter")
+  buyInRequests   BuyInRequest[]    @relation("BuyInRequester")
+  startedSessions PokerSession[]    @relation("SessionStarter")
 }
 
 enum OAuthProvider {
@@ -73,24 +73,24 @@ model RefreshToken {
 // ---------- Clubs ----------
 
 model Club {
-  id                 String   @id @default(cuid())
-  name               String
-  code               String   @unique
-  description        String?
-  ownerId            String
-  owner              User     @relation("ClubOwner", fields: [ownerId], references: [id])
-  maxCapacity        Int      @default(50)
+  id                          String  @id @default(cuid())
+  name                        String
+  code                        String  @unique
+  description                 String?
+  ownerId                     String
+  owner                       User    @relation("ClubOwner", fields: [ownerId], references: [id])
+  maxCapacity                 Int     @default(50)
   // How the table's buy-in ceiling is decided:
   //   MATCH_HIGHEST — a request may be as large as the biggest bank anyone
   //                   currently holds; the first buy-in of a session is
   //                   unbounded and sets the opening reference
   //   UNCAPPED      — no ceiling at all, players police it themselves
-  buyInMode          String   @default("MATCH_HIGHEST")
-  minBuyIn           Int      @default(1000)
-  maxBuyIn           Int      @default(5000)
-  devaluationFactor  Int      @default(1)
-  enableDevaluation  Boolean  @default(false)
-  clubPotBalance     Int      @default(0)
+  buyInMode                   String  @default("MATCH_HIGHEST")
+  minBuyIn                    Int     @default(1000)
+  maxBuyIn                    Int     @default(5000)
+  devaluationFactor           Int     @default(1)
+  enableDevaluation           Boolean @default(false)
+  clubPotBalance              Int     @default(0)
   // Off by default: the leaderboard exposes every member's lifetime net
   // profit, buy-ins and biggest win/loss to whoever can see it, so a club
   // opts into that rather than out of it. Owner-controlled from club settings.
@@ -103,38 +103,38 @@ model Club {
   //   winnersCutPercent — % of each winner's profit
   // rakeEnabled/rakeMethod/rakeValue are the older single-rule fields, kept so
   // existing clubs keep settling identically until they're migrated over.
-  sessionRakeAmount  Int      @default(0)
-  winnersCutPercent  Int      @default(0)
-  rakeEnabled        Boolean  @default(false)
-  rakeMethod         String   @default("PERCENT_PROFIT") // PERCENT_PROFIT | PERCENT_CASHOUT | FIXED_PER_WINNER | FIXED_PER_SESSION | CUSTOM
-  rakeValue          Int      @default(5) // percent (whole number) for PERCENT_* methods, flat points for FIXED_* methods
-  potEnabled         Boolean  @default(false)
-  mismatchStrategy   String   @default("PROPORTIONAL_WINNERS") // PROPORTIONAL_WINNERS | EQUAL_WINNERS | EQUAL_ALL | SHORTFALL_TO_POT | EXCESS_FROM_POT | MANUAL | CUSTOM
-  rakeOrder          String   @default("MISMATCH_FIRST") // MISMATCH_FIRST | RAKE_FIRST
-  winnerDefinition   String   @default("PROFIT_POSITIVE") // PROFIT_POSITIVE | TOP_N | MANUAL | CUSTOM
-  winnerTopN         Int      @default(1)
-  roundingRule       String   @default("NONE") // NONE | NEAREST_1 | NEAREST_5 | NEAREST_10
+  sessionRakeAmount Int     @default(0)
+  winnersCutPercent Int     @default(0)
+  rakeEnabled       Boolean @default(false)
+  rakeMethod        String  @default("PERCENT_PROFIT") // PERCENT_PROFIT | PERCENT_CASHOUT | FIXED_PER_WINNER | FIXED_PER_SESSION | CUSTOM
+  rakeValue         Int     @default(5) // percent (whole number) for PERCENT_* methods, flat points for FIXED_* methods
+  potEnabled        Boolean @default(false)
+  mismatchStrategy  String  @default("PROPORTIONAL_WINNERS") // PROPORTIONAL_WINNERS | EQUAL_WINNERS | EQUAL_ALL | SHORTFALL_TO_POT | EXCESS_FROM_POT | MANUAL | CUSTOM
+  rakeOrder         String  @default("MISMATCH_FIRST") // MISMATCH_FIRST | RAKE_FIRST
+  winnerDefinition  String  @default("PROFIT_POSITIVE") // PROFIT_POSITIVE | TOP_N | MANUAL | CUSTOM
+  winnerTopN        Int     @default(1)
+  roundingRule      String  @default("NONE") // NONE | NEAREST_1 | NEAREST_5 | NEAREST_10
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  admins              ClubAdmin[]
-  members             ClubMember[]
-  joinRequests        ClubJoinRequest[]
-  sessions            PokerSession[]
-  buyInRequests       BuyInRequest[]
-  cashOutSettlements  CashOutSettlement[]
-  potLogs             ClubPotLog[]
-  historicalRecords   HistoricalSessionRecord[]
-  pendingChanges      PendingChangeRequest[]
-  auditLogs           AuditLog[]
+  admins             ClubAdmin[]
+  members            ClubMember[]
+  joinRequests       ClubJoinRequest[]
+  sessions           PokerSession[]
+  buyInRequests      BuyInRequest[]
+  cashOutSettlements CashOutSettlement[]
+  potLogs            ClubPotLog[]
+  historicalRecords  HistoricalSessionRecord[]
+  pendingChanges     PendingChangeRequest[]
+  auditLogs          AuditLog[]
 }
 
 model ClubAdmin {
   clubId String
   userId String
-  club   Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([clubId, userId])
 }
@@ -182,16 +182,16 @@ enum SessionStatus {
 }
 
 model PokerSession {
-  id           String        @id @default(cuid())
-  clubId       String
-  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  sessionName  String
-  sessionType  SessionType
-  status       SessionStatus @default(active)
-  startedById  String
-  startedBy    User          @relation("SessionStarter", fields: [startedById], references: [id])
-  createdAt    DateTime      @default(now())
-  endedAt      DateTime?
+  id          String        @id @default(cuid())
+  clubId      String
+  club        Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionName String
+  sessionType SessionType
+  status      SessionStatus @default(active)
+  startedById String
+  startedBy   User          @relation("SessionStarter", fields: [startedById], references: [id])
+  createdAt   DateTime      @default(now())
+  endedAt     DateTime?
 
   // Flexible engine state (handNumber, dealerSeat, street, potSize, communityCards,
   // deck, playerSeats, currentHighBet, currentTurnSeat, turnStartedAt,
@@ -208,40 +208,59 @@ model PokerSession {
 }
 
 model BuyInRequest {
-  id           String   @id @default(cuid())
-  sessionId    String
-  session      PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  clubId       String
-  club         Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  userId       String
-  user         User     @relation("BuyInRequester", fields: [userId], references: [id])
-  amount       Int
-  status       String   @default("pending") // pending | approved | rejected
-  requestedBy  String
-  approvedBy   String?
-  createdAt    DateTime @default(now())
+  id          String       @id @default(cuid())
+  sessionId   String
+  session     PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  clubId      String
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation("BuyInRequester", fields: [userId], references: [id])
+  amount      Int
+  status      String       @default("pending") // pending | approved | rejected
+  requestedBy String
+  approvedBy  String?
+  createdAt   DateTime     @default(now())
 
   @@index([sessionId])
   @@index([clubId])
 }
 
+/// A settled live night.
+///
+/// The three canonical columns are the replay contract (SETTLEMENT-HISTORY-DESIGN
+/// .md §13.1, step 3). They are ADDITIVE and nullable: every existing column
+/// keeps its meaning and its value, so nothing that reads this table changes
+/// behaviour. Null means "settled before the contract existed" — see
+/// canonicalSettlement.ts, and never infer the missing values from the Club.
 model CashOutSettlement {
-  id               String   @id @default(cuid())
-  clubId           String
-  club             Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  sessionId        String
-  sessionType      String?
-  dayNumber        Int?
-  isDeleted        Boolean  @default(false)
-  settledBy        String
-  totalBuyIns      Int
-  totalCashOuts    Int
-  totalWinnersCut  Int
-  rakeCollected    Int
-  potAdjustment    Int
-  playerSummaries  Json
-  settledAt        DateTime @default(now())
-  notes            String?
+  id              String   @id @default(cuid())
+  clubId          String
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sessionId       String
+  sessionType     String?
+  dayNumber       Int?
+  isDeleted       Boolean  @default(false)
+  settledBy       String
+  totalBuyIns     Int
+  totalCashOuts   Int
+  totalWinnersCut Int
+  rakeCollected   Int
+  potAdjustment   Int
+  playerSummaries Json
+  settledAt       DateTime @default(now())
+  notes           String?
+
+  /// Which engine's semantics produced these figures. Null for nights settled
+  /// before it was recorded on the record itself — the audit log may still know.
+  engineVersion    Int?
+  /// Everything the engine reads, and nothing else: rules verbatim, ordered
+  /// participants with identity/buy-in/cash-out/manualWinner, pot state, and the
+  /// mismatch acknowledgement. Sufficient to replay with no Club lookup.
+  canonicalInputs  Json?
+  /// Everything the engine returned, with the seat fee and the winners' cut told
+  /// apart. Null on historical rows; `seatFee: null` plus a stated reason where
+  /// the two were fused and cannot be separated.
+  canonicalOutputs Json?
 
   @@index([clubId])
 }
@@ -273,20 +292,25 @@ model HistoricalSessionRecord {
   importedBy   String
   createdAt    DateTime @default(now())
 
+  /// See CashOutSettlement — same three columns, same rules, same reason.
+  engineVersion    Int?
+  canonicalInputs  Json?
+  canonicalOutputs Json?
+
   @@index([clubId])
 }
 
 model PendingChangeRequest {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   clubId          String
-  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club            Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
   sessionId       String
   sessionTitle    String
   requestType     String // edit_session | delete_session
   requestedBy     String
   requestedByName String
-  requestedAt     DateTime @default(now())
-  status          String   @default("pending")
+  requestedAt     DateTime  @default(now())
+  status          String    @default("pending")
   approvedBy      String?
   approvedByName  String?
   actionDate      DateTime?
@@ -294,6 +318,61 @@ model PendingChangeRequest {
   reason          String?
 
   @@index([clubId])
+}
+
+/// A settled night, as it stood at one moment.
+///
+/// Revision 1 is what the night said when it was settled; every later revision
+/// is a correction. The row exists so that overwriting a settlement is
+/// survivable — with nothing competing on screen, this is the ONLY surviving
+/// record of what a night used to say (SETTLEMENT-HISTORY-DESIGN.md §8).
+///
+/// Nothing here is ever updated in place. A correction appends.
+///
+/// `isLive` marks the revision the record currently shows. Exactly one per
+/// record, enforced by a partial unique index in the migration rather than by
+/// convention — "there are never two competing current settlements" is a
+/// database constraint.
+model SettlementRevision {
+  id                 String  @id @default(cuid())
+  /// The CashOutSettlement / HistoricalSessionRecord this describes.
+  recordId           String
+  recordType         String
+  /// 1 = original. Monotonic per record.
+  revision           Int
+  isLive             Boolean @default(true)
+  supersedesRevision Int?
+
+  /// Which engine produced these figures. Null where the data never said.
+  engineVersion    Int?
+  /// The 11 settlement rules actually used. Null where they are not in the data
+  /// — never inferred from the Club.
+  ruleSnapshot     Json?
+  /// The replay basis: ordered participants with identity, buy-in, cash-out and
+  /// manualWinner, plus pot state and the mismatch acknowledgement.
+  canonicalInputs  Json?
+  /// What the settlement says. TRANSCRIBED for a backfilled revision, not
+  /// recomputed — revision 1 is a migration of evidence, not a recalculation.
+  canonicalOutputs Json
+  totals           Json
+
+  /// settle | bank-edit | retro-rule | engine-migration | revert | backfill
+  causedBy    String
+  causeId     String?
+  reason      String
+  requestedBy String?
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+
+  /// Set when this revision's inputs are not sufficient to replay — e.g. the
+  /// rules were never recorded. Such a record is preserved and not correctable.
+  inputsIncompleteReason String?
+  /// Set when the seat fee and winners' cut were stored fused and cannot be
+  /// separated. Never zero as a stand-in.
+  splitUnavailableReason String?
+
+  @@unique([recordId, recordType, revision])
+  @@index([recordId, recordType])
 }
 
 model AuditLog {
@@ -315,7 +394,7 @@ model AuditLog {
 }
 
 model HandHistory {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   sessionId       String
   session         PokerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   clubId          String
@@ -328,7 +407,29 @@ model HandHistory {
   winnerNames     String[]
   winningHandDesc String
   timestamp       String
-  createdAt       DateTime @default(now())
+  createdAt       DateTime     @default(now())
+
+  /// STAGE 3B DEPLOYMENT PROBE — not a product field.
+  ///
+  /// Stage 3 proved that `prisma migrate deploy` RUNS in Railway's pre-deploy
+  /// container. It did not prove it can APPLY anything: production had no
+  /// pending migration, so the run reported "No pending migrations to apply."
+  /// This column exists so that one real migration is applied before the first
+  /// migration that carries money (MIGRATION-RELEASE-PROPOSAL.md §5, deploy 3).
+  ///
+  /// HandHistory was chosen because it is the most inert table in the schema:
+  /// it is written and read only by the Virtual Table module, whose router has
+  /// been unmounted in app.ts since before first deployment.
+  ///
+  /// Nullable, no default, no index, no constraint, and referenced by NO
+  /// application code — so the previously deployed version, which does not know
+  /// this column exists, keeps working while the pre-deploy step adds it. That
+  /// backward compatibility is a requirement of this release model, not a
+  /// courtesy: the migration runs while the old version is still serving.
+  ///
+  /// Removed by a separate later migration, once production has been verified
+  /// to have applied this one. Never in the same release.
+  migrationProbe  String?
 
   @@index([sessionId])
 }

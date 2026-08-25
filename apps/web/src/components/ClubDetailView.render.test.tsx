@@ -77,7 +77,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
   };
 });
 
@@ -170,7 +169,6 @@ const approvedBuyIn: BuyInRequest = {
 
 function renderClub() {
   vi.mocked(clubsApi.getClub).mockResolvedValue(club);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({});
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listPotLog).mockResolvedValue([]);

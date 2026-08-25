@@ -46,6 +46,33 @@ function Row({
   );
 }
 
+/**
+ * Which way the difference runs, said in words.
+ *
+ * The panel used to call it "the 300 difference" — the size of the gap with no
+ * hint which side of it anyone is on. Those are opposite situations: the engine
+ * treats a surplus as unclaimed chips that go to the Club Pot, and a deficit as
+ * money the club owes and has to take from somebody. An admin reading an
+ * unsigned figure at 1am cannot tell which one they are looking at, and the
+ * wrong guess is somebody handing over money that was never missing.
+ *
+ * `mismatchAmount` is `totalCashOuts - totalBuyIns`, so a POSITIVE figure means
+ * more went out than came in. The wording follows the engine's own steps, which
+ * already say "cash-outs exceed buy-ins" and "buy-ins exceed cash-outs" — this
+ * is the same fact in the shorter form a summary line can carry.
+ *
+ * Exported because the figure belongs anywhere the difference is named, and one
+ * phrasing in one place is what stops the two drifting apart.
+ */
+export function describeMismatch(
+  mismatchAmount: number,
+  formatAmount: (n: number) => string
+): string {
+  if (mismatchAmount === 0) return 'The night balances';
+  const amount = formatAmount(Math.abs(mismatchAmount));
+  return mismatchAmount > 0 ? `${amount} more out than in` : `${amount} more in than out`;
+}
+
 export interface SettlementPreviewProps {
   result: SettlementResult;
   club: Club;
@@ -158,27 +185,39 @@ export function SettlementPreview({
         </div>
       </div>
 
-      {/* House take, by source. The session rake is a seat fee charged to every
-          player, and it is folded into each of their rakeDeduction figures
-          above — so this restates it as rate × heads, the only place the total
-          and how it was reached are both visible. */}
+      {/*
+        House take, by source — TAKEN FROM THE ENGINE, not reconstructed.
+
+        Both figures used to be derived here, and both were wrong:
+
+            winners' cut  =  totalRakeCollected − flatRake      ← one seat fee
+            session rake  =  flatRake × players.length          ← ignores capping
+
+        The first subtracted ONE seat fee from a total containing N of them, so
+        it overstated the cut by flatRake × (N−1) — 7,000 chips at eight players
+        and a 1,000 seat fee. The two lines then visibly failed to sum to the
+        House take printed directly beneath them, which is the one place this
+        panel exists to reconcile.
+
+        The second assumed every player pays the full fee. The engine caps it:
+        `seatFee = min(seatFeeCharged, rakeDeduction)`, because a player cannot
+        be charged more for the chair than the house took from them at all.
+
+        The engine already returns both, precisely so this does not have to
+        guess — and its own invariant is `seatFee + winnersCut === rakeDeduction`
+        per player, so these two lines sum to the total by construction.
+
+        The label lost its "× N players" with the arithmetic that justified it:
+        once the figure is the capped total, rate × heads is no longer what it
+        says.
+      */}
       {showHouseTake && (
         <div className="space-y-1 text-[11px] font-mono tabular-nums pt-1 border-t border-line">
           {cutPercent > 0 && (
-            <Row
-              label={`Winners' cut (${cutPercent}%)`}
-              amount={formatAmount(Math.max(0, result.totalRakeCollected - flatRake))}
-            />
+            <Row label={`Winners' cut (${cutPercent}%)`} amount={formatAmount(result.totalWinnersCut)} />
           )}
           {flatRake > 0 && (
-            <Row
-              // "× N players" rather than the rate spelled out: formatAmount
-              // carries its own unit, so folding it in reads as
-              // "(1,000 Chips × 2)" — the per-seat figure is already on every
-              // player's own row above.
-              label={`Session rake × ${result.players.length} ${result.players.length === 1 ? 'player' : 'players'}`}
-              amount={formatAmount(flatRake * result.players.length)}
-            />
+            <Row label="Session rake" amount={formatAmount(result.totalSeatFees)} />
           )}
           <div className="pt-1 border-t border-line">
             <Row label="House take" amount={formatAmount(result.totalRakeCollected)} tone="accent" strong />
@@ -202,7 +241,8 @@ export function SettlementPreview({
       {result.requiresManualResolution && (
         <div className="p-3 bg-warning/15 border border-warning/40 rounded-xl space-y-2">
           <p className="text-warning text-[11px] font-mono">
-            This club requires manual mismatch resolution. Reconcile the {Math.abs(result.mismatchAmount)} difference
+            This club requires manual mismatch resolution.{' '}
+            {describeMismatch(result.mismatchAmount, formatAmount)} — reconcile it
             outside the app{mismatchAcknowledgement ? ', then confirm below.' : ' before saving.'}
           </p>
           {mismatchAcknowledgement && (

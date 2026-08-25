@@ -5,6 +5,7 @@ import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import * as notificationsService from '../notifications/notifications.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from './settlementEngine.js';
+import { buildCanonicalInputs, canonicalOutputsFrom } from './canonicalSettlement.js';
 import { AUDIT_SCHEMA_VERSION } from '../clubRecords/auditMeta.js';
 
 // Offline and Lazy Dealer sessions don't run the automated poker engine —
@@ -481,22 +482,112 @@ export async function joinSession(sessionId: string, userId: string) {
   return session;
 }
 
-// A member who isn't seated yet asks to be dealt in. Admins already at the
-// table approve it — self-seating stays available via joinSession for the
-// admin who started the session.
-export async function requestSitIn(sessionId: string, clubId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+/**
+ * A member who isn't seated yet asks to be dealt in, or an admin asks on their
+ * behalf. Admins already at the table approve it either way — self-seating
+ * stays available via joinSession for the admin who started the session.
+ *
+ * TWO CALLERS, ONE REQUEST. `targetUserId` defaults to the requester, so the
+ * self path is unchanged: same call, same state, same event.
+ *
+ * The admin path exists because the sheet already offered it and could not do
+ * it. An admin opening the sheet of somebody who had stood up saw "Sit back
+ * down", pressed it, and asked for a seat FOR THEMSELVES — the player's id was
+ * never sent. An admin already at the table (the normal case) got
+ * "You are already seated at this table" for pressing a button about somebody
+ * else, and the player stayed standing with no way back except their own phone.
+ *
+ * WHO IS ALLOWED IS DECIDED FROM THE TOKEN, NEVER FROM THE BODY. The body says
+ * who is being seated; `requesterId` comes from the authenticated session and is
+ * the only thing consulted for permission. Acting for somebody else is an admin
+ * capability, so it is checked against the club — matching decideSitIn, which
+ * already guards the other half of this exchange.
+ */
+export async function requestSitIn(
+  sessionId: string,
+  clubId: string,
+  requesterId: string,
+  // Both default, so `requestSitIn(sessionId, clubId, userId)` still compiles
+  // and still means exactly what it did: that person, asking for themselves.
+  // `isSuperAdmin` is only ever read on the on-behalf path, which cannot be
+  // reached without passing the fifth argument — so the default cannot grant
+  // anything, only withhold it.
+  isSuperAdmin: boolean = false,
+  targetUserId: string = requesterId
+) {
+  const onBehalf = targetUserId !== requesterId;
+
+  if (onBehalf) {
+    const club = await clubsService.getClubOrThrow(clubId);
+    clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+  }
+
+  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
-    if ((state.activePlayerUids || []).includes(userId)) {
-      throw new HttpError(409, 'You are already seated at this table');
+
+    if ((state.activePlayerUids || []).includes(targetUserId)) {
+      throw new HttpError(
+        409,
+        onBehalf ? 'That player is already seated at this table' : 'You are already seated at this table'
+      );
     }
 
-    const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), userId]));
-    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}), [userId]: new Date().toISOString() };
+    /*
+     * One pending request per person.
+     *
+     * The old code deduplicated silently with a Set, so pressing twice returned
+     * 201 and changed nothing. That is defensible for one person tapping their
+     * own phone and wrong the moment two admins can ask for the same player:
+     * both are told it worked, and the timestamp below quietly becomes the
+     * second one's. Saying so costs nothing and is the same answer
+     * decideBuyInRequest gives for the same situation.
+     */
+    if ((state.pendingSitInUids || []).includes(targetUserId)) {
+      throw new HttpError(
+        409,
+        onBehalf ? 'That player has already asked for a seat' : 'You have already asked for a seat'
+      );
+    }
+
+    /*
+     * Only somebody who is actually part of tonight.
+     *
+     * Checked for the admin path specifically. A self-request is how a member
+     * joins a night they were never in, which is the feature — but an admin
+     * naming an arbitrary id must name somebody the night already knows, or
+     * this becomes a way to seat any club member from a request they never
+     * made. The two ways to belong are having stood up (there are chips to
+     * carry back) and having banked (they are playing).
+     *
+     * decideSitIn's own guard still applies afterwards: it refuses to seat
+     * anyone who is not in pendingSitInUids, so nothing here bypasses it.
+     */
+    if (onBehalf) {
+      const stoodUp = (state.cashOuts || []).some(
+        (c) => c.userId === targetUserId && c.status === 'confirmed'
+      );
+      if (!stoodUp) {
+        const banked = await tx.buyInRequest.count({
+          where: { sessionId, userId: targetUserId, status: 'approved' },
+        });
+        if (banked === 0) throw new HttpError(404, 'That player is not part of this night');
+      }
+    }
+
+    // The Set is redundant now the guard above refuses duplicates, and kept
+    // anyway: it costs nothing and the invariant is worth two defences.
+    const pendingSitInUids = Array.from(new Set([...(state.pendingSitInUids || []), targetUserId]));
+    const sitInRequestedAt = {
+      ...(state.sitInRequestedAt || {}),
+      [targetUserId]: new Date().toISOString(),
+    };
     return { state: { ...state, pendingSitInUids, sitInRequestedAt }, result: null };
   });
 
-  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId, session });
+  // The person being seated, not the person who asked — the queue and the felt
+  // both key off this, and sending the requester put an admin's own face on a
+  // row about somebody else.
+  emitToClub(clubId, 'club:sitin-requested', { sessionId, userId: targetUserId, session });
   return session;
 }
 
@@ -1262,20 +1353,47 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
       roundingRule: rules.roundingRule as SettlementSettings['roundingRule'],
     };
 
-    const engineResult = computeSettlement(
-      activePlayerUids.map((uid) => {
-        const entry = entryByUid.get(uid);
-        return {
-          userId: uid,
-          userDisplayName: nameByUid.get(uid) || 'Player',
-          buyIn: Number(entry?.buyIn || 0),
-          cashOut: lockedCashOut.has(uid) ? lockedCashOut.get(uid)! : Number(entry?.cashOut || 0),
-          manualWinner: entry?.manualWinner,
-        };
-      }),
-      settlementSettings,
-      { currentPotBalance: club.clubPotBalance, mismatchAcknowledged: input.mismatchAcknowledged }
-    );
+    /*
+     * The engine's inputs, built once and then both RUN and RECORDED.
+     *
+     * Extracted into a variable rather than inlined into the call so the
+     * canonical record below is provably the same array the engine settled —
+     * participant order included, which is arithmetic rather than presentation
+     * (canonicalSettlement.ts). Building it twice would let the two drift.
+     */
+    const enginePlayers = activePlayerUids.map((uid) => {
+      const entry = entryByUid.get(uid);
+      return {
+        userId: uid,
+        userDisplayName: nameByUid.get(uid) || 'Player',
+        buyIn: Number(entry?.buyIn || 0),
+        cashOut: lockedCashOut.has(uid) ? lockedCashOut.get(uid)! : Number(entry?.cashOut || 0),
+        manualWinner: entry?.manualWinner,
+      };
+    });
+
+    const engineResult = computeSettlement(enginePlayers, settlementSettings, {
+      currentPotBalance: club.clubPotBalance,
+      mismatchAcknowledged: input.mismatchAcknowledged,
+    });
+
+    /*
+     * The replay contract, captured beside the settlement rather than instead
+     * of it. The live path above is untouched — same call, same arguments, same
+     * numbers — and this records everything needed to reproduce it later
+     * without consulting the Club again.
+     *
+     * settlementRulesSnapshot.integration.test.ts proves the captured record
+     * replays back to exactly what was stored.
+     */
+    const canonicalInputs = buildCanonicalInputs({
+      rules: settlementSettings,
+      players: enginePlayers,
+      currentPotBalance: club.clubPotBalance,
+      mismatchAcknowledged: input.mismatchAcknowledged,
+      capturedFrom: 'settleSession',
+    });
+    const canonicalOutputs = canonicalOutputsFrom(engineResult, canonicalInputs);
 
     if (engineResult.requiresManualResolution) {
       throw new HttpError(409, 'This club requires manual mismatch resolution — acknowledge it before settling.');
@@ -1307,10 +1425,63 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
         settledBy: requesterId,
         totalBuyIns: engineResult.totalBuyIns,
         totalCashOuts: engineResult.totalCashOuts,
-        totalWinnersCut: 0, // superseded by totalRakeCollected — kept 0 for schema/history compatibility
+        /*
+         * ONE MEANING, both writers.
+         *
+         * This was hard-coded to 0 here and set to the FULL rake by
+         * applySessionChange, so the same column meant different things
+         * depending on which path last wrote it — and it could not mean the
+         * winners' cut at all, because the engine fused the cut and the seat
+         * fee into one number. Now that the engine reports them apart, the
+         * column can finally hold what its name says.
+         *
+         * Rounded because the column is an Int and Prisma coerces silently;
+         * `canonicalOutputs` carries the unrounded figure.
+         *
+         * Rows written before this change are unreliable and cannot be
+         * repaired — nothing renders this field, which is why the ambiguity
+         * went unnoticed and why pinning it changes nothing on screen.
+         */
+        totalWinnersCut: Math.round(engineResult.totalWinnersCut),
         rakeCollected: engineResult.totalRakeCollected,
         potAdjustment: engineResult.potContribution,
         playerSummaries: summaries as any,
+        engineVersion: canonicalInputs.engineVersion,
+        canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+        canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    /*
+     * Revision 1, written the moment the night is settled.
+     *
+     * The original is a revision like any other rather than a special case, so
+     * every later correction has something to supersede — and the precondition
+     * the design states ("no revision 1, no correction") is satisfied for new
+     * nights without a backfill ever running.
+     *
+     * Inside this transaction on purpose: a settlement that exists without its
+     * revision would be a night that could later be overwritten with nothing
+     * behind it, which is the one thing the revision model exists to prevent.
+     *
+     * `isLive` is true and stays true until a correction supersedes it. The
+     * partial unique index on (recordId, recordType) WHERE isLive makes "one
+     * current settlement per night" a database constraint.
+     */
+    await tx.settlementRevision.create({
+      data: {
+        recordId: settlement.id,
+        recordType: 'cashout',
+        revision: 1,
+        isLive: true,
+        engineVersion: canonicalInputs.engineVersion,
+        ruleSnapshot: canonicalInputs.rules as unknown as Prisma.InputJsonValue,
+        canonicalInputs: canonicalInputs as unknown as Prisma.InputJsonValue,
+        canonicalOutputs: canonicalOutputs as unknown as Prisma.InputJsonValue,
+        totals: canonicalOutputs.totals as unknown as Prisma.InputJsonValue,
+        causedBy: 'settle',
+        reason: 'Original settlement.',
+        requestedBy: requesterId,
       },
     });
 

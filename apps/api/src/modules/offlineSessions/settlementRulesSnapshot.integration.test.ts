@@ -148,7 +148,11 @@ describe('a night that started raked stays raked', () => {
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
     // Owner's 5,000 profit → 5% = 250, plus 1,000 EACH from two players.
-    // Asserted on rakeCollected alone: totalWinnersCut is hard-coded to 0 in
+    // Asserted on rakeCollected, which is the combined take. totalWinnersCut
+    // now holds the winners' cut alone (both writers agree on that since the
+    // canonical contract landed), so it is a different figure rather than a
+    // dead one — see the split assertions in canonicalReplay.integration.test.ts.
+    // Historically it was hard-coded to 0 in
     // settleSession, kept only so old history rows keep their shape.
     expect(settled.rakeCollected).toBe(2_250);
   });

@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { ResourceCacheProvider, useResource, useResourceCache } from './resource-cache';
+import { resetMetrics, snapshot } from './cache-metrics';
 
 /**
  * The cache's optimistic-write contract.
@@ -163,5 +164,92 @@ describe('reads', () => {
 
     // A failed refresh must never blank a screen that had content.
     expect(screen.getByTestId('rows')).toHaveTextContent('a');
+  });
+});
+
+/**
+ * Does the cache's single-flight cover resync()?
+ *
+ * Stage 1 of the socket lifecycle work turns on this: `resource-cache.tsx`
+ * single-flights concurrent reads of one key, so a second `resync()` landing on
+ * top of the first looked like it might already be free — in which case the
+ * planned deduplication would be building a guard against nothing.
+ *
+ * It is not free. All eight `refresh*` helpers in ClubDetailView's `resync()`
+ * are `useResource(...).refresh`, and `refresh` calls `load(true)` — `force`,
+ * which is precisely the flag the in-flight check is written to skip. Two
+ * resyncs mean two requests per resource, not one.
+ *
+ * The first test is the instrument. Without it, "dedupedRequests: 0" in the
+ * second test cannot be distinguished from a dedup path that never fires at
+ * all — the failure mode this project has hit five times.
+ */
+describe('single-flight, and what force does to it', () => {
+  /** A fetch whose resolution the test controls, so two callers truly overlap. */
+  function pending<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+
+  it('collapses two concurrent unforced reads of one key into a single request', async () => {
+    const gate = pending<string[]>();
+    const fetcher = vi.fn(() => gate.promise);
+    resetMetrics();
+
+    render(
+      <>
+        <Probe cacheKey="sf" fetcher={fetcher} onReady={() => {}} />
+        <Probe cacheKey="sf" fetcher={fetcher} onReady={() => {}} />
+      </>,
+      { wrapper }
+    );
+
+    const m = snapshot();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(m.networkRequests).toBe(1);
+    expect(m.dedupedRequests).toBe(1);
+
+    await act(async () => {
+      gate.resolve(['a']);
+    });
+  });
+
+  it('issues one request per refresh(), because refresh forces past the in-flight check', async () => {
+    let harness!: ReturnType<typeof useHarness>;
+    const gates: { resolve: (value: string[]) => void }[] = [];
+    const fetcher = vi.fn(() => {
+      const g = pending<string[]>();
+      gates.push(g);
+      return g.promise;
+    });
+
+    render(<Probe cacheKey="sf-forced" fetcher={fetcher} onReady={(h) => (harness = h)} />, {
+      wrapper,
+    });
+    await act(async () => {
+      gates[0].resolve(['a']);
+    });
+    await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('a'));
+
+    // Two refreshes overlapping, as a second resync landing on the first would
+    // be. Neither is awaited, so the first is still in flight when the second
+    // arrives — the only condition under which dedup could apply.
+    resetMetrics();
+    act(() => {
+      void harness.res.refresh();
+      void harness.res.refresh();
+    });
+
+    const m = snapshot();
+    expect(m.refreshes).toBe(2);
+    expect(m.networkRequests).toBe(2);
+    expect(m.dedupedRequests).toBe(0);
+
+    await act(async () => {
+      gates.forEach((g) => g.resolve(['a']));
+    });
   });
 });

@@ -351,13 +351,28 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
               add 7,200 to what they have put in and settle them 7,200 down.
               More chips than that is an ordinary top-up, once they are sitting.
             */}
+            {/*
+              An admin looking at somebody else says so. The button used to read
+              "Sit back down with 7,200" whoever was holding the phone, which
+              described the wrong person's evening and — until the id was
+              actually sent — did the wrong person's action.
+
+              It asks rather than does, and says so, because it is the same
+              request the player would make: it joins the queue and an admin
+              approves it there. Promising a seat here would be a second lie
+              about the same button.
+            */}
             {state === 'cashedOut' && (
               <>
                 <Button variant="primary" size="lg" fullWidth loading={busy} onClick={onSitBackDown}>
-                  Sit back down with {formatAmount(seat?.confirmedCashOut ?? 0)}
+                  {isSelf
+                    ? `Sit back down with ${formatAmount(seat?.confirmedCashOut ?? 0)}`
+                    : `Ask for ${name} to sit back down with ${formatAmount(seat?.confirmedCashOut ?? 0)}`}
                 </Button>
                 <p className="text-xs text-text-faint text-center leading-relaxed">
-                  You take your chips back to the table. Buy more once you're sitting.
+                  {isSelf
+                    ? "You take your chips back to the table. Buy more once you're sitting."
+                    : `${name} takes those chips back to the table. Approve it in the queue to seat them.`}
                 </p>
               </>
             )}
