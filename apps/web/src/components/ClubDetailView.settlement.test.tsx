@@ -64,7 +64,6 @@ vi.mock('../lib/clubs-api', async () => {
   return {
     ...actual,
     getClub: vi.fn(),
-    getClubRoster: vi.fn(),
   };
 });
 
@@ -170,10 +169,10 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
   // Needed only to prove the winner control ignores the club — which cannot be
   // shown while the club and the night's snapshot always agree.
   const theClub = { ...club, ...clubOver } as Club;
-  vi.mocked(clubsApi.getClub).mockResolvedValue(theClub);
-  vi.mocked(clubsApi.getClubRoster).mockResolvedValue({
-    host: { displayName: 'Host' },
-    priya: { displayName: 'Priya' },
+  // The roster travels on the club record now, not a second request.
+  vi.mocked(clubsApi.getClub).mockResolvedValue({
+    ...theClub,
+    roster: { host: { displayName: 'Host' }, priya: { displayName: 'Priya' } },
   } as never);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.getLeaderboard).mockResolvedValue([]);
@@ -698,7 +697,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
      * runs and nothing is exercised.)
      */
     const ack = await openWithMismatch();
-    expect(screen.getByText(/reconcile the 300 difference/i)).toBeInTheDocument();
+    expect(screen.getByText(/300\D*more out than in/i)).toBeInTheDocument();
 
     fireEvent.click(ack);
     await waitFor(() =>
@@ -713,7 +712,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 
     const again = await screen.findByRole('checkbox');
     expect(
-      screen.getByText(/reconcile the 300 difference/i),
+      screen.getByText(/300\D*more out than in/i),
       'the mismatch really is unchanged'
     ).toBeInTheDocument();
     expect((again as HTMLInputElement).checked, 'and it is still withdrawn').toBe(false);
@@ -884,5 +883,59 @@ describe('entering figures', () => {
           ]),
         }));
     });
+  });
+});
+
+/**
+ * A5, locked before the screen that will break it is built.
+ *
+ * calculateSettlement coerces every field with `Number(cashOutInputs[uid] || 0)`,
+ * and the engine has no way to express "not entered yet" — a blank is a zero.
+ * Today nothing shows the consequence, because Calculate stays disabled until
+ * every player has a figure, so a coerced zero never reaches the panel.
+ *
+ * The redesign removes that control and renders results continuously. At that
+ * point a half-counted table would show confident nets for players nobody has
+ * counted, each one a real-looking loss of exactly their bank.
+ *
+ * So this asserts the property rather than the mechanism: with a figure missing,
+ * NO signed net appears for anyone. It passes today because of the gate, and it
+ * has to keep passing when the gate is gone — which is the whole reason for
+ * writing it now rather than alongside the code that needs it.
+ *
+ * The file's own history is the argument: "`uid in cashOutInputs` was the whole
+ * test, so a field the host had cleared still counted... Auto Calculate unlocked
+ * and settled somebody at zero they never agreed to."
+ */
+describe('a figure nobody has entered is not a figure', () => {
+  it('A5 — with one cash-out missing, no player shows a net', async () => {
+    await openSettlement();
+
+    // Two players; count only the first.
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+
+    // Nothing is claimed about anybody while a figure is outstanding.
+    expect(previewLines(), 'no per-player arithmetic yet').toHaveLength(0);
+    expect(
+      screen.queryAllByText(/^[+-][\d,]+$/),
+      'no signed net may appear while a cash-out is blank'
+    ).toHaveLength(0);
+  });
+
+  it('A5 — a cleared field withdraws the figures again', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    // The Calculate gate is still here in 7A; 7B is what removes it. The
+    // invariant below is about the blank, not about how the figures got shown.
+    fireEvent.click(screen.getByRole('button', { name: /auto calculate/i }));
+    await findPreview();
+
+    // Blank is not zero. Clearing it must take the results away, not settle
+    // that player at nothing.
+    fireEvent.change(amountFields()[3], { target: { value: '' } });
+
+    expect(previewLines()).toHaveLength(0);
+    expect(screen.queryAllByText(/^[+-][\d,]+$/)).toHaveLength(0);
   });
 });

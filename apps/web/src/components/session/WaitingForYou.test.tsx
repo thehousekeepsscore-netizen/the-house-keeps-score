@@ -16,7 +16,7 @@ import { WaitingForYou, WaitingRow } from './WaitingForYou';
 const fmt = (n: number) => n.toLocaleString();
 
 /**
- * The tag and how long they have waited share one line — "More chips • 2m" —
+ * The tag and how long they have waited share one line — "Add to bank • 2m" —
  * so matching the tag means matching within a node rather than the whole of it.
  */
 /*
@@ -72,7 +72,7 @@ describe('every row is a person', () => {
     unmount();
 
     render(<WaitingForYou rows={[row({ joining: false, amount: 3000 })]} formatAmount={fmt} />);
-    expect(tagLine(/(^|\s)More chips •/)).toBeInTheDocument();
+    expect(tagLine(/(^|\s)Add to bank •/)).toBeInTheDocument();
     expect(noTagLine(/Join table/)).not.toBeInTheDocument();
   });
 
@@ -130,7 +130,7 @@ describe('when the person is the reader', () => {
     // to say "You needs more chips"; a tag simply does not have the problem.
     render(<WaitingForYou rows={[row({ name: 'You', joining: false })]} formatAmount={fmt} />);
     expect(screen.getByText('You')).toBeInTheDocument();
-    expect(tagLine(/(^|\s)More chips •/)).toBeInTheDocument();
+    expect(tagLine(/(^|\s)Add to bank •/)).toBeInTheDocument();
   });
 });
 

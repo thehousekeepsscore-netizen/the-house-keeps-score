@@ -16,6 +16,8 @@ import { useAction } from '../lib/use-action';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppUser as User } from '../lib/auth-types';
 import { getSocket } from '../lib/socket';
+import { useSocketConnection } from '../lib/socket-connection';
+import { useForegroundRecovery } from '../lib/use-foreground-recovery';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
@@ -241,7 +243,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // header because the failure mode is silent: a dropped socket leaves the
   // table looking perfectly normal while it quietly stops changing, and an
   // admin has no way to tell they're settling against a stale view.
-  const [socketLive, setSocketLive] = useState(true);
+  //
+  // Read from the socket rather than assumed. This used to be a boolean
+  // initialised to `true`, so a socket that had never connected once still
+  // displayed as live — the exact case the badge exists to catch.
+  const socketConnection = useSocketConnection(getSocket());
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine
   );
@@ -255,8 +261,45 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       window.removeEventListener('offline', off);
     };
   }, []);
-  const connection: 'live' | 'reconnecting' | 'offline' =
-    !browserOnline ? 'offline' : socketLive ? 'live' : 'reconnecting';
+  const connection: 'live' | 'reconnecting' | 'offline' | 'auth-error' = !browserOnline
+    ? 'offline'
+    : socketConnection.state === 'auth-error'
+      ? 'auth-error'
+      : socketConnection.state === 'connected'
+        ? 'live'
+        : 'reconnecting';
+
+  /**
+   * The badge's copy, decided here rather than in three parallel ternaries in
+   * the markup.
+   *
+   * `auth-error` reads as danger rather than warning because nothing is going to
+   * retry it: socket.io-client destroys a socket whose handshake the server
+   * refused. "Reconnecting" would promise a recovery that is never coming. The
+   * server's own wording stays in the tooltip — it names the cause precisely
+   * (missing token versus expired one) and that is worth keeping reachable —
+   * but it is not what a player reads first.
+   */
+  const connectionBadge =
+    connection === 'offline'
+      ? {
+          label: 'Offline',
+          tone: 'danger' as const,
+          title: 'This device is offline — figures may be out of date.',
+        }
+      : connection === 'auth-error'
+        ? {
+            label: 'Session expired',
+            tone: 'danger' as const,
+            title: `Live updates have stopped and will not resume on their own. Sign in again to restore them.${
+              socketConnection.message ? ` (${socketConnection.message})` : ''
+            }`,
+          }
+        : {
+            label: 'Reconnecting',
+            tone: 'warning' as const,
+            title: 'Reconnecting — figures may be out of date until this clears.',
+          };
 
   // Core Scorekeeper Tabs
   /**
@@ -838,12 +881,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const canSeeAudit = isOwner || isSuperUser;
 
-  const rosterRes = useResource<Record<string, ClubRosterEntry>>(
-    `${clubKey}:roster`,
-    () => clubsApi.getClubRoster(initialClub.id)
-  );
-  const allUsers = rosterRes.data ?? EMPTY_ROSTER;
-  const refreshRoster = rosterRes.refresh;
+  // Comes with the club record now, on the same payload the ids come from, so
+  // there is no second request and nothing separate to refresh: whatever
+  // refreshes the club refreshes the roster with it.
+  const allUsers = club.roster ?? EMPTY_ROSTER;
 
 
 
@@ -906,6 +947,49 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // fetches, stale data revalidates behind the content, and fresh data does
   // neither. Resources gated to admins have a null key and are skipped entirely.
 
+  /**
+   * Re-join this club's room and refetch everything the room could have changed.
+   *
+   * Lifted to component scope because two separate paths need it and must stay
+   * identical: a socket `connect`, and the user returning to the app. Defining
+   * it twice would let them drift.
+   */
+  const resync = useCallback(() => {
+    const socket = getSocket();
+    socket.emit('club:join', initialClub.id);
+    refreshClub();
+    refreshActiveSession();
+    refreshHistory();
+    refreshLeaderboard();
+    refreshPotLog();
+    refreshPendingChanges();
+    refreshAuditTrail();
+  }, [
+    initialClub.id,
+    refreshClub,
+    refreshActiveSession,
+    refreshHistory,
+    refreshLeaderboard,
+    refreshPotLog,
+    refreshPendingChanges,
+    refreshAuditTrail,
+  ]);
+
+  /**
+   * Coming back to the app makes the data current again.
+   *
+   * This screen has no polling and no timer, so without this its only route to
+   * fresh data is the socket — and the failure being fixed is a socket that has
+   * died silently while the tab was backgrounded, still reporting `connected`.
+   * The refetch therefore runs on every resume regardless of that flag; see
+   * use-foreground-recovery.ts for why trusting it is the bug.
+   */
+  useForegroundRecovery({
+    socket: getSocket(),
+    authFailed: socketConnection.state === 'auth-error',
+    onResume: resync,
+  });
+
   // Live sync: join this club's room and refetch the affected slice on each
   // event, rather than trusting the socket payload as full state — same
   // pattern as VirtualTableView's club/session room sync.
@@ -922,27 +1006,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // were away are gone for good, so the only way back to the truth is to
     // ask for it. This is what makes the view converge after a drop rather
     // than resuming from a stale snapshot.
-    const resync = () => {
-      socket.emit('club:join', initialClub.id);
-      refreshClub();
-      refreshRoster();
-      refreshActiveSession();
-      refreshHistory();
-      refreshLeaderboard();
-      refreshPotLog();
-      refreshPendingChanges();
-      refreshAuditTrail();
-    };
-
-    const onConnect = () => { setSocketLive(true); resync(); };
-    const onDisconnect = () => setSocketLive(false);
+    // Connection state is tracked by useSocketConnection; this listener exists
+    // only for the re-join and refetch. `resync` is shared with the foreground
+    // recovery path above so the two cannot diverge.
+    const onConnect = () => { resync(); };
 
     socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
 
     // Already connected when this mounted — 'connect' won't fire again.
     if (socket.connected) socket.emit('club:join', initialClub.id);
-    setSocketLive(socket.connected);
 
     // A request that times out is auto-rejected server-side and simply
     // disappears from the table. Tell whoever it belonged to why, otherwise it
@@ -1053,7 +1125,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     return () => {
       socket.emit('club:leave', initialClub.id);
       socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
       socket.off('club:session-started', onSessionStarted);
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
@@ -1063,7 +1134,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshRoster, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
+  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([
@@ -2262,6 +2333,37 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         club.id, activeSession.id, amount, forSelf ? undefined : sheetUid
       );
       await refreshActiveSession();
+
+      /*
+       * Say that it was sent.
+       *
+       * runSheet closes the sheet on success and speaks only on failure, so the
+       * commonest outcome in the night — money requested — was the one nothing
+       * acknowledged. The sheet simply vanished, and the only confirmations were
+       * a "+5,000" caption on a seat the sheet had just been covering, and a row
+       * in a queue that shows the player approve/reject controls rather than a
+       * receipt. "Nothing happened" on a money screen reads as "press it again",
+       * which is precisely the behaviour that once produced twenty duplicate
+       * rows (use-action.ts).
+       *
+       * Toast, because that is already this app's success channel for exactly
+       * this event through the older door ("Buy-in requested", :1503) and for
+       * cash-outs and opening the table. Pushed here rather than by teaching
+       * runSheet a success message: four other callers share that helper and
+       * only this one is in scope.
+       *
+       * Named for the SUBJECT of the sheet, not the holder of the phone. An
+       * admin adding to Rahul's bank must not be told "waiting for the host to
+       * approve" about their own tap — the same mistake the sit-back-down button
+       * made until #41.
+       */
+      pushToast(
+        'Bank requested',
+        forSelf
+          ? `${formatUnit(amount)} — waiting for the host to approve.`
+          : `${formatUnit(amount)} for ${allUsers[sheetUid]?.displayName || 'that player'} — waiting for approval.`,
+        'success'
+      );
     }, 'Please try again.');
 
   /*
@@ -2454,19 +2556,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     appears only on trouble keeps its meaning. */}
                 {connection !== 'live' && (
                   <span
-                    title={
-                      connection === 'offline'
-                        ? 'This device is offline — figures may be out of date.'
-                        : 'Reconnecting — figures may be out of date until this clears.'
-                    }
+                    title={connectionBadge.title}
                     className={`px-2 py-0.5 border font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1.5 ${
- connection === 'offline'
+                      connectionBadge.tone === 'danger'
                         ? 'bg-danger/10 border-danger text-danger'
                         : 'bg-warning/10 border-warning text-warning'
                     }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${connection === 'offline' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
-                    {connection === 'offline' ? 'Offline' : 'Reconnecting'}
+                    <span className={`w-1.5 h-1.5 rounded-full ${connectionBadge.tone === 'danger' ? 'bg-danger' : 'bg-warning animate-pulse'}`} />
+                    {connectionBadge.label}
                   </span>
                 )}
                 {/* Balances display in Chips everywhere, so the cash rate has
@@ -2613,7 +2711,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
             {/* Picks a person, and nothing else. Choosing one opens their own
                 sheet, which opens on the bank chooser because they have no
-                seat — so there is exactly one "how many chips" in the app,
+                seat — so there is exactly one "how much?" in the app,
                 entered from two doors. */}
             <AddPlayerSheet
               open={addPlayerOpen}

@@ -46,6 +46,33 @@ function Row({
   );
 }
 
+/**
+ * Which way the difference runs, said in words.
+ *
+ * The panel used to call it "the 300 difference" — the size of the gap with no
+ * hint which side of it anyone is on. Those are opposite situations: the engine
+ * treats a surplus as unclaimed chips that go to the Club Pot, and a deficit as
+ * money the club owes and has to take from somebody. An admin reading an
+ * unsigned figure at 1am cannot tell which one they are looking at, and the
+ * wrong guess is somebody handing over money that was never missing.
+ *
+ * `mismatchAmount` is `totalCashOuts - totalBuyIns`, so a POSITIVE figure means
+ * more went out than came in. The wording follows the engine's own steps, which
+ * already say "cash-outs exceed buy-ins" and "buy-ins exceed cash-outs" — this
+ * is the same fact in the shorter form a summary line can carry.
+ *
+ * Exported because the figure belongs anywhere the difference is named, and one
+ * phrasing in one place is what stops the two drifting apart.
+ */
+export function describeMismatch(
+  mismatchAmount: number,
+  formatAmount: (n: number) => string
+): string {
+  if (mismatchAmount === 0) return 'The night balances';
+  const amount = formatAmount(Math.abs(mismatchAmount));
+  return mismatchAmount > 0 ? `${amount} more out than in` : `${amount} more in than out`;
+}
+
 export interface SettlementPreviewProps {
   result: SettlementResult;
   club: Club;
@@ -214,7 +241,8 @@ export function SettlementPreview({
       {result.requiresManualResolution && (
         <div className="p-3 bg-warning/15 border border-warning/40 rounded-xl space-y-2">
           <p className="text-warning text-[11px] font-mono">
-            This club requires manual mismatch resolution. Reconcile the {Math.abs(result.mismatchAmount)} difference
+            This club requires manual mismatch resolution.{' '}
+            {describeMismatch(result.mismatchAmount, formatAmount)} — reconcile it
             outside the app{mismatchAcknowledgement ? ', then confirm below.' : ' before saving.'}
           </p>
           {mismatchAcknowledgement && (

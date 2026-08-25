@@ -114,6 +114,7 @@ export const PerformanceDebugView: React.FC = () => {
           <Stat label="Requests" value={snap.networkRequests} hint="fetches that hit the wire" />
           <Stat label="Deduped" value={snap.dedupedRequests} hint="joined one already in flight" />
           <Stat label="Failed" value={snap.failedRequests} />
+          <Stat label="Superseded" value={snap.supersededResponses} hint="a newer response had already written" />
           <Stat
             label="API latency"
             value={apiMs === null ? '—' : apiMs < 0 ? 'error' : `${apiMs}ms`}
