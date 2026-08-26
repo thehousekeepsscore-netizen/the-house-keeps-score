@@ -101,6 +101,7 @@ vi.mock('../lib/api-client', async () => {
 });
 
 import { ClubDetailView } from './ClubDetailView';
+import { ClubDashboardView } from './ClubDashboardView';
 import { ResourceCacheProvider } from '../lib/resource-cache';
 import { toClub } from '../lib/clubs-api';
 import type { Club } from '../types';
@@ -250,14 +251,15 @@ describe('cold load costs a full second round of requests', () => {
     });
 
     const connectRound = requests.length - mountRound;
-    // Nine on mount, eight on connect. The gap is `:join-requests`, which the
-    // screen loads on mount but resync() does not refresh — see the asymmetry
-    // test below. Both numbers are asserted so either one moving is deliberate.
+    // Nine both ways. They were 9 and 8 until join-requests was added to
+    // resync: it was the one resource the screen fetched on mount and never
+    // refreshed afterwards. Both numbers are asserted so either one moving is
+    // deliberate.
     expect(mountRound).toBe(9);
-    expect(connectRound).toBe(8);
+    expect(connectRound).toBe(9);
   });
 
-  it('the connect round covers every resource except join-requests', async () => {
+  it('the connect round covers every resource the mount round fetched', async () => {
     renderClub();
     await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
     const mountRound = [...requests];
@@ -267,14 +269,13 @@ describe('cold load costs a full second round of requests', () => {
       fireSocket('connect');
     });
 
-    // DOCUMENTED GAP, not an assertion that this is right: `:join-requests` is
-    // fetched on mount and never refreshed by resync, so a reconnect or a
-    // foreground resume leaves it stale until the user retries or decides one.
-    // Every other resource on this screen is covered. Asserted explicitly so
-    // the omission is visible rather than implied by a count.
+    // This used to name a gap: join-requests was fetched on mount and never
+    // refreshed, so a reconnect or a foreground resume left it stale until the
+    // user retried or decided one. Nothing is missing now, and the empty array
+    // is what proves it — a count alone would not say which resource moved.
     const connectRound = requests.slice(mountRound.length).sort();
     const missing = [...mountRound].sort().filter((p) => !connectRound.includes(p));
-    expect(missing).toEqual(['/clubs/join-requests']);
+    expect(missing).toEqual([]);
   });
 });
 
@@ -316,6 +317,56 @@ describe('a socket that is already connected costs one round, not two', () => {
       fireSocket('connect');
     });
 
-    expect(requests.length - afterMount).toBe(8);  // resync omits join-requests
+    expect(requests.length - afterMount).toBe(9);
+  });
+});
+
+describe('join requests are fetched once for both screens', () => {
+  /**
+   * `GET /clubs/join-requests` returns every request the caller can see, and
+   * the dashboard already polls it. The club screen used to keep a second copy
+   * under its own key — and the cache single-flights per key, so two keys over
+   * one URL are two requests no matter what.
+   *
+   * A count taken on the club screen alone cannot see that: one key or the
+   * other is still one request there. Both screens have to be on the page for
+   * the duplication to appear, which is why this renders them together under a
+   * single cache rather than asserting on cache internals.
+   */
+  it('asks the endpoint once when both screens share a cache', async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/clubs/:clubId',
+          element: (
+            <ResourceCacheProvider>
+              <ClubDashboardView
+                currentUser={currentUser}
+                playerAvatarUrl=""
+                onSelectClub={vi.fn()}
+                onProceedToLobby={vi.fn()}
+                onSignOut={vi.fn()}
+              />
+              <ClubDetailView
+                club={club}
+                currentUser={currentUser}
+                playerAvatarUrl=""
+                onBackToDashboard={vi.fn()}
+              />
+            </ResourceCacheProvider>
+          ),
+        },
+      ],
+      { initialEntries: ['/clubs/c1'] }
+    );
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Two screens, one endpoint, one request. Two keys would make this 2.
+    expect(countExact('/clubs/join-requests')).toBe(1);
   });
 });

@@ -1065,6 +1065,25 @@ describe('the count does not make iOS zoom the page', () => {
     }
   });
 
+  it('asks iOS for a numeric pad rather than the punctuation keyboard', async () => {
+    // Observed on a real iPhone: these fields opened the numbers-and-punctuation
+    // layout — `- / : ; ( ) ₹ & @ "` with an ABC key — because `type="number"`
+    // alone does not choose a keyboard on iOS. At a table, entering 13000 on a
+    // punctuation keyboard is slower and easier to fumble than on a ten-key pad.
+    //
+    // `decimal` rather than `numeric`: both give the pad, and decimal keeps the
+    // separator available rather than making a fractional value unenterable.
+    await openSettlement();
+    const fields = amountFields();
+
+    expect(fields.length).toBeGreaterThan(0);
+    for (const f of fields) {
+      expect(f.getAttribute('inputmode'), `field "${f.className}" has no numeric hint`).toBe(
+        'decimal'
+      );
+    }
+  });
+
   it('still pins IN / OUT / DIFF, so the fix does not cost #55', async () => {
     // The clipping was only ever visible because #55 keeps this on screen with
     // the keyboard up. Fixing the horizontal problem must not lose the vertical

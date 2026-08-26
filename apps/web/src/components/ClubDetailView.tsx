@@ -21,6 +21,7 @@ import { useSocketConnection } from '../lib/socket-connection';
 import { useForegroundRecovery } from '../lib/use-foreground-recovery';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
+import { JOIN_REQUESTS_KEY } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
 import type { ApiOfflineSession, ApiBuyInRequest } from '../lib/offlineSessions-api';
 
@@ -996,10 +997,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * for clubs they admin), so the filtering here is about scope, not secrecy.
    * A null key for a non-admin means the request is never issued at all.
    */
+  /**
+   * Shared with the dashboard rather than club-scoped.
+   *
+   * The endpoint returns every request this user can see, so a club-specific
+   * key was a second copy of one payload — and because the cache single-flights
+   * per key, opening a club refetched what the dashboard had just fetched. One
+   * key means one request, and the dashboard's poll keeps this fresh too.
+   */
   const joinRequestsRes = useResource<ClubJoinRequest[]>(
-    isAdmin ? `${clubKey}:join-requests` : null,
+    isAdmin ? JOIN_REQUESTS_KEY : null,
     () => clubsApi.listJoinRequests()
   );
+  const refreshJoinRequests = joinRequestsRes.refresh;
   const clubJoinRequests = useMemo(
     () => (joinRequestsRes.data ?? []).filter((r) => r.clubId === initialClub.id && r.status === 'pending'),
     [joinRequestsRes.data, initialClub.id]
@@ -1102,6 +1112,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     refreshPotLog();
     refreshPendingChanges();
     refreshAuditTrail();
+    // Join requests arrive from people outside the room, so no club event
+    // announces them. Without this they were the one resource on this screen a
+    // reconnect or a foreground resume left stale.
+    refreshJoinRequests();
   }, [
     initialClub.id,
     refreshClub,
@@ -1111,6 +1125,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     refreshPotLog,
     refreshPendingChanges,
     refreshAuditTrail,
+    refreshJoinRequests,
   ]);
 
   /**
@@ -3589,6 +3604,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       player what the current cap actually is. */}
                   <input
                     type="number"
+                    inputMode="decimal"
                     required
                     step={100}
                     value={buyInAmount}
@@ -3747,6 +3763,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     )}
                     <input
                       type="number"
+                      inputMode="decimal"
                       min={0}
                       value={row.buyIn || ''}
                       placeholder="0"
@@ -3757,6 +3774,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     />
                     <input
                       type="number"
+                      inputMode="decimal"
                       min={0}
                       value={row.cashOut || ''}
                       placeholder="0"
@@ -3928,6 +3946,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <label className="text-[10px] font-medium text-text-muted uppercase">Chips you are cashing out</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   required
                   min={0}
                   step={100}
@@ -4125,6 +4144,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           <label className="text-[10px] font-medium text-text-muted uppercase">Buy-in</label>
                           <input
                             type="number"
+                            inputMode="decimal"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
                             onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
@@ -4153,6 +4173,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           ) : (
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
                               onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
@@ -4777,6 +4798,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Buy-In (Chips)</label>
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               required
                               value={p.buyIn}
@@ -4788,6 +4810,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Cash-Out (Chips)</label>
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               required
                               value={p.cashOut}
