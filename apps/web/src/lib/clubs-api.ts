@@ -210,6 +210,20 @@ export async function requestJoinClub(clubId: string): Promise<void> {
   await apiFetch(`/clubs/${clubId}/join-requests`, { method: 'POST' });
 }
 
+/**
+ * The cache key for `GET /clubs/join-requests`.
+ *
+ * Lives beside the endpoint rather than in a screen, because two screens read
+ * it and the cache single-flights per key: two keys over one URL can never be
+ * collapsed into one request. The club screen used its own
+ * `club:<id>:join-requests`, so opening a club refetched what the dashboard had
+ * just fetched, and the dashboard's poll could not keep the club screen fresh.
+ *
+ * The endpoint returns every request the caller can see, so consumers filter by
+ * club themselves rather than asking for a narrower slice.
+ */
+export const JOIN_REQUESTS_KEY = 'clubs:join-requests';
+
 export async function listJoinRequests(): Promise<ClubJoinRequest[]> {
   const requests = await apiFetch<ApiJoinRequest[]>('/clubs/join-requests');
   return requests.map(toClubJoinRequest);
