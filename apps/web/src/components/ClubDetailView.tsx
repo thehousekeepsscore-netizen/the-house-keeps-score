@@ -3604,6 +3604,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                       player what the current cap actually is. */}
                   <input
                     type="number"
+                    inputMode="decimal"
                     required
                     step={100}
                     value={buyInAmount}
@@ -3762,6 +3763,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     )}
                     <input
                       type="number"
+                      inputMode="decimal"
                       min={0}
                       value={row.buyIn || ''}
                       placeholder="0"
@@ -3772,6 +3774,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     />
                     <input
                       type="number"
+                      inputMode="decimal"
                       min={0}
                       value={row.cashOut || ''}
                       placeholder="0"
@@ -3943,6 +3946,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <label className="text-[10px] font-medium text-text-muted uppercase">Chips you are cashing out</label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   required
                   min={0}
                   step={100}
@@ -4140,6 +4144,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           <label className="text-[10px] font-medium text-text-muted uppercase">Buy-in</label>
                           <input
                             type="number"
+                            inputMode="decimal"
                             min={0}
                             value={buyInInputs[uid] ?? ''}
                             onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
@@ -4168,6 +4173,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                           ) : (
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               value={cashOutInputs[uid] ?? ''}
                               onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
@@ -4792,6 +4798,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Buy-In (Chips)</label>
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               required
                               value={p.buyIn}
@@ -4803,6 +4810,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Cash-Out (Chips)</label>
                             <input
                               type="number"
+                              inputMode="decimal"
                               min={0}
                               required
                               value={p.cashOut}
