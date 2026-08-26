@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AppUser as User } from '../lib/auth-types';
 import { DashboardTab, TAB_TO_PATH, PATH_TO_TAB } from '../lib/dashboard-tabs';
 import * as clubsApi from '../lib/clubs-api';
+import { JOIN_REQUESTS_KEY } from '../lib/clubs-api';
 import { useResource, useResourceCache } from '../lib/resource-cache';
 import { useConfirm } from './ui/ConfirmDialog';
 import { useAction } from '../lib/use-action';
@@ -51,7 +52,7 @@ const POLL_INTERVAL_MS = 15_000;
 // Cache keys for the shared server-state layer. Exported so mutations elsewhere
 // can invalidate these lists without duplicating the string.
 export const CLUBS_KEY = 'clubs';
-export const JOIN_REQUESTS_KEY = 'clubs:join-requests';
+
 
 
 export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
