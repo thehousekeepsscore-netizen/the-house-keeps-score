@@ -85,8 +85,16 @@ interface ResourceCache {
   invalidate: (key: string) => void;
   /** Marks every key starting with `prefix` stale — e.g. invalidatePrefix(`club:${id}`). */
   invalidatePrefix: (prefix: string) => void;
-  /** Optimistic write. Updates subscribers immediately; revalidation still happens. */
-  update: <T>(key: string, updater: (current: T | undefined) => T) => void;
+  /**
+   * Captures the identity a write belongs to. Call before any awaited work
+   * whose result you intend to write back.
+   */
+  beginWrite: () => WriteToken;
+  /**
+   * Optimistic write. Updates subscribers immediately; revalidation still
+   * happens. Refuses if the identity changed since `token` was taken.
+   */
+  update: <T>(key: string, updater: (current: T | undefined) => T, token: WriteToken) => void;
   /** Captures data plus a version, for a rollback that can detect interference. */
   snapshot: <T>(key: string) => Snapshot<T>;
   /**
@@ -103,6 +111,34 @@ interface ResourceCache {
 export interface Snapshot<T> {
   data: T | undefined;
   version: number;
+  /**
+   * Which identity this snapshot belongs to.
+   *
+   * Rollbacks happen in a catch block after an await, so a snapshot taken by
+   * one user can be restored after another has signed in. Carrying the epoch
+   * makes that detectable without any caller having to remember anything: the
+   * snapshot is always taken before the request, which is exactly when the
+   * answer is still true.
+   */
+  epoch: number;
+}
+
+/**
+ * Proof that a write was authorised under the identity that is still signed in.
+ *
+ * `update` cannot decide this for itself. A write-through runs *after* an
+ * awaited mutation, so by the time it is called the current epoch is already
+ * the new one and reading it would always agree. The ownership has to be
+ * captured before the asynchronous work starts and carried across it, which is
+ * what this is for.
+ *
+ * Required rather than optional on purpose: an optional guard is one a future
+ * caller crossing an await can silently omit, which is precisely the bug this
+ * closes. Synchronous writers pass `beginWrite()` inline, where it is trivially
+ * correct and reads as a statement of intent.
+ */
+export interface WriteToken {
+  readonly epoch: number;
 }
 
 const ResourceCacheContext = createContext<ResourceCache | null>(null);
@@ -276,8 +312,34 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     [invalidate]
   );
 
+  /**
+   * The identity a write belongs to, as a stable object per identity.
+   *
+   * Stable on purpose: callers capture this once per render and close over it,
+   * so it ends up in dependency arrays. Returning a fresh object each call
+   * would change the identity of every callback that holds it on every render —
+   * the churn ResourceCacheProvider's own value memo exists to avoid.
+   *
+   * Capturing per render is what makes this correct without threading a token
+   * through every helper: a closure created while A was signed in carries A's
+   * epoch, so a mutation it started resolves into a refusal once B is in.
+   */
+  const writeToken = useRef<WriteToken>({ epoch: 0 });
+  const beginWrite = useCallback((): WriteToken => {
+    if (writeToken.current.epoch !== epoch.current) writeToken.current = { epoch: epoch.current };
+    return writeToken.current;
+  }, []);
+
   const update = useCallback(
-    <T,>(key: string, updater: (current: T | undefined) => T) => {
+    <T,>(key: string, updater: (current: T | undefined) => T, token: WriteToken) => {
+      // The write was authorised by an identity that has since gone. Dropping it
+      // is the whole point: a mutation started by one user must not land in
+      // another's cache, and after a sign-out the entry it would create is
+      // inherited by whoever signs in next.
+      if (token.epoch !== epoch.current) {
+        bump('supersededResponses');
+        return;
+      }
       bump('writeThroughs');
       const prev = store.current.get(key) ?? EMPTY;
       store.current.set(key, {
@@ -293,13 +355,20 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
   const snapshot = useCallback(
     <T,>(key: string): Snapshot<T> => {
       const entry = store.current.get(key) ?? EMPTY;
-      return { data: entry.data as T | undefined, version: entry.version };
+      return { data: entry.data as T | undefined, version: entry.version, epoch: epoch.current };
     },
     []
   );
 
   const restore = useCallback(
     <T,>(key: string, snap: Snapshot<T>) => {
+      // Same reasoning as `update`: a rollback runs in a catch block after an
+      // await, so the snapshot can outlive the identity that took it. Putting it
+      // back would resurrect one user's state inside another's session.
+      if (snap.epoch !== epoch.current) {
+        bump('supersededResponses');
+        return;
+      }
       const current = store.current.get(key) ?? EMPTY;
 
       // Nothing else wrote while the request was in flight, so the snapshot is
@@ -348,8 +417,8 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
   // would re-run useResource's subscribe and load effects — and resubscribe
   // useSyncExternalStore — on any unrelated re-render of this provider.
   const value = useMemo<ResourceCache>(
-    () => ({ getEntry, subscribe, load, invalidate, invalidatePrefix, update, snapshot, restore, clear }),
-    [getEntry, subscribe, load, invalidate, invalidatePrefix, update, snapshot, restore, clear]
+    () => ({ getEntry, subscribe, load, invalidate, invalidatePrefix, beginWrite, update, snapshot, restore, clear }),
+    [getEntry, subscribe, load, invalidate, invalidatePrefix, beginWrite, update, snapshot, restore, clear]
   );
 
   return <ResourceCacheContext.Provider value={value}>{children}</ResourceCacheContext.Provider>;

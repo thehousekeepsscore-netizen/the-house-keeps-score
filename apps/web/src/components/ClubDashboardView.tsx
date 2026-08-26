@@ -124,6 +124,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // Both lists live in the shared cache, so returning from a club renders the
   // previous data on the first frame instead of refetching from empty.
   const cache = useResourceCache();
+  /** Captured per render: writes from this render belong to this identity. */
+  const write = cache.beginWrite();
   // Destructive actions ask in a bottom sheet, not a browser dialog.
   const confirmAction = useConfirm();
   const clubsResource = useResource(CLUBS_KEY, clubsApi.listClubsRaw, { pollMs: POLL_INTERVAL_MS });
@@ -278,7 +280,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       const previous = cache.snapshot<ClubJoinRequest[]>(JOIN_REQUESTS_KEY);
       cache.update<ClubJoinRequest[]>(JOIN_REQUESTS_KEY, (prev) =>
         (prev ?? []).filter((r) => r.id !== request.id)
-      );
+      ,
+      write);
 
       try {
         await clubsApi.decideJoinRequest(request.clubId, request.id, accept);

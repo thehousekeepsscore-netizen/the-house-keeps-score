@@ -339,7 +339,7 @@ describe('rollback bookkeeping is untouched', () => {
 
     const snap = cache().snapshot<string[]>('k11');
     act(() => {
-      cache().update<string[]>('k11', (prev) => (prev ?? []).filter((x) => x !== 'alice'));
+      cache().update<string[]>('k11', (prev) => (prev ?? []).filter((x) => x !== 'alice'), cache().beginWrite());
     });
     expect(cache().getEntry('k11').data).toEqual(['bob']);
 
@@ -452,7 +452,7 @@ describe('KNOWN OPEN DEFECT: optimistic writes are still clobbered', () => {
       void res.refresh();
     });
     act(() => {
-      cache.update<string[]>('known-gap', (prev) => (prev ?? []).filter((x) => x !== 'alice'));
+      cache.update<string[]>('known-gap', (prev) => (prev ?? []).filter((x) => x !== 'alice'), cache.beginWrite());
     });
     expect(screen.getByTestId('rows')).toHaveTextContent('bob');
 
