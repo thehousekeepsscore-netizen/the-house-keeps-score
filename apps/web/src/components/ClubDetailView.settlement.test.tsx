@@ -1004,3 +1004,79 @@ describe('the settlement screen is the structure that was measured', () => {
     expect(sticky!.textContent).toMatch(/IN/);
   });
 });
+
+/**
+ * The count's amount fields must not make iOS zoom the page.
+ *
+ * MEASURED on an iPhone against production, not inferred from a screenshot:
+ *
+ *   keyboard down   scale 1.0     viewport 402   scrollWidth 402   offsetLeft 0
+ *   keyboard up     scale 1.3333  viewport 302   scrollWidth 402   offsetLeft 100
+ *
+ * 402 / 1.3333 = 302, and 402 − 302 = 100 — so offsetLeft 100 is the largest
+ * offset there is, meaning Safari scrolled fully right and hid exactly 100 CSS
+ * px of the left edge. That is the clipping: the IN column and the player names
+ * fall off the side while OUT and DIFF stay in view.
+ *
+ * The cause is font size, not layout. 1.3333 is exactly 16/12 — iOS zooms a
+ * focused input below 16px up to its readability threshold — and the same
+ * device reports no overflow at all with the keyboard down.
+ *
+ * These assert the class rather than a computed pixel size on purpose:
+ * Tailwind's stylesheet is not loaded in jsdom, so getComputedStyle would
+ * report a default and pass whatever the class said. The mapping relied on
+ * (`text-base` is 1rem is 16px) is Tailwind's, not ours.
+ */
+describe('the count does not make iOS zoom the page', () => {
+  /** Tailwind sizes at or above iOS's 16px threshold. */
+  const NO_ZOOM = ['text-base', 'text-lg', 'text-xl', 'text-2xl'];
+  /** text-xs is 12px, text-sm is 14px — iOS zooms both. */
+  const ZOOMS = ['text-xs', 'text-sm'];
+
+  it('renders every amount field at 16px or larger', async () => {
+    await openSettlement();
+    const fields = amountFields();
+
+    // Guard against passing because nothing rendered, which is what makes a
+    // className assertion worthless.
+    expect(fields.length).toBeGreaterThan(0);
+
+    for (const f of fields) {
+      const classes = f.className.split(/\s+/);
+      expect(
+        NO_ZOOM.some((s) => classes.includes(s)),
+        `amount field is below the 16px threshold: "${f.className}"`
+      ).toBe(true);
+    }
+  });
+
+  it('leaves no amount field at a size iOS would zoom', async () => {
+    // A separate claim from the one above: a class list could carry both a
+    // zooming and a non-zooming size, and which wins is decided by the
+    // stylesheet, not by the order of this array.
+    await openSettlement();
+
+    for (const f of amountFields()) {
+      const classes = f.className.split(/\s+/);
+      expect(
+        ZOOMS.filter((s) => classes.includes(s)),
+        `amount field still carries a zooming size: "${f.className}"`
+      ).toEqual([]);
+    }
+  });
+
+  it('still pins IN / OUT / DIFF, so the fix does not cost #55', async () => {
+    // The clipping was only ever visible because #55 keeps this on screen with
+    // the keyboard up. Fixing the horizontal problem must not lose the vertical
+    // one it exposed.
+    await openSettlement();
+
+    const panel = screen.getByRole('dialog');
+    const scroller = Array.from(panel.children).find((c) =>
+      c.className.includes('overflow-y-auto')
+    );
+    const sticky = scroller!.querySelector('.sticky');
+    expect(sticky, 'pinned IN/OUT/DIFF').not.toBeNull();
+    expect(sticky!.textContent).toMatch(/IN/);
+  });
+});

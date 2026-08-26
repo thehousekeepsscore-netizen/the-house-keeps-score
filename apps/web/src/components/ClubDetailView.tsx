@@ -161,6 +161,25 @@ export const SESSION_PATCH_EVENTS = [
   'club:settlement-rules-set',
 ] as const;
 
+/**
+ * Settlement amount fields must render at 16px or larger.
+ *
+ * MEASURED on an iPhone, not inferred. With a 12px input focused, iOS Safari
+ * zooms the page to 1.3333 — exactly 16/12 — to bring the text to its
+ * readability threshold. That shrinks the visual viewport from 402 to 302 CSS
+ * px, and Safari then scrolls fully right: offsetLeft 100, which is precisely
+ * the 402 − 302 difference. The left column of the count disappears.
+ *
+ * There is no horizontal overflow to blame. With the keyboard down the same
+ * device reports scale 1, viewport 402, and scrollWidth === innerWidth === 402.
+ *
+ * 16px is a threshold, not a preference: 14px still zooms, at 16/14 = 1.1428.
+ * Only the two fields in the count are raised — the other twelve-pixel inputs
+ * belong to club settings and the past-session form, which were not measured.
+ */
+const SETTLEMENT_AMOUNT_INPUT =
+  'w-full furniture rounded-xl px-3 py-2 text-base font-mono font-medium text-text focus:border-accent outline-none';
+
 const EMPTY_ROSTER: Record<string, ClubRosterEntry> = {};
 const EMPTY_HISTORY: NormalizedSession[] = [];
 const EMPTY_LEADERBOARD: LeaderboardRow[] = [];
@@ -4109,7 +4128,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                             min={0}
                             value={buyInInputs[uid] ?? ''}
                             onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
-                            className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
+                            className={SETTLEMENT_AMOUNT_INPUT}
                           />
                         </div>
                         <div className="space-y-1">
@@ -4138,7 +4157,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                               value={cashOutInputs[uid] ?? ''}
                               onChange={(e) => { setCashOutInputs({ ...cashOutInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
                               placeholder="Enter cash-out"
-                              className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text focus:border-accent outline-none"
+                              className={SETTLEMENT_AMOUNT_INPUT}
                             />
                           )}
                         </div>
