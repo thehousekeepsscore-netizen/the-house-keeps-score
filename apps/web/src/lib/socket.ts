@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { getAccessToken } from './api-client';
+import { resolveSocketOrigin } from './socket-origin';
 
 let socket: Socket | null = null;
 
@@ -29,7 +30,7 @@ export function resetSocket(): void {
 // needed rather than each opening their own connection.
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io('/', {
+    socket = io(resolveSocketOrigin(import.meta.env.VITE_SOCKET_URL), {
       path: '/socket.io',
       auth: (cb) => cb({ token: getAccessToken() }),
       autoConnect: true,

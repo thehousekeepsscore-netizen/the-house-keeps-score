@@ -1,5 +1,6 @@
 import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
+import { socketAllowedOrigins } from './allowedOrigins.js';
 import { env } from '../env.js';
 import { prisma } from '../lib/prisma.js';
 import { verifyAccessToken } from '../utils/jwt.js';
@@ -39,7 +40,7 @@ export async function canJoinClub(clubId: string, data: SocketData): Promise<boo
 
 export function initSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
-    cors: { origin: env.WEB_ORIGIN, credentials: true },
+    cors: { origin: socketAllowedOrigins(env.WEB_ORIGIN), credentials: true },
   });
 
   io.use((socket: Socket, next) => {
