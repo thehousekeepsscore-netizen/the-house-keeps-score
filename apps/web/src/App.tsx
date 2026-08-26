@@ -133,6 +133,41 @@ export default function App() {
   // surface failures as toasts, and referencing addToast in a dependency array
   // above its own declaration would be a temporal dead zone error.
 
+  /**
+   * Open the shared socket as soon as there is an identity to authenticate it.
+   *
+   * This used to sit in ClubRoute, one line above the club fetch, which meant
+   * the handshake started at the same instant as the requests it existed to get
+   * ahead of. It never won. A Socket.IO connection costs two sequential round
+   * trips -- the engine.io handshake for a sid, then the namespace CONNECT --
+   * and measured against production that is around half a second, while the
+   * club fetches leave in about twelve milliseconds. `connect` therefore landed
+   * after them every time, and the resync it triggers refetched all eight
+   * resources again: nineteen requests for one cold open, in five consecutive
+   * runs.
+   *
+   * Started here, the handshake overlaps whatever the person does on the
+   * dashboard before picking a club. By the time they click, the socket is
+   * usually already up, so ClubDetailView takes the branch that emits
+   * `club:join` directly and no second round happens -- nine requests, measured
+   * by driving the real app with an already-connected socket.
+   *
+   * Gated on authentication because the handshake carries the access token. A
+   * socket opened without one is refused by the server middleware, and that
+   * refusal is terminal: socket.io calls destroy(), nothing retries, and the
+   * connection state correctly reports auth-error for as long as the tab lives.
+   * Connecting earlier must not mean connecting logged out.
+   *
+   * getSocket() returns the existing singleton, so re-running this -- a
+   * re-render, or StrictMode's double invoke -- cannot open a second socket.
+   * Identity changes stay with AuthProvider's resetSocket; this effect re-runs
+   * on the new uid and opens the replacement.
+   */
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    getSocket();
+  }, [authStatus, authUser?.uid]);
+
   // Sync logged in user display name and avatar
   useEffect(() => {
     if (authStatus === 'loading') return;
@@ -693,31 +728,6 @@ export const ClubRoute: React.FC<{ currentUser: NonNullable<ReturnType<typeof us
 }) => {
   const { clubId } = useParams<{ clubId: string }>();
   const navigate = useNavigate();
-
-  /**
-   * Start the socket handshake here, before the club screen exists.
-   *
-   * ClubDetailView is lazily loaded, so opening a club spends a chunk download
-   * and a club fetch in this component first. The handshake used to begin after
-   * all that, when ClubDetailView's effect called getSocket() for the first
-   * time — which meant the socket was reliably *not* connected when that effect
-   * ran. That path fetches everything, then connects a few hundred milliseconds
-   * later, and `connect` fires `resync()` which forces the same eight requests
-   * again: sixteen for one cold open, measured.
-   *
-   * Connecting here overlaps the handshake with work that was happening anyway,
-   * so by the time ClubDetailView mounts the socket is usually already up. It
-   * then takes the branch that emits `club:join` directly and issues no second
-   * round — the same path every warm navigation already takes.
-   *
-   * This does not remove the reconnect resync, and must not: a socket that
-   * drops after the room is joined still has to re-join and refetch, because
-   * events during the gap are gone. It only stops the *first* connect from
-   * repeating work the mount just did.
-   */
-  useEffect(() => {
-    getSocket();
-  }, []);
 
   const { data: club, status, error } = useResource<Club>(
     clubId ? `club:${clubId}` : null,
