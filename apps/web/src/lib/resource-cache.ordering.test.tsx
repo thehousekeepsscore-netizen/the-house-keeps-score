@@ -463,3 +463,74 @@ describe('KNOWN OPEN DEFECT: optimistic writes are still clobbered', () => {
     expect(screen.getByTestId('rows')).toHaveTextContent('alice,bob');
   });
 });
+
+/**
+ * A newer FAILURE beats an older SUCCESS.
+ *
+ * Recorded as a decision rather than discovered as a bug. `load`'s error path
+ * advances `settledSeq` just as the success path does, so a failure that has
+ * not itself been superseded closes the door on everything issued before it.
+ *
+ * That follows from the rule the cache is built on — the newest response wins —
+ * and here the newest response is a failure, which means nothing newer than the
+ * previous state is known. Letting an older success through instead would put
+ * data on screen that the server has already moved past, which is the failure
+ * this ordering exists to prevent.
+ *
+ * The cost is real and bounded: a successful response is discarded, and the
+ * entry keeps its previous data alongside the newer error. `useResource`'s
+ * `error` is read in exactly one place (App.tsx's club route) and only when
+ * `status === 'empty'`, so with data present it never reaches the UI. The
+ * staleness lasts until the next fetch.
+ *
+ * These tests exist so the behaviour is a decision on the record, not an
+ * accident someone later "fixes" without knowing it was chosen.
+ */
+describe('a newer failure closes the door on older responses', () => {
+  it('discards an older success that arrives after a newer failure', async () => {
+    const cache = mountCache();
+    const older = gate<string[]>();
+    const newer = gate<string[]>();
+
+    const seed = gate<string[]>();
+    issue(cache, 'nf1', seed);
+    await act(async () => {
+      seed.resolve(['seed']);
+    });
+
+    issue(cache, 'nf1', older); // issued first
+    issue(cache, 'nf1', newer); // issued second
+
+    await act(async () => {
+      newer.reject(new Error('newer request failed'));
+    });
+    await act(async () => {
+      older.resolve(['older-but-successful']);
+    });
+
+    // The older success is refused: the newest thing we know is a failure.
+    expect(cache().getEntry('nf1').data).toEqual(['seed']);
+    expect(cache().getEntry('nf1').error).toBeInstanceOf(Error);
+  });
+
+  it('still lets a newer success overwrite an older failure', async () => {
+    // The mirror image, and the one that keeps the rule symmetrical: ordering
+    // is by sequence, not by which outcome is preferred.
+    const cache = mountCache();
+    const older = gate<string[]>();
+    const newer = gate<string[]>();
+
+    issue(cache, 'nf2', older);
+    issue(cache, 'nf2', newer);
+
+    await act(async () => {
+      older.reject(new Error('older request failed'));
+    });
+    await act(async () => {
+      newer.resolve(['newer-success']);
+    });
+
+    expect(cache().getEntry('nf2').data).toEqual(['newer-success']);
+    expect(cache().getEntry('nf2').error).toBeNull();
+  });
+});
