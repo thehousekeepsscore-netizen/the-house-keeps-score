@@ -216,6 +216,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   onBackToDashboard,
 }) => {
   const cache = useResourceCache();
+  /** Captured per render: writes from this render belong to this identity. */
+  const write = cache.beginWrite();
   const clubKey = `club:${initialClub.id}`;
   // Destructive actions ask in a bottom sheet rather than a browser dialog.
   const confirmAction = useConfirm();
@@ -248,13 +250,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     (session: PokerSession) =>
       cache.update<SessionResource>(`club:${initialClub.id}:active-session`, (prev) =>
         prev ? { ...prev, session } : { session, buyIns: [] }
-      ),
+      ,
+      write),
     [cache, initialClub.id]
   );
 
   /** Write-through for mutations that return the updated club. */
   const setClub = useCallback(
-    (updated: Club) => cache.update<Club>(clubKey, () => updated),
+    (updated: Club) => cache.update<Club>(clubKey, () => updated, write),
     [cache, clubKey]
   );
 
@@ -1187,7 +1190,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       const session = offlineSessionsApi.toPokerSession(p.session);
       cache.update<SessionResource>(`${clubKey}:active-session`, (prev) =>
         prev ? { ...prev, session } : { session, buyIns: [] }
-      );
+      ,
+      write);
     };
 
     // Keyed by id and idempotent: a repeat of the same event replaces the row
@@ -1203,7 +1207,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           ? [...prev.buyIns, row]
           : prev.buyIns.map((b) => (b.id === row.id ? { ...b, ...row } : b));
         return { ...prev, buyIns };
-      });
+      },
+      write);
     };
 
     const onSessionStarted = (p: { session?: ApiOfflineSession | null }) => {
@@ -1213,7 +1218,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       cache.update<SessionResource>(`${clubKey}:active-session`, () => ({
         session: offlineSessionsApi.toPokerSession(p.session!),
         buyIns: [],
-      }));
+      }),
+      write);
     };
     const onBuyinRequested = (p: { request?: ApiBuyInRequest }) => patchBuyIn(p);
     const onBuyinDecided = (p: { userId?: string; expired?: boolean; request?: ApiBuyInRequest }) => {
@@ -1344,7 +1350,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       });
       // A new session starts with no buy-ins, so the previous night's are
       // cleared rather than carried across.
-      cache.update<SessionResource>(`${clubKey}:active-session`, () => ({ session: started, buyIns: [] }));
+      cache.update<SessionResource>(`${clubKey}:active-session`, () => ({ session: started, buyIns: [] }), write);
       // "Open", not "started". The table is open for people to gather; the
       // night itself has not begun and will not until the host says so.
       pushToast('Table open', `${sessionName}. People can join and buy in — start the game when you're ready.`, 'success');
@@ -1769,7 +1775,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           prev
             ? { ...prev, buyIns: [...prev.buyIns, created] }
             : { session: activeSession, buyIns: [created] }
-      );
+      ,
+      write);
 
       pushToast('Buy-in requested', 'Sent to the admins for approval.', 'success');
       setShowBuyInModal(false);
@@ -1793,6 +1800,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    */
   const decideBuyIn = async (request: BuyInRequest, approve: boolean) => {
     const key = `${clubKey}:active-session`;
+    // Both taken before the request goes out: the snapshot for the rollback, the
+    // token so the write-through below can prove which identity authorised it.
+    // Reading either after the await would read the new user's answer.
     const previous = cache.snapshot<SessionResource>(key);
     const verb = approve ? 'approve' : 'reject';
 
@@ -1804,7 +1814,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               b.id === request.id ? { ...b, status: approve ? 'approved' : 'rejected' } : b
             ),
           }
-        : prev!
+        : prev!,
+      write
     );
 
     try {
@@ -1813,7 +1824,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // change an approval causes. Taking it from the response is what removes
       // the last GET from this path.
       if (session) {
-        cache.update<SessionResource>(key, (prev) => (prev ? { ...prev, session } : { session, buyIns: [] }));
+        cache.update<SessionResource>(key, (prev) => (prev ? { ...prev, session } : { session, buyIns: [] }), write);
       }
     } catch (err) {
       // Every failure the server can return here — expired request, already

@@ -60,7 +60,7 @@ describe('optimistic write and rollback', () => {
   it('applies an optimistic write immediately, before any server reply', async () => {
     const { get } = await mount(['a', 'b']);
 
-    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a')));
+    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a'), get().cache.beginWrite()));
 
     expect(screen.getByTestId('rows')).toHaveTextContent('b');
   });
@@ -69,7 +69,7 @@ describe('optimistic write and rollback', () => {
     const { get } = await mount(['a', 'b']);
     const snap = get().cache.snapshot<string[]>('k');
 
-    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a')));
+    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a'), get().cache.beginWrite()));
     expect(screen.getByTestId('rows')).toHaveTextContent('b');
 
     act(() => get().cache.restore('k', snap));
@@ -83,7 +83,7 @@ describe('optimistic write and rollback', () => {
     const { get } = await mount(['a', 'b', 'c']);
     const snap = get().cache.snapshot<string[]>('k');
 
-    act(() => get().cache.update<string[]>('k', () => []));
+    act(() => get().cache.update<string[]>('k', () => [], get().cache.beginWrite()));
     act(() => get().cache.restore('k', snap));
 
     expect(screen.getByTestId('rows')).toHaveTextContent('a,b,c');
@@ -100,8 +100,8 @@ describe('a rollback must not destroy a concurrent update', () => {
     const { get } = await mount(['a', 'b']);
     const snap = get().cache.snapshot<string[]>('k');
 
-    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a')));
-    act(() => get().cache.update<string[]>('k', (prev) => [...(prev ?? []), 'from-socket']));
+    act(() => get().cache.update<string[]>('k', (prev) => (prev ?? []).filter((x) => x !== 'a'), get().cache.beginWrite()));
+    act(() => get().cache.update<string[]>('k', (prev) => [...(prev ?? []), 'from-socket'], get().cache.beginWrite()));
 
     act(() => get().cache.restore('k', snap));
 
@@ -115,8 +115,8 @@ describe('a rollback must not destroy a concurrent update', () => {
     const { get, fetcher } = await mount(['a']);
     const snap = get().cache.snapshot<string[]>('k');
 
-    act(() => get().cache.update<string[]>('k', () => ['optimistic']));
-    act(() => get().cache.update<string[]>('k', () => ['from-socket']));
+    act(() => get().cache.update<string[]>('k', () => ['optimistic'], get().cache.beginWrite()));
+    act(() => get().cache.update<string[]>('k', () => ['from-socket'], get().cache.beginWrite()));
     act(() => get().cache.restore('k', snap));
 
     const before = fetcher.mock.calls.length;
@@ -133,7 +133,7 @@ describe('a rollback must not destroy a concurrent update', () => {
     const snap = get().cache.snapshot<string[]>('k');
     const before = fetcher.mock.calls.length;
 
-    act(() => get().cache.update<string[]>('k', () => []));
+    act(() => get().cache.update<string[]>('k', () => [], get().cache.beginWrite()));
     act(() => get().cache.restore('k', snap));
 
     expect(screen.getByTestId('rows')).toHaveTextContent('a,b');

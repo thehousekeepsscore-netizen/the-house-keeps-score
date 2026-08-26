@@ -116,6 +116,8 @@ export default function App() {
   // Back and the address bar disagree with the screen.
   const navigate = useNavigate();
   const cache = useResourceCache();
+  /** Captured per render: writes from this render belong to this identity. */
+  const write = cache.beginWrite();
   const { user: authUser, status: authStatus, logout, authError, clearAuthError } = useAuth();
   const [tableCode, setTableCode] = useState('7742');
   const [tableCodeInput, setTableCodeInput] = useState('7742');
@@ -192,7 +194,7 @@ export default function App() {
    * skeleton. It still revalidates in the background.
    */
   const handleSelectClub = useCallback((club: Club) => {
-    cache.update<Club>(`club:${club.id}`, () => club);
+    cache.update<Club>(`club:${club.id}`, () => club, write);
     navigate(`/clubs/${club.id}`);
   }, [cache, navigate]);
 
