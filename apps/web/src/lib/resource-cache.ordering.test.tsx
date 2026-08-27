@@ -412,21 +412,25 @@ describe('what the user sees', () => {
 });
 
 /**
- * KNOWN OPEN DEFECT — deliberately not fixed in this stage.
+ * A response cannot overwrite something written after it was issued.
  *
- * A response that has NOT been superseded still overwrites an optimistic write
- * that landed while it was in flight. Ordering cannot fix this: the response is
- * the newest one, so every ordering rule accepts it. Closing it needs the write
- * to respect a version bumped after the request was issued — the same reasoning
- * `restore` already applies, mirrored onto the success path — and that changes
- * optimistic-write semantics, which is its own stage.
+ * This was a known open gap for two stages, recorded here as a passing test
+ * asserting the wrong behaviour: a response that had NOT been superseded still
+ * clobbered an optimistic write that landed while it was in flight. Ordering
+ * could not fix it, because by every ordering rule the response was the newest
+ * one — the write had no sequence number to compare against.
  *
- * This test passes today and must keep passing until that stage lands. It is
- * here so the gap is recorded in executable form, and so this change can be
- * shown not to have altered the behaviour either way.
+ * `writeSeq` gives it one. A request captures the count of local writes when it
+ * is issued; if that count has moved by the time it settles, something was
+ * committed here in the meantime and the response is not the newest truth, only
+ * the newest read.
+ *
+ * The refusal keeps the data and marks the entry stale rather than dropping the
+ * response and leaving `fetchedAt` advanced — see the freshness test below for
+ * why that distinction is the whole point.
  */
-describe('KNOWN OPEN DEFECT: optimistic writes are still clobbered', () => {
-  it('a current response overwrites an optimistic write made while it was in flight', async () => {
+describe('a response refuses to overwrite a write that landed after it was issued', () => {
+  it('leaves the optimistic value alone', async () => {
     let cache!: Cache;
     let res!: ReturnType<typeof useResource<string[]>>;
     const gates: ReturnType<typeof gate<string[]>>[] = [];
@@ -457,10 +461,10 @@ describe('KNOWN OPEN DEFECT: optimistic writes are still clobbered', () => {
     expect(screen.getByTestId('rows')).toHaveTextContent('bob');
 
     await act(async () => {
-      gates[1].resolve(['alice', 'bob']); // pre-mutation state, but not superseded
+      gates[1].resolve(['alice', 'bob']); // pre-mutation state, and no longer allowed to win
     });
 
-    expect(screen.getByTestId('rows')).toHaveTextContent('alice,bob');
+    expect(screen.getByTestId('rows')).toHaveTextContent('bob');
   });
 });
 

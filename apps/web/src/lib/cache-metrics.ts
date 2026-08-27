@@ -45,6 +45,17 @@ export interface CacheMetrics {
    * they come back. Expected to be small but non-zero.
    */
   supersededResponses: number;
+  /**
+   * Responses refused because a local write landed after the request went out.
+   *
+   * Separate from `supersededResponses` because the cause is different in a way
+   * that changes what you would do about it. A superseded response means
+   * requests are outrunning their replies; this means a GET came back holding
+   * state older than something the user or the server has already committed
+   * locally -- the race in #77. Expected to be rare; a number that climbs during
+   * ordinary approving means a poll is overlapping the action it races.
+   */
+  responseConflicts: number;
   /** Whole-cache wipes, i.e. a change of authenticated identity. */
   clears: number;
 }
@@ -60,6 +71,7 @@ const counters: CacheMetrics = {
   networkRequests: 0,
   failedRequests: 0,
   supersededResponses: 0,
+  responseConflicts: 0,
   clears: 0,
 };
 
