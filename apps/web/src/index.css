@@ -578,6 +578,45 @@
 
 /*
  * ===========================================================================
+ * TAP TARGET
+ * ===========================================================================
+ *
+ * A thumb is about 44px across. Several icon controls in this app are drawn
+ * much smaller than that on purpose -- the info hint is 14px, because it is a
+ * hint and should recede -- and the button box was the whole hit area, so the
+ * drawn size *was* the target. Measured in production at six viewport widths,
+ * the info hint, the club-info icon and the header back arrow were 14, 24 and
+ * 34 square, all constant, all below the 44px floor that ui/Button.tsx already
+ * states as this project's rule.
+ *
+ * The fix must not change what any of them look like. Padding would: it grows
+ * the box, and every one of these sits in a flex row where a wider box pushes
+ * its neighbours. So the target is an invisible centred pseudo-element instead.
+ * It is painted by the button, so hit testing returns the button, and being
+ * absolutely positioned it contributes nothing to layout -- the icon stays the
+ * size it was drawn and nothing around it moves.
+ *
+ * Set `position: relative` on the control (the utility does it) or the target
+ * will centre on the wrong ancestor and drift somewhere useless.
+ */
+.tap-44 {
+  position: relative;
+}
+
+.tap-44::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  /* Invisible, but must still take pointer events -- the whole point. */
+  pointer-events: auto;
+}
+
+/*
+ * ===========================================================================
  * LEATHER CONTROLS
  * ===========================================================================
  *
