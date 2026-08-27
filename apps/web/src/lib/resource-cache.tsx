@@ -65,6 +65,23 @@ interface Entry<T = unknown> {
    * exactly that shape on a slow connection.
    */
   settledSeq: number;
+  /**
+   * How many times a LOCAL write has landed on this entry.
+   *
+   * Bumped only by `update` -- the optimistic path and the write-through of a
+   * server-confirmed mutation or socket event. Deliberately NOT bumped by a
+   * response settling, and that distinction is the whole mechanism: a plain
+   * `version` check cannot be used here because a response's own write bumps
+   * `version`, so with two polls in flight the second would find the version
+   * moved by the first and refuse itself. That is the starvation `settledSeq`
+   * was written to avoid, reintroduced by the back door.
+   *
+   * A counter rather than a flag because two writes can land while one request
+   * is open, and the question at settle time is "has anything been written
+   * since I was issued", which equality against a captured value answers and a
+   * boolean does not.
+   */
+  writeSeq: number;
 }
 
 const EMPTY: Entry = {
@@ -75,6 +92,7 @@ const EMPTY: Entry = {
   version: 0,
   issuedSeq: 0,
   settledSeq: 0,
+  writeSeq: 0,
 };
 
 interface ResourceCache {
@@ -210,6 +228,18 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
       const superseded = (prev: Entry) => seq <= prev.settledSeq;
 
       /**
+       * Has anything been written locally since this request went out?
+       *
+       * Ordering asks whether a newer RESPONSE has landed. That question has no
+       * answer for a write, because a write takes no sequence number -- which is
+       * why an optimistic update, and the server-confirmed value written after
+       * it, were both silently overwritten by a GET issued before either
+       * existed, and the entry then stamped fresh so nothing revalidated it.
+       */
+      const writeSeqAtIssue = current.writeSeq;
+      const writtenSince = (prev: Entry) => prev.writeSeq !== writeSeqAtIssue;
+
+      /**
        * Does this response still belong to the identity that asked for it?
        *
        * Checked before anything is written, so a request open across a sign-out
@@ -243,6 +273,35 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
             // not `fetchedAt`, not `data`. Callers still get the value they
             // asked for; it just does not become the cache's truth.
             bump('supersededResponses');
+            return data;
+          }
+          if (writtenSince(prev)) {
+            /*
+             * This response is the newest one, but it is not the newest truth:
+             * something was committed here after it was issued. Overwriting
+             * would throw away a confirmed value, and stamping `fetchedAt` would
+             * record the older state as the freshest the cache has -- so the
+             * screen would settle on it and nothing would revalidate for a full
+             * staleTime.
+             *
+             * The data is kept and the entry marked stale instead. Dropping the
+             * response silently while leaving it fresh would look identical on
+             * screen and be the worse bug: correct-looking only because nothing
+             * was allowed to check. `settledSeq` still advances, so this
+             * response closes the door on everything older exactly as a
+             * successful one would.
+             *
+             * `version` is deliberately not bumped: no data changed, and a
+             * pending rollback reads it to decide whether anything interfered.
+             */
+            bump('responseConflicts');
+            store.current.set(key, {
+              ...prev,
+              fetchedAt: 0,
+              inFlight: releaseInFlight(prev),
+              settledSeq: seq,
+            });
+            notify(key);
             return data;
           }
           store.current.set(key, {
@@ -346,6 +405,9 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
         ...prev,
         data: updater(prev.data as T | undefined),
         version: prev.version + 1,
+        // Marks the entry as locally written, so a request already in flight
+        // cannot come back and overwrite this. See `writeSeq`.
+        writeSeq: prev.writeSeq + 1,
       });
       notify(key);
     },
@@ -360,6 +422,29 @@ export const ResourceCacheProvider: React.FC<{ children: React.ReactNode }> = ({
     []
   );
 
+  /**
+   * Puts back what an optimistic write replaced, when the mutation it was
+   * betting on failed.
+   *
+   * Deliberately does NOT bump `writeSeq`, and that is safe because of an
+   * invariant in the callers rather than anything enforced here: a rollback is
+   * always the second half of one sequence on one key --
+   *
+   *     snapshot()  ->  update()  ->  restore() only if the mutation threw
+   *
+   * The `update` in the middle already bumped `writeSeq`, so a request issued
+   * before the user acted is refused by the time this runs; the rollback
+   * inherits the protection of the write it is undoing. A request issued
+   * *after* that write still wins, which is correct -- the mutation failed, so
+   * the server never moved, and that response is at least as current as the
+   * snapshot going back.
+   *
+   * Bumping `writeSeq` here would therefore buy nothing and cost a wasted round
+   * trip in that second case. What it does mean is that a future rollback
+   * written WITHOUT an optimistic write in front of it would be unprotected,
+   * and nothing in this file would notice --  which is why the invariant is
+   * pinned in resource-cache.write-conflict.test.tsx rather than left implied.
+   */
   const restore = useCallback(
     <T,>(key: string, snap: Snapshot<T>) => {
       // Same reasoning as `update`: a rollback runs in a catch block after an
