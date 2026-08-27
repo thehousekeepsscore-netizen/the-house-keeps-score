@@ -522,6 +522,87 @@ describe('a player who stood up early', () => {
   });
 });
 
+describe('the summary bar holds still while the count changes it', () => {
+  /*
+   * The lurch, measured before the fix at 390px: the bar was
+   * flex/justify-between, so the instant the last cash-out field got its
+   * first digit, DIFF went from "DIFF \u2014" (40px) to a 152px phrase and the
+   * OUT label jumped 69px left in the same frame \u2014 and again at every
+   * digit-count boundary, and again when the night hit "balanced".
+   *
+   * The mechanism under contract: IN and OUT are shrink-0 at fixed positions
+   * on a plain gap row (no justify-between to redistribute), and DIFF is
+   * anchored to the right edge with ml-auto + text-right, growing leftward
+   * into space that belongs to nobody. jsdom does no layout, so this asserts
+   * the mechanism's classes on the RENDERED bar across every DIFF state; the
+   * pixel proof (OUT immobile at 320\u2013430px) is the browser measurement in
+   * the PR record.
+   */
+  const summaryRow = () => {
+    const inLabel = screen.getByText(/^IN\b/);
+    return inLabel.closest('div')!;
+  };
+  const spans = () => [...summaryRow().querySelectorAll(':scope > span')] as HTMLElement[];
+
+  const expectStableMechanism = () => {
+    const row = summaryRow();
+    expect(row.className).not.toContain('justify-between');
+    expect(row.className).toContain('gap-3');
+    const [inSpan, outSpan, diffSpan] = spans();
+    expect(inSpan.className).toContain('shrink-0');
+    expect(outSpan.className).toContain('shrink-0');
+    expect(diffSpan.className).toContain('ml-auto');
+    expect(diffSpan.className).toContain('text-right');
+  };
+
+  it('DIFF empty \u2014 the mechanism is in place before a single digit exists', async () => {
+    await openSettlement();
+    expect(spans()[2].textContent).toMatch(/DIFF/);
+    expectStableMechanism();
+  });
+
+  it('DIFF as a long phrase, and OUT keeps its own layout slot', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '10' } });
+    fireEvent.change(amountFields()[3], { target: { value: '7' } });
+    await findPreview();
+
+    expect(spans()[2].textContent).toMatch(/more in than out/);
+    expectStableMechanism();
+  });
+
+  it('a balanced night \u2014 the shortest text of all, same allocation', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[1], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '4000' } });
+    await findPreview();
+
+    expect(spans()[2].textContent).toMatch(/balanced/i);
+    expectStableMechanism();
+  });
+
+  it('transitions between the states never change the mechanism', async () => {
+    // empty -> phrase -> balanced -> phrase again, asserted at each stop.
+    await openSettlement();
+    expectStableMechanism();
+
+    fireEvent.change(amountFields()[1], { target: { value: '100' } });
+    fireEvent.change(amountFields()[3], { target: { value: '50' } });
+    await findPreview();
+    expect(spans()[2].textContent).toMatch(/more in than out/);
+    expectStableMechanism();
+
+    fireEvent.change(amountFields()[1], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[3], { target: { value: '4000' } });
+    await waitFor(() => expect(spans()[2].textContent).toMatch(/balanced/i));
+    expectStableMechanism();
+
+    fireEvent.change(amountFields()[3], { target: { value: '4100' } });
+    await waitFor(() => expect(spans()[2].textContent).toMatch(/more out than in/));
+    expectStableMechanism();
+  });
+});
+
 describe('a night with no rules of its own', () => {
   const noRules = (): Partial<PokerSession> => {
     const { settlementRules, ...rest } = session;
