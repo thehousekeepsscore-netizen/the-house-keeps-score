@@ -125,6 +125,14 @@ describe('the controls measured as too small opt into the target', () => {
     expect(liveSession).toMatch(/className="tap-44 inline-flex items-center gap-1\.5 rounded-full/);
   });
 
+  it('the profile sheet\u2019s Edit and Close', () => {
+    // Edit measured 39x17 in production — the smallest interactive control
+    // found anywhere in the app — and the sheet\u2019s close glyph 20x20.
+    const sheet = readFileSync(join(WEB_ROOT, 'src/components/AccountSettingsModal.tsx'), 'utf8');
+    expect(sheet).toMatch(/aria-label="Close account settings" className="tap-44 /);
+    expect(sheet).toMatch(/className="tap-44 shrink-0 flex items-center gap-1 text-\[11px\]/);
+  });
+
   it('the info hint, which carries all of its call sites with it', () => {
     // Twelve usages across the dashboard, club detail and account settings.
     // Fixing the component is what makes this one line worth more than three.
@@ -146,5 +154,36 @@ describe('the icons were not enlarged to reach the target', () => {
   it('the header icons are still 16px', () => {
     expect(clubDetail).toMatch(/<ArrowLeft className="w-4 h-4" \/>/);
     expect(clubDetail).toMatch(/<Info className="w-4 h-4" \/>/);
+  });
+});
+
+describe('the faint token clears AA where it is smallest', () => {
+  /*
+   * Computed, not eyeballed — the same WCAG arithmetic that found the old
+   * #6a6659 sitting at 3.43:1 against the page, below the 4.5:1 floor, on
+   * precisely the smallest type in the app (10px stamps and section labels).
+   * This pins the repaired value so a future palette pass cannot quietly
+   * drop it back below the line.
+   */
+  const lum = (hex: string) => {
+    const chan = (c: number) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const n = parseInt(hex.slice(1), 16);
+    return 0.2126 * chan(n >> 16) + 0.7152 * chan((n >> 8) & 255) + 0.0722 * chan(n & 255);
+  };
+  const ratio = (a: string, b: string) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it('is at least 4.5:1 on the page and on furniture', () => {
+    const faint = /--color-text-faint:\s*(#[0-9a-fA-F]{6})/.exec(css);
+    const bg = /--color-bg:\s*(#[0-9a-fA-F]{6})/.exec(css);
+    const surface = /--color-surface:\s*(#[0-9a-fA-F]{6})/.exec(css);
+    expect(faint && bg && surface).toBeTruthy();
+    expect(ratio(faint![1], bg![1])).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(faint![1], surface![1])).toBeGreaterThanOrEqual(4.5);
   });
 });

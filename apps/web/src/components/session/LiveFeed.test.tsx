@@ -97,8 +97,17 @@ describe('only one thing moves', () => {
 
 describe('every line carries a glyph', () => {
   it('marks each kind with its own, since a feed is scanned down its left edge', () => {
+    // Line icons now, not emoji: the feed was the one region the room could
+    // not light — emoji arrive pre-coloured, differently on every phone at
+    // the table. Distinctness per kind is still the property under test,
+    // asserted on the rendered SVG geometry rather than on characters.
     render(<LiveFeed events={events} nameOf={nameOf} formatAmount={fmt} />);
-    const glyphs = rows().map((li) => within(li).getAllByText(/\p{Emoji}/u)[0]?.textContent);
+    const glyphs = rows().map((li) => li.querySelector('svg')?.innerHTML);
+    expect(glyphs.every(Boolean)).toBe(true);
     expect(new Set(glyphs).size).toBe(3);
+    // And none of them is an emoji character.
+    for (const li of rows()) {
+      expect(within(li).queryByText(/\p{Extended_Pictographic}/u)).toBeNull();
+    }
   });
 });

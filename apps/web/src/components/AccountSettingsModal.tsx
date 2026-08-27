@@ -117,7 +117,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
           <h2 className="text-sm font-medium text-text flex items-center gap-2">
             <UserCircle className="w-4 h-4 text-accent" /> Profile
           </h2>
-          <button onClick={onClose} aria-label="Close account settings" className="text-text-muted hover:text-text cursor-pointer">
+          <button onClick={onClose} aria-label="Close account settings" className="tap-44 text-text-muted hover:text-text cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -142,7 +142,7 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
             {!editing && (
               <button
                 onClick={startEditing}
-                className="shrink-0 flex items-center gap-1 text-[11px] font-medium text-accent hover:opacity-80 cursor-pointer"
+                className="tap-44 shrink-0 flex items-center gap-1 text-[11px] font-medium text-accent hover:opacity-80 cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5" /> Edit
               </button>

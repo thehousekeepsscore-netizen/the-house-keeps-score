@@ -429,7 +429,11 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="flex items-center gap-2">
+                            {/* flex-wrap, so at narrow widths the code pill
+                                steps down a line instead of squeezing the one
+                                thing this card exists to say. "All in 2026"
+                                was wrapping mid-name beside an intact pill. */}
+                            <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="text-lg font-semibold text-text ">
                                 {club.name}
                               </h3>
