@@ -4155,10 +4155,26 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 ref={summaryRef}
                 className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line will-change-transform"
               >
-                <div className="flex items-baseline justify-between gap-2 text-[11px] font-mono tabular-nums">
-                  <span className="text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
-                  <span className="text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '—'}</span></span>
-                  <span className={allCashOutsEntered && preview && preview.mismatchAmount !== 0 ? 'text-warning' : 'text-text-muted'}>
+                {/*
+                  NOT justify-between, deliberately. Between shares every width
+                  change across all three spans: the moment the last cash-out
+                  got its first digit, DIFF went from "DIFF \u2014" (40px) to a
+                  152px phrase and OUT lurched 69px left in the same frame --
+                  measured at 390px -- and every digit-count boundary after
+                  that jumped it again. A running total the host reads WHILE
+                  typing must hold still.
+
+                  So IN and OUT sit at fixed positions on the left (their own
+                  digits are tabular, and IN is frozen for the whole count),
+                  and DIFF is anchored to the RIGHT edge with ml-auto: its text
+                  grows leftward into the free middle, which belongs to nobody.
+                  The only thing that moves when the phrase changes is the
+                  phrase's own left edge.
+                */}
+                <div className="flex items-baseline gap-3 text-[11px] font-mono tabular-nums">
+                  <span className="shrink-0 text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
+                  <span className="shrink-0 text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '\u2014'}</span></span>
+                  <span className={`ml-auto min-w-0 text-right ${allCashOutsEntered && preview && preview.mismatchAmount !== 0 ? 'text-warning' : 'text-text-muted'}`}>
                     {allCashOutsEntered && preview
                       ? (preview.mismatchAmount === 0 ? 'balanced' : describeMismatch(preview.mismatchAmount, formatVal))
                       : 'DIFF —'}
