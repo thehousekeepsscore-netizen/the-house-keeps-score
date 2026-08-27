@@ -641,7 +641,7 @@ const Stage: React.FC<{
                   <button
                     type="button"
                     onClick={onAskForChips}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-accent/45 px-3 py-1 text-[13px] font-semibold text-accent active:scale-95 transition cursor-pointer"
+                    className="tap-44 inline-flex items-center gap-1.5 rounded-full border border-accent/45 px-3 py-1 text-[13px] font-semibold text-accent active:scale-95 transition cursor-pointer"
                   >
                     <span aria-hidden="true" className="text-base leading-none">+</span>
                     {night.mySeat ? 'Ask for bank' : 'Join the table'}

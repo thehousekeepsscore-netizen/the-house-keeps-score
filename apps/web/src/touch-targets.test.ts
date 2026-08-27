@@ -110,6 +110,21 @@ describe('the controls measured as too small opt into the target', () => {
     expect(classesFor(clubDetail, 'title="Club Rules & Info"')).toContain('tap-44');
   });
 
+  it('the add-player stud on the felt', () => {
+    // 34x34 measured in production; the + on the table is how players join a
+    // live night, which makes it the most-pressed admin control on the felt.
+    const pokerTable = readFileSync(join(WEB_ROOT, 'src/components/session/PokerTable.tsx'), 'utf8');
+    expect(pokerTable).toMatch(/className="tap-44 table-stud/);
+  });
+
+  it('the ask-for-bank pill', () => {
+    // 30px tall at widths >= 375 -- and only there: at 320 its label wraps to
+    // two lines and the pill accidentally clears 44. A control whose target
+    // shrinks as the phone grows is exactly what the shared utility is for.
+    const liveSession = readFileSync(join(WEB_ROOT, 'src/components/session/LiveSession.tsx'), 'utf8');
+    expect(liveSession).toMatch(/className="tap-44 inline-flex items-center gap-1\.5 rounded-full/);
+  });
+
   it('the info hint, which carries all of its call sites with it', () => {
     // Twelve usages across the dashboard, club detail and account settings.
     // Fixing the component is what makes this one line worth more than three.
