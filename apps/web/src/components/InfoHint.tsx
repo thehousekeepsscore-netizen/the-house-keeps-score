@@ -62,7 +62,8 @@ export const InfoHint: React.FC<InfoHintProps> = ({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`inline-flex items-center justify-center rounded-full transition cursor-pointer ${
+        // tap-44: the icon stays 14px; only the hit area grows. See index.css.
+        className={`tap-44 inline-flex items-center justify-center rounded-full transition cursor-pointer ${
  open ? 'text-accent' : 'text-text-faint hover:text-text-muted'
         }`}
       >
