@@ -2756,8 +2756,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <span className="font-mono text-xs text-text-muted shrink-0">
                   #{club.code || '0007'}
                 </span>
+                {/* The owner IS an admin here (isAdmin includes isOwner), so the
+                    label distinguishes what the flag cannot: whose club this is.
+                    A label only -- every capability on this screen still keys
+                    off isAdmin, and owners and admins remain deliberately
+                    identical in what they can do. */}
                 {isAdmin && (
-                  <span className="text-xs text-accent shrink-0">· Admin</span>
+                  <span className="text-xs text-accent shrink-0">{isOwner ? '· Owner' : '· Admin'}</span>
                 )}
                 {/* Only shown when something is wrong. A permanent green badge
                     becomes furniture people stop reading; an indicator that

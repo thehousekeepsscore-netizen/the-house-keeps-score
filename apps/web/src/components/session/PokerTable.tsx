@@ -384,7 +384,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                   type="button"
                   onClick={stud.onPress}
                   aria-label={stud.label}
-                  className="table-stud mt-3"
+                  className="tap-44 table-stud mt-3"
                 >
                   <span aria-hidden="true">+</span>
                 </button>

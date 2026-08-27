@@ -51,12 +51,12 @@ export const LiveFeed: React.FC<{
 
   return (
     <section
-      aria-label="Tonight, as it happens"
+      aria-label="History"
       className="flex-1 min-h-0 flex flex-col px-4 pt-3"
     >
       <div className="shrink-0 flex items-center gap-3 pb-2">
         <span className="h-px flex-1 bg-line" />
-        <span className="text-[10px] uppercase tracking-[0.22em] text-text-faint">Live</span>
+        <span className="text-[10px] uppercase tracking-[0.22em] text-text-faint">History</span>
         <span className="h-px flex-1 bg-line" />
       </div>
 
