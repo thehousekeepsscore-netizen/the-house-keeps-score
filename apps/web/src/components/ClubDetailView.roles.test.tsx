@@ -291,6 +291,11 @@ describe('the plaque holds the rule, identically for every role', () => {
       const plaque = label.closest('.furniture');
       expect(plaque, `${role}: ceiling is set into the plaque`).not.toBeNull();
       expect(plaque!.textContent).toContain('Fri · Day 1');
+      // Contract, not geometry (jsdom does no layout): the row must wrap, or
+      // the two shrink-0 slots crush the truncating name to zero width at
+      // 320px — production shipped once with the plaque opening on an
+      // orphaned "· 20 days". Pixel truth is the browser check's job.
+      expect(plaque!.className).toContain('flex-wrap');
       view.unmount();
     }
   });

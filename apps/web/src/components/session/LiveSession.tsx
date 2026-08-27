@@ -407,14 +407,21 @@ const Header: React.FC<{
       connection line — stays below the plaque, because a rule does not
       react and the plaque must never become a dashboard.
     */}
-    <div className="furniture rounded-[13px] px-3.5 py-2 flex items-baseline gap-2 min-w-0">
+    {/* flex-wrap, because the name is the one thing this plaque must never
+        lose: both of its neighbours are shrink-0, so on a 320px screen the
+        truncating h1 was squeezed to zero width and the plaque opened with an
+        orphaned "· 20 days". The rule steps down to a second line instead —
+        the name owns its row, the same call the dashboard card makes. */}
+    <div className="furniture rounded-[13px] px-3.5 py-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
       {session && (
-        <h1 className="text-sm font-bold text-text truncate">{session.sessionName}</h1>
-      )}
-      {/* No clock in the lobby: nothing has started, so an elapsed time would
-          be counting how long people have been standing around. */}
-      {night.phase !== 'lobby' && elapsed && (
-        <span className="text-[11px] text-text-muted tabular-nums shrink-0">· {elapsed}</span>
+        <span className="flex items-baseline gap-2 min-w-0 max-w-full">
+          <h1 className="text-sm font-bold text-text truncate">{session.sessionName}</h1>
+          {/* No clock in the lobby: nothing has started, so an elapsed time
+              would be counting how long people have been standing around. */}
+          {night.phase !== 'lobby' && elapsed && (
+            <span className="text-[11px] text-text-muted tabular-nums shrink-0">· {elapsed}</span>
+          )}
+        </span>
       )}
       {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
     </div>
