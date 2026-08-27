@@ -153,7 +153,14 @@ const buyIn = (id: string, userId: string, amount: number, minsAgo: number): Buy
   createdAt: ago(minsAgo),
 });
 
-function renderAs(role: 'owner' | 'admin' | 'player') {
+function renderAs(
+  role: 'owner' | 'admin' | 'player',
+  // Overridable, because renderAs mocks this itself: a test that sets the
+  // fixture before calling in gets silently stomped — which is exactly how
+  // the first version of the pending-queue test ended up asserting against
+  // an approved-only night while believing a request was pending.
+  buyIns: BuyInRequest[] = [buyIn('b-mine', 'me', 5000, 80), buyIn('b-priya', 'priya', 3000, 40)]
+) {
   const club = clubAs(role);
   vi.mocked(clubsApi.getClub).mockResolvedValue(club);
   vi.mocked(clubsApi.listJoinRequests).mockResolvedValue([]);
@@ -166,10 +173,7 @@ function renderAs(role: 'owner' | 'admin' | 'player') {
   vi.mocked(offlineSessionsApi.getActiveSession).mockResolvedValue(session);
   // Two players' money, so "does a role see the OTHER player's event" is a
   // question the fixture can answer.
-  vi.mocked(offlineSessionsApi.listBuyInRequests).mockResolvedValue([
-    buyIn('b-mine', 'me', 5000, 80),
-    buyIn('b-priya', 'priya', 3000, 40),
-  ]);
+  vi.mocked(offlineSessionsApi.listBuyInRequests).mockResolvedValue(buyIns);
 
   const router = createMemoryRouter(
     [
@@ -203,18 +207,20 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe('the section under the table is HISTORY', () => {
-  it('is titled History, not Live', async () => {
-    // "History" also names the bottom-nav tab, so the assertion is scoped to
-    // the feed section itself: the section is labelled History AND its header
-    // row says History. The absence check is what actually guards the rename.
+describe('the section under the table is TONIGHT', () => {
+  it('is titled Tonight — not Live, and not History', async () => {
+    // The feed was renamed twice for the same reason arrived at in stages:
+    // "Live" described the transport, and "History" collided with the
+    // bottom-nav tab of the same name three hundred pixels below — one word,
+    // two objects, one viewport. "Tonight" is the brief's own phrase for this
+    // section (§11, the story of the evening), and collides with nothing.
     renderAs('player');
     await settled();
 
-    const section = await screen.findByLabelText('History');
-    expect(section.querySelector('span.uppercase')?.textContent).toBe('History');
+    const section = await screen.findByLabelText('Tonight');
+    expect(section.querySelector('span.uppercase')?.textContent).toBe('Tonight');
     expect(screen.queryByText('Live', { selector: 'span' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Tonight, as it happens')).not.toBeInTheDocument();
+    expect(screen.queryByText('History', { selector: 'span.uppercase' })).not.toBeInTheDocument();
   });
 });
 
@@ -273,6 +279,53 @@ describe('capabilities stay exactly where they were', () => {
   });
 });
 
+describe('the plaque holds the rule, identically for every role', () => {
+  it('names the night and the ceiling in one piece of furniture', async () => {
+    // Session identity and the buy-in ceiling are public facts, so the plaque
+    // is the same object whoever is looking at it — role differences live in
+    // the actions, never in the rule.
+    for (const role of ['owner', 'player'] as const) {
+      const view = renderAs(role);
+      await settled();
+      const label = screen.getByText('Max buy-in');
+      const plaque = label.closest('.furniture');
+      expect(plaque, `${role}: ceiling is set into the plaque`).not.toBeNull();
+      expect(plaque!.textContent).toContain('Fri · Day 1');
+      view.unmount();
+    }
+  });
+});
+
+describe('one brass-filled control per instant', () => {
+  it('the shelf takes gold when nothing else asks', async () => {
+    // Queue empty, clock plain running: Settle night is the evening's one
+    // destination and reads as the board's single filled control.
+    renderAs('owner');
+    await settled();
+    const settle = screen.getByRole('button', { name: 'Settle night' });
+    expect(settle.className).toContain('control-primary');
+  });
+
+  it('and yields to leather the moment a request is pending', async () => {
+    // The pending card's Approve is the screen's demand; a gold shelf beside
+    // a gold decision is two candidates for one glance — the exact failure
+    // §2.6 exists to prevent.
+    renderAs('owner', [
+      buyIn('b-mine', 'me', 5000, 80),
+      { ...buyIn('b-pending', 'priya', 3000, 1), status: 'pending' as const },
+    ]);
+    await settled();
+    // The queue writes no sentences — a row is a name, a tag and the two
+    // decisions, labelled "Approve NAME" / "Reject NAME". The reject side is
+    // the anchor because bare /approve/i also matches two navigation tabs,
+    // and findByRole treats multiple matches as not-found-yet until timeout.
+    await screen.findByRole('button', { name: /reject/i });
+    const settle = screen.getByRole('button', { name: 'Settle night' });
+    expect(settle.className).toContain('control-secondary');
+    expect(settle.className).not.toContain('control-primary');
+  });
+});
+
 describe('history visibility is the same for every role — the current contract', () => {
   it('a player sees the other player’s event, amount included', async () => {
     // Documents today's deliberate design rather than the reference render:
@@ -283,7 +336,7 @@ describe('history visibility is the same for every role — the current contract
     renderAs('player');
     await settled();
 
-    const history = screen.getByLabelText('History');
+    const history = screen.getByLabelText('Tonight');
     await waitFor(() => {
       expect(history.textContent).toMatch(/bought in for/);
     });
@@ -294,7 +347,7 @@ describe('history visibility is the same for every role — the current contract
     renderAs('owner');
     await settled();
 
-    const history = screen.getByLabelText('History');
+    const history = screen.getByLabelText('Tonight');
     await waitFor(() => {
       expect(history.textContent).toMatch(/bought in for/);
     });

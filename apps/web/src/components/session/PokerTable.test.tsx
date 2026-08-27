@@ -180,6 +180,29 @@ describe('adapts from 2 to 9 without overlapping', () => {
   });
 });
 
+describe('the viewer\u2019s own seat does not caption itself', () => {
+  it('shows the badge but neither the name line nor the amount', () => {
+    // Your figure\u2019s single home is the status line under the felt; this seat
+    // was rendering the same number three rows away from it, under a name
+    // ("You") that the badge already states. The aria-label keeps the full
+    // sentence for assistive tech \u2014 this is a visual dedupe, not a data one.
+    table({ activePlayerUids: ['p1', 'p2'] }, [buyIn('p1', 8000), buyIn('p2', 6000)], 'p1');
+    const aria = (b: HTMLElement) => b.getAttribute('aria-label') ?? '';
+    const seats = screen.getAllByRole('button').filter((b) => aria(b).includes(','));
+    const mine = seats.find((b) => aria(b).startsWith('You'));
+    const theirs = seats.find((b) => !aria(b).startsWith('You'));
+    expect(mine, 'own seat present').toBeDefined();
+    expect(theirs, 'other seat present').toBeDefined();
+
+    expect(mine!.textContent).toContain('YOU');
+    expect(mine!.textContent).not.toMatch(/8,000/);
+    expect(mine!.textContent?.replace('YOU', '')).not.toMatch(/You/);
+
+    // Everyone else keeps both \u2014 their seat is the only place their figure lives.
+    expect(theirs!.textContent).toMatch(/6,000/);
+  });
+});
+
 describe('the viewer sits at the bottom', () => {
   it('rotates the ring so the viewer is first, without reordering anyone else', () => {
     const uids = ['p1', 'p2', 'p3', 'p4'];

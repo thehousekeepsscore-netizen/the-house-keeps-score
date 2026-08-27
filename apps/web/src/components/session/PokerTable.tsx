@@ -468,13 +468,22 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                     YOU
                   </span>
                 )}
-                <span
-                  className={`block text-[11px] truncate ${
+                {/* Your own seat does not caption itself: the badge is
+                    identity enough, and your figure's single home is the
+                    status line under the felt — the same number was rendering
+                    on this seat and in that line, three rows apart. Questions
+                    (a pending buy-in, a submitted count) still render below:
+                    waiting-on-someone is never tidied away, whoever's seat it
+                    is. The aria-label keeps the full sentence either way. */}
+                {!isMe && (
+                  <span
+                    className={`block text-[11px] truncate ${
  dim === 'gone' ? 'text-text-muted' : 'text-text'
-                  }`}
-                >
-                  {name}
-                </span>
+                    }`}
+                  >
+                    {name}
+                  </span>
+                )}
                 {detail === 'full' &&
                   (!tight &&
                   (seat.pendingBuyIn !== null ||
@@ -494,7 +503,7 @@ export const PokerTable: React.FC<PokerTableProps> = ({
                     >
                       {seatCaption(seat, formatAmount)}
                     </span>
-                  ) : (
+                  ) : isMe ? null : (
                     <span
                       className={`block text-[10px] truncate tabular-nums ${
  tight && (seat.pendingBuyIn !== null || seat.state === 'countingOut')

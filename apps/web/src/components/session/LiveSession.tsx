@@ -110,7 +110,11 @@ function useElapsed(since: string | undefined): string | null {
   const started = Date.parse(since);
   if (!Number.isFinite(started)) return null;
   const mins = Math.max(0, Math.floor((Date.now() - started) / 60_000));
-  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+  const hrs = Math.floor(mins / 60);
+  // Past two days the clock stops earning its minutes: "500h 23m" is a sum,
+  // not a duration. Days from there on.
+  if (hrs >= 48) return `${Math.floor(hrs / 24)} days`;
+  return `${hrs}h ${String(mins % 60).padStart(2, '0')}m`;
 }
 
 const nameOf = (
@@ -311,6 +315,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         isAdmin={isAdmin}
         live={live && night.startedPlayingAt !== null && clock.phase !== 'complete' && !night.settling}
         onSettleNight={onSettleNight}
+        // 'none' is an untimed night — no clock, so nothing asking. 'grace'
+        // and 'complete' put the banner's own Settle on screen, and two gold
+        // settles is the on-screen-twice defect by its literal definition.
+        brass={waiting.length === 0 && (clock.phase === 'none' || clock.phase === 'running')}
       />
     </div>
   );
@@ -333,11 +341,20 @@ const SettleFooter: React.FC<{
   isAdmin: boolean;
   live: boolean;
   onSettleNight?: () => void;
-}> = ({ isAdmin, live, onSettleNight }) => {
+  /**
+   * Brass only while nothing else asks. The board's law is one brass-filled
+   * control per instant: a pending request's Approve holds it, and the clock
+   * band holds it in the grace phases — so the shelf takes gold only in
+   * plain running with an empty queue, and yields back to leather the moment
+   * either appears. This is what makes it the evening's destination without
+   * ever competing with a decision (§2.2 gated by §2.6).
+   */
+  brass: boolean;
+}> = ({ isAdmin, live, onSettleNight, brass }) => {
   if (!isAdmin || !live || !onSettleNight) return null;
   return (
     <div className="shrink-0 px-5 py-2.5 border-t border-line bg-bg/95 backdrop-blur-xl">
-      <Button variant="secondary" size="md" fullWidth onClick={onSettleNight}>
+      <Button variant={brass ? 'primary' : 'secondary'} size="md" fullWidth onClick={onSettleNight}>
         Settle night
       </Button>
     </div>
@@ -374,25 +391,39 @@ const Header: React.FC<{
   live: boolean;
   clock: ReturnType<typeof useClock>;
 }> = ({ session, elapsed, connection, night, ceiling, formatAmount, live, clock }) => (
-  <header className="px-5 pt-4 pb-3 shrink-0">
-    <div className="flex items-baseline gap-2 min-w-0">
+  <header className="px-4 pt-3 pb-2 shrink-0">
+    {/*
+      The plaque on the rail.
+
+      The identity row and the buy-in ceiling used to float here as separate
+      lines with a band of empty architecture between them and the felt —
+      space that belonged to nobody. Set into one piece of furniture and
+      docked against the table, they read as the table's nameplate: the
+      night on the left, the rule it is played under on the right.
+
+      Only those two. The ceiling's single present-tense home is this slot;
+      the felt keeps IN PLAY; your stake lives in the status line. Everything
+      conditional the header also carries — the house's take, the clock, the
+      connection line — stays below the plaque, because a rule does not
+      react and the plaque must never become a dashboard.
+    */}
+    <div className="furniture rounded-[13px] px-3.5 py-2 flex items-baseline gap-2 min-w-0">
       {session && (
-        <h1 className="text-base font-semibold text-text truncate">{session.sessionName}</h1>
+        <h1 className="text-sm font-bold text-text truncate">{session.sessionName}</h1>
       )}
       {/* No clock in the lobby: nothing has started, so an elapsed time would
           be counting how long people have been standing around. */}
       {night.phase !== 'lobby' && elapsed && (
-        <span className="ml-auto text-xs text-text-muted tabular-nums shrink-0">{elapsed}</span>
+        <span className="text-[11px] text-text-muted tabular-nums shrink-0">· {elapsed}</span>
       )}
+      {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
     </div>
 
     {night.phase === 'lobby' && (
-      <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-text-faint">
+      <p className="mt-1 px-1 text-[11px] uppercase tracking-[0.18em] text-text-faint">
         Preparing table
       </p>
     )}
-
-    {live && <MaxBuyIn ceiling={ceiling} formatAmount={formatAmount} />}
 
     {live && <HouseTake rules={session?.settlementRules} formatAmount={formatAmount} />}
 
@@ -498,8 +529,8 @@ const MaxBuyIn: React.FC<{
   }, [ceiling]);
 
   return (
-    <div className="mt-1 flex items-baseline gap-2">
-      <span className="text-xs text-text-muted">Max buy-in</span>
+    <div className="ml-auto flex items-baseline gap-1.5 shrink-0">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted">Max buy-in</span>
       <span
         // Re-keyed so the animation restarts rather than being ignored as
         // already-applied when the figure changes twice in quick succession.

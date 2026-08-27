@@ -392,5 +392,14 @@ export function agoLabel(at: string, now: number): string {
   const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins} min ago`;
   const hrs = Math.floor(mins / 60);
-  return `${hrs}h ${mins % 60}m ago`;
+  if (hrs < 48) return `${hrs}h ${mins % 60}m ago`;
+  /*
+   * Past two days the arithmetic stops earning its digits: "316h 47m ago" is
+   * three multiplications away from meaning anything. Days, then — past two
+   * weeks — a date, because "47d ago" is also a sum nobody wants.
+   */
+  const days = Math.floor(hrs / 24);
+  if (days < 14) return `${days}d ago`;
+  const d = new Date(t);
+  return `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
 }

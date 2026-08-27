@@ -1,5 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FeedEvent, agoLabel, feedLine } from '../../lib/night-feed';
+import {
+  Timer, Flag, Play, UserRound, CirclePlus, Coins, Banknote,
+  CircleCheck, ArrowUp, ClipboardList, type LucideIcon,
+} from 'lucide-react';
+import { FeedEvent, FeedKind, agoLabel, feedLine } from '../../lib/night-feed';
+
+/**
+ * The story rendered in the room's own hand.
+ *
+ * These were emoji, and emoji are the one glyph set the app cannot light: they
+ * arrive pre-coloured in the OS's style, differently on every phone at the
+ * table, in a feed whose job is to look the same to everyone. Line icons take
+ * the room's palette like everything else.
+ */
+const GLYPH: Record<FeedKind, LucideIcon> = {
+  'timer-started': Timer,
+  'timer-extended': Timer,
+  'timer-extended-many': Timer,
+  'timer-reached': Flag,
+  'timer-lifted': Play,
+  joined: UserRound,
+  'bought-in': CirclePlus,
+  'topped-up': Coins,
+  'stood-up': Banknote,
+  left: CircleCheck,
+  ceiling: ArrowUp,
+  settled: Flag,
+  'rules-set': ClipboardList,
+};
 
 /**
  * The story of the night, under the table.
@@ -51,12 +79,12 @@ export const LiveFeed: React.FC<{
 
   return (
     <section
-      aria-label="History"
+      aria-label="Tonight"
       className="flex-1 min-h-0 flex flex-col px-4 pt-3"
     >
       <div className="shrink-0 flex items-center gap-3 pb-2">
         <span className="h-px flex-1 bg-line" />
-        <span className="text-[10px] uppercase tracking-[0.22em] text-text-faint">History</span>
+        <span className="text-[10px] uppercase tracking-[0.22em] text-text-faint">Tonight</span>
         <span className="h-px flex-1 bg-line" />
       </div>
 
@@ -67,7 +95,8 @@ export const LiveFeed: React.FC<{
       */}
       <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         {events.map((event) => {
-          const { icon, text } = feedLine(event, nameOf, formatAmount);
+          const { text } = feedLine(event, nameOf, formatAmount);
+          const Glyph = GLYPH[event.kind];
           return (
             <li
               key={event.id}
@@ -77,8 +106,8 @@ export const LiveFeed: React.FC<{
                   : ''
               }`}
             >
-              <span aria-hidden="true" className="text-[13px] leading-5 shrink-0 w-5 text-center">
-                {icon}
+              <span aria-hidden="true" className="shrink-0 w-5 flex justify-center pt-[3px]">
+                <Glyph className="w-3.5 h-3.5 text-accent/80" strokeWidth={1.75} />
               </span>
               <p className="min-w-0 flex-1 text-[13px] text-text-muted leading-5">
                 {text}
