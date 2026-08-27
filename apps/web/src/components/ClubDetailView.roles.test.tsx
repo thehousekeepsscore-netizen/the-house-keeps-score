@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 /**
@@ -158,10 +158,16 @@ function renderAs(
   // Overridable, because renderAs mocks this itself: a test that sets the
   // fixture before calling in gets silently stomped — which is exactly how
   // the first version of the pending-queue test ended up asserting against
-  // an approved-only night while believing a request was pending.
-  buyIns: BuyInRequest[] = [buyIn('b-mine', 'me', 5000, 80), buyIn('b-priya', 'priya', 3000, 40)]
+  // an approved-only night while believing a request was pending. The club
+  // override exists for the same reason: the pot-header tests stepped on the
+  // same rake before it did.
+  buyIns: BuyInRequest[] = [buyIn('b-mine', 'me', 5000, 80), buyIn('b-priya', 'priya', 3000, 40)],
+  clubOverride?: Partial<Club>,
+  // `null` is meaningful: a club with no active session renders a different
+  // header entirely. `undefined` keeps the default live night.
+  sessionOverride: PokerSession | null | undefined = undefined
 ) {
-  const club = clubAs(role);
+  const club = { ...clubAs(role), ...clubOverride };
   vi.mocked(clubsApi.getClub).mockResolvedValue(club);
   vi.mocked(clubsApi.listJoinRequests).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listHistory).mockResolvedValue([]);
@@ -170,16 +176,12 @@ function renderAs(
   vi.mocked(clubRecordsApi.listPendingChanges).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listAuditLog).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listDeletedSessions).mockResolvedValue([]);
-  vi.mocked(offlineSessionsApi.getActiveSession).mockResolvedValue(session);
+  vi.mocked(offlineSessionsApi.getActiveSession).mockResolvedValue(sessionOverride === undefined ? session : (sessionOverride as never));
   // Two players' money, so "does a role see the OTHER player's event" is a
   // question the fixture can answer.
   vi.mocked(offlineSessionsApi.listBuyInRequests).mockResolvedValue(buyIns);
 
-  const router = createMemoryRouter(
-    [
-      {
-        path: '/clubs/:clubId',
-        element: (
+  const element = (
           <ResourceCacheProvider>
             <ClubDetailView
               club={club}
@@ -188,8 +190,14 @@ function renderAs(
               onBackToDashboard={vi.fn()}
             />
           </ResourceCacheProvider>
-        ),
-      },
+  );
+  // Both route shapes, mirroring App: the screen navigates between its own
+  // tabs as /clubs/:clubId/:tab, and a router without that route turns a
+  // pot-card tap into a 404 error boundary.
+  const router = createMemoryRouter(
+    [
+      { path: '/clubs/:clubId', element },
+      { path: '/clubs/:clubId/:tab', element },
     ],
     { initialEntries: ['/clubs/c1'] }
   );
@@ -276,6 +284,57 @@ describe('capabilities stay exactly where they were', () => {
     renderAs('player');
     await settled();
     expect(screen.queryByRole('button', { name: /Approve/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('the session-less pot club header — the crush that hid the club\u2019s own name', () => {
+  /*
+   * On a pot-enabled club with no active session, an admin\u2019s header carries
+   * the pot-balance card AND Start New Session — ~336px of unshrinkable
+   * actions in a justify-between row that never wrapped. The flex-1 identity
+   * block was crushed to nothing and its shrink-0 contents overflowed their
+   * own box: measured in production at 320 and 390, the pot card rendered on
+   * top of the back button and the club code, and the club\u2019s name vanished.
+   * The no-pot club stayed clean, which is what isolated the trigger — and is
+   * why no earlier audit saw it: every previous pass used a club with a live
+   * session, where this header variant never renders.
+   *
+   * Contract, not geometry (jsdom does no layout): the row must be allowed to
+   * wrap below sm. Pixels were verified in the browser.
+   */
+  const potClub = (): Club => ({
+    ...clubAs('owner'),
+    potEnabled: true,
+    sessionRakeAmount: 750,
+    winnersCutPercent: 3,
+  });
+
+  const renderSessionless = () => renderAs('owner', [], potClub(), null);
+
+  it('the header row is allowed to wrap on phones', async () => {
+    renderSessionless();
+    await screen.findByText(/Start New Session/i);
+
+    const title = screen.getByRole('heading', { name: 'Friday Night' });
+    const row = title.closest('.max-w-7xl');
+    expect(row).not.toBeNull();
+    expect(row!.className).toContain('flex-wrap');
+    expect(row!.className).toContain('sm:flex-nowrap');
+  });
+
+  it('the pot explainer states THIS club\u2019s charges', async () => {
+    renderSessionless();
+    const potCard = await screen.findByTitle('View Club Pot Ledger');
+    fireEvent.click(potCard);
+
+    const blurb = await screen.findByText(/Accumulated from/i);
+    expect(blurb.textContent).toContain('750');
+    expect(blurb.textContent).toContain("3% winners' cut");
+    expect(blurb.textContent).toContain('per player');
+    // The fossil figures must be gone: they were wrong for the first real
+    // pot-enabled club to ever read them.
+    expect(blurb.textContent).not.toContain('5%');
+    expect(blurb.textContent).not.toContain('₹1,000/game');
   });
 });
 

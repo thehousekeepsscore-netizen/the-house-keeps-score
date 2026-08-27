@@ -2799,7 +2799,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       
       {/* Top Header */}
       <header className="bg-bg/95 border-b border-line sticky top-0 z-50 backdrop-blur-md px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        {/*
+          flex-wrap below sm, for the same reason the plaque and the dashboard
+          card wrap: the right-hand action block is not shrinkable, and on a
+          session-less pot club it is ~336px wide -- wider than a phone header
+          has to give. justify-between then crushed the flex-1 identity block
+          to nothing, and its shrink-0 contents overflowed their own box: the
+          pot card rendered on top of the back button and the club code, and
+          the club's name disappeared entirely. Measured at 320 and 390; the
+          no-pot club stayed clean, which is what isolated the trigger. On a
+          phone the actions now step down to their own line; sm+ is unchanged.
+        */}
+        <div className="max-w-7xl mx-auto flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
 
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <button
@@ -3648,8 +3659,23 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     <h2 className="text-base font-semibold text-text flex items-center gap-2">
                       <Coins className="w-5 h-5 text-accent" /> Club Pot Ledger & Transactions (Admin Only)
                     </h2>
+                    {/*
+                      This club's actual charges, not example figures. The old
+                      copy hardcoded "₹1,000/game, 5% winner's cut" -- wrong in
+                      three ways for the very first pot-enabled club to read it
+                      (its cut is a different number, the seat fee is per
+                      player, and the figures are chips, not rupees). A ledger
+                      whose one-line explanation misstates the charges teaches
+                      the reader to distrust the ledger.
+                    */}
                     <p className="text-xs text-text-muted">
-                      Accumulated from fixed rake (₹1,000/game), 5% winner's cut, and buy-in excess leftovers.
+                      Accumulated from{' '}
+                      {[
+                        (club.sessionRakeAmount ?? 0) > 0 ? `a ${formatVal(club.sessionRakeAmount)} seat fee per player` : null,
+                        (club.winnersCutPercent ?? 0) > 0 ? `a ${club.winnersCutPercent}% winners' cut` : null,
+                        'buy-in surplus left on the table',
+                      ].filter(Boolean).join(', ')}
+                      .
                     </p>
                   </div>
 
