@@ -504,6 +504,26 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [remoteFiguresMoved, setRemoteFiguresMoved] = useState(false);
   const [settlementError, setSettlementError] = useState('');
   const [showCashoutModal, setShowCashoutModal] = useState(false);
+  /**
+   * The recovery path for a night with no rules of its own.
+   *
+   * The server has refused to settle such nights since rule-snapshotting
+   * shipped, and refused correctly — but the endpoint that gives a night its
+   * rules (initSettlementRules) had no caller anywhere in the client, so the
+   * refusal was a dead end: the settlement sheet told the host "somebody"
+   * must set the rake and cut, and the product contained no way for anybody
+   * to do it. Every pre-snapshot night was permanently unsettleable.
+   *
+   * The ask happens BEFORE the freeze, not inside the settlement sheet,
+   * because the server accepts the rules only while the night is `playing` —
+   * a form inside the sheet (which exists only once the night is `settling`)
+   * would be a control that can never succeed.
+   */
+  const [showNightRulesSheet, setShowNightRulesSheet] = useState(false);
+  const [nightRakeInput, setNightRakeInput] = useState('');
+  const [nightCutInput, setNightCutInput] = useState('');
+  const [nightRulesError, setNightRulesError] = useState('');
+  const [nightRulesSaving, setNightRulesSaving] = useState(false);
   const [confirmingSettle, setConfirmingSettle] = useState(false);
   const [showClubInfoModal, setShowClubInfoModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -2369,6 +2389,15 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // `playing`), so asking a second time would refuse the host entry to the
       // very screen the freeze exists to open.
       if (!activeSession.settlingAt) {
+        // A night with no rules of its own cannot settle, and the server only
+        // accepts its rules while it is still `playing` — so the ask has to
+        // come before the freeze. Frozen legacy nights get the same ask after
+        // "Back to the table"; the settlement sheet's warning says so.
+        if (!activeSession.settlementRules) {
+          setNightRulesError('');
+          setShowNightRulesSheet(true);
+          return;
+        }
         applySession(await offlineSessionsApi.beginSettling(club.id, activeSession.id));
       }
       openCashoutModal();
@@ -2379,6 +2408,46 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast('Could not settle', err instanceof Error ? err.message : 'Please try again.', 'warning');
     } finally {
       setClockBusy(false);
+    }
+  };
+
+  /**
+   * Give a pre-snapshot night its rules, then carry on into settling.
+   *
+   * Validation mirrors the server exactly (whole chips >= 0, whole percent
+   * 0-100) so the refusals a host can hit locally are the same ones the
+   * server would give. On success the returned session already carries the
+   * snapshot, so settling continues in the same gesture -- the host pressed
+   * "Settle night", and setting the rules was a step of that, not a detour.
+   */
+  const submitNightRules = async () => {
+    if (!activeSession || nightRulesSaving) return;
+    const rake = Number(nightRakeInput);
+    const cut = Number(nightCutInput);
+    if (!Number.isInteger(rake) || rake < 0) {
+      setNightRulesError('The rake must be a whole number of chips, zero or more.');
+      return;
+    }
+    if (!Number.isInteger(cut) || cut < 0 || cut > 100) {
+      setNightRulesError("The winners' cut must be a whole percentage between 0 and 100.");
+      return;
+    }
+    setNightRulesSaving(true);
+    try {
+      const updated = await offlineSessionsApi.initSettlementRules(club.id, activeSession.id, {
+        sessionRakeAmount: rake,
+        winnersCutPercent: cut,
+      });
+      applySession(updated);
+      setShowNightRulesSheet(false);
+      applySession(await offlineSessionsApi.beginSettling(club.id, activeSession.id));
+      openCashoutModal();
+    } catch (err) {
+      // The server's own words: "already has its rules", "must be a whole
+      // number" — each names the situation better than a generic failure.
+      setNightRulesError(err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setNightRulesSaving(false);
     }
   };
 
@@ -2926,6 +2995,71 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 sheet, which opens on the bank chooser because they have no
                 seat — so there is exactly one "how much?" in the app,
                 entered from two doors. */}
+            {/* What a pre-snapshot night is asked before it can settle.
+                The two figures the snapshot cannot guess; everything else the
+                snapshot needs is captured from the club on the server. */}
+            <Sheet
+              open={showNightRulesSheet}
+              onClose={() => setShowNightRulesSheet(false)}
+              title="Set this night's rules"
+              description="It started before rules were recorded against a night, so it has none of its own."
+              footer={
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  loading={nightRulesSaving}
+                  onClick={() => void submitNightRules()}
+                >
+                  Set rules & settle
+                </Button>
+              }
+            >
+              <div className="space-y-4">
+                <p className="text-xs text-text-muted leading-relaxed">
+                  The club's current settings are deliberately not used — they may have
+                  changed since this night began. Whatever is set here is fixed for this
+                  night and recorded in the audit log.
+                </p>
+                <div className="space-y-1">
+                  <label htmlFor="night-rake" className="text-[10px] font-medium text-text-muted uppercase tracking-wide">
+                    Rake — chips per player
+                  </label>
+                  <input
+                    id="night-rake"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="0"
+                    value={nightRakeInput}
+                    onChange={(e) => setNightRakeInput(e.target.value)}
+                    className={SETTLEMENT_AMOUNT_INPUT}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="night-cut" className="text-[10px] font-medium text-text-muted uppercase tracking-wide">
+                    Winners' cut — % of profit
+                  </label>
+                  <input
+                    id="night-cut"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    step={1}
+                    placeholder="0"
+                    value={nightCutInput}
+                    onChange={(e) => setNightCutInput(e.target.value)}
+                    className={SETTLEMENT_AMOUNT_INPUT}
+                  />
+                </div>
+                {nightRulesError && (
+                  <p role="alert" className="text-xs text-danger leading-relaxed">{nightRulesError}</p>
+                )}
+              </div>
+            </Sheet>
+
             <AddPlayerSheet
               open={addPlayerOpen}
               onClose={() => setAddPlayerOpen(false)}
@@ -4074,8 +4208,11 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <div className="p-3.5 bg-warning/10 border border-warning/40 rounded-2xl">
                   <p className="text-[11px] text-warning leading-relaxed">
                     This night started before its rules were recorded, so it has none of its own.
-                    It cannot be settled until somebody sets its rake and winners' cut — the club's
+                    It cannot be settled until its rake and winners' cut are set — the club's
                     current settings are not used, because they may have changed since the night began.
+                    Press <span className="font-semibold">Back to the table</span>, then{' '}
+                    <span className="font-semibold">Settle night</span> again — you'll be asked to
+                    set them on the way in.
                   </p>
                 </div>
               )}

@@ -527,15 +527,99 @@ describe('a night with no rules of its own', () => {
     const { settlementRules, ...rest } = session;
     return { ...rest, settlementRules: undefined };
   };
+  /** Already frozen — the shape Texas Holdem was found in. */
+  const frozenNoRules = (): Partial<PokerSession> => ({ ...noRules(), settlingAt: ago(30) });
 
-  it('says why it cannot be settled instead of showing figures', async () => {
-    await openSettlement(noRules());
+  /*
+   * The recovery path. The server's initSettlementRules endpoint existed,
+   * was audited and integration-tested — and had no caller anywhere in the
+   * client, so a night that predated rule snapshots was permanently
+   * unsettleable: the sheet said "somebody" must set the rules and the
+   * product contained no way for anybody to do it. The mock of it in this
+   * file's module mock sat unused for the same reason, which is exactly
+   * how the gap survived: everything around the hole was tested.
+   */
 
-    expect(screen.getByText(/started before its rules were recorded/i)).toBeInTheDocument();
+  it('asks for the rules BEFORE freezing the table, since the server only accepts them while playing', async () => {
+    renderClub(noRules());
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole('button', { name: /settle night/i }));
+
+    expect(await screen.findByRole('heading', { name: /set this night's rules/i })).toBeInTheDocument();
+    expect(offlineSessionsApi.beginSettling).not.toHaveBeenCalled();
+  });
+
+  it('sets the rules and carries on into settling in the same gesture', async () => {
+    vi.mocked(offlineSessionsApi.initSettlementRules).mockResolvedValue({
+      ...session,
+    } as PokerSession);
+    renderClub(noRules());
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: /settle night/i }));
+    await screen.findByRole('heading', { name: /set this night's rules/i });
+
+    fireEvent.change(screen.getByLabelText(/rake — chips per player/i), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText(/winners' cut — % of profit/i), { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: /set rules & settle/i }));
+
+    await waitFor(() => {
+      expect(offlineSessionsApi.initSettlementRules).toHaveBeenCalledWith('c1', 's1', {
+        sessionRakeAmount: 1000,
+        winnersCutPercent: 5,
+      });
+    });
+    // The same gesture continues into the freeze and the count.
+    await waitFor(() => expect(offlineSessionsApi.beginSettling).toHaveBeenCalledWith('c1', 's1'));
+    expect(await screen.findByRole('heading', { name: /settle night/i })).toBeInTheDocument();
+  });
+
+  it('refuses bad figures locally, with the server\u2019s own vocabulary', async () => {
+    renderClub(noRules());
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: /settle night/i }));
+    await screen.findByRole('heading', { name: /set this night's rules/i });
+
+    fireEvent.change(screen.getByLabelText(/rake — chips per player/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/winners' cut — % of profit/i), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: /set rules & settle/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/whole percentage between 0 and 100/i);
+    expect(offlineSessionsApi.initSettlementRules).not.toHaveBeenCalled();
+  });
+
+  it('shows the server\u2019s refusal in its own words', async () => {
+    vi.mocked(offlineSessionsApi.initSettlementRules).mockRejectedValue(
+      new Error('This night already has its rules: rake 500 chips, winners\u2019 cut 2%.')
+    );
+    renderClub(noRules());
+    await waitFor(() => expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: /settle night/i }));
+    await screen.findByRole('heading', { name: /set this night's rules/i });
+
+    fireEvent.change(screen.getByLabelText(/rake — chips per player/i), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText(/winners' cut — % of profit/i), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /set rules & settle/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already has its rules/i);
+    expect(offlineSessionsApi.beginSettling).not.toHaveBeenCalled();
+  });
+
+  it('an already-frozen night explains the way out instead of a dead end', async () => {
+    // The sheet cannot take the rules here — the server accepts them only in
+    // `playing` — so the warning names the exact recovery: back to the table,
+    // then Settle night again.
+    await openSettlement(frozenNoRules());
+
+    const warning = screen.getByText(/started before its rules were recorded/i);
+    // The guidance names the exact control that unblocks the night — which is
+    // also on screen, so the match is scoped to the warning's own text.
+    expect(warning.textContent).toMatch(/back to the table/i);
+    expect(warning.textContent).toMatch(/settle night/i);
   });
 
   it('does not quietly substitute the club settings', async () => {
-    await openSettlement(noRules());
+    await openSettlement(frozenNoRules());
     fireEvent.change(amountFields()[1], { target: { value: '8000' } });
     fireEvent.change(amountFields()[3], { target: { value: '2000' } });
 
