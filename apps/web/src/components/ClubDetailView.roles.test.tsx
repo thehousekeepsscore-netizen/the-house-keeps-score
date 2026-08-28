@@ -311,7 +311,7 @@ describe('the session-less pot club header — the crush that hid the club\u2019
 
   const renderSessionless = () => renderAs('owner', [], potClub(), null);
 
-  it('the header row is allowed to wrap on phones', async () => {
+  it('the header row wraps on phones, and the identity CLAIMS the line', async () => {
     renderSessionless();
     await screen.findByText(/Start New Session/i);
 
@@ -320,6 +320,33 @@ describe('the session-less pot club header — the crush that hid the club\u2019
     expect(row).not.toBeNull();
     expect(row!.className).toContain('flex-wrap');
     expect(row!.className).toContain('sm:flex-nowrap');
+
+    /*
+     * The half this contract missed the first time. #87 shipped with
+     * flex-wrap and still crushed at 390px, because wrapping is decided from
+     * flex-basis and flex-1 leaves the identity's basis at 0% — the browser
+     * summed 0 + 336 <= 358 and never broke the line. basis-full makes the
+     * wrap deterministic on phones; sm:basis-0 restores the desktop row.
+     * Production proved the classes matter individually, so they are pinned
+     * individually.
+     */
+    const identity = row!.firstElementChild as HTMLElement;
+    expect(identity.className).toContain('basis-full');
+    expect(identity.className).toContain('sm:basis-0');
+    expect(identity.className).not.toContain('flex-1');
+  });
+
+  it('the History toolbar wraps rather than clipping its last chip', async () => {
+    // 320px gives this row ~254px and its content wants ~304: without wrap
+    // the "Completed Sessions" chip was clipped mid-word off the card edge.
+    renderAs('owner');
+    await settled();
+    fireEvent.click(screen.getAllByRole('button', { name: /history/i })[0]);
+
+    const chip = await screen.findByText(/Completed Sessions:/i);
+    const toolbar = chip.closest('.gap-2');
+    expect(toolbar).not.toBeNull();
+    expect(toolbar!.className).toContain('flex-wrap');
   });
 
   it('the pot explainer states THIS club\u2019s charges', async () => {
