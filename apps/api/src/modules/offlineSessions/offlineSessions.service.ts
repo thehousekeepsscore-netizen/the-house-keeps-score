@@ -1410,10 +1410,25 @@ export async function voidBuyInRequest(
 }
 
 export interface SettleInput {
-  // Buy-in is auto-populated client-side from approved BuyInRequest sums but
-  // editable by the admin at settle time (e.g. to correct a data-entry
-  // mistake) — the server trusts these submitted figures as authoritative
-  // rather than re-deriving them from BuyInRequest itself.
+  /*
+   * `buyIn` is NOT authoritative and is not read by the server.
+   *
+   * Settlement derives each player's buy-in from their approved, non-voided
+   * BuyInRequest rows. The field stays on the wire because the client still
+   * sends what it rendered, and removing it would break older clients for no
+   * gain — but whatever arrives here is ignored.
+   *
+   * This used to say the opposite, and it was true then: the form was the only
+   * place a mis-approved bank could be corrected. The void flow moved that
+   * correction onto the live table, where it is audited, so a figure typed at
+   * settlement no longer has a job to do.
+   *
+   * The set cannot shift underneath a host mid-count: requesting, approving and
+   * voiding a buy-in are all refused once the night is `settling`.
+   *
+   * To correct a bank now: leave settlement, resume the table, void the wrong
+   * bank, take a new one at the right amount, and settle again.
+   */
   entries: { userId: string; buyIn: number; cashOut: number; manualWinner?: boolean }[];
   // Required to settle when the club's mismatchStrategy is MANUAL and a
   // mismatch is present — the admin has reconciled it outside the app.
@@ -1456,6 +1471,39 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
     // admin already counted and signed off on it, so it wins over the form.
     const lockedCashOut = new Map(confirmedCashOuts.map((c) => [c.userId, c.amount]));
 
+    /*
+     * WHAT A PLAYER PUT IN IS DECIDED HERE, NOT BY THE FORM.
+     *
+     * The buy-in used to be whatever the settlement sheet submitted. That was
+     * deliberate while it was the ONLY way to fix a bank approved for the wrong
+     * amount: approving is one-way, so a host who approved 5,000 instead of
+     * 2,000 could do nothing but type 2,000 here. It worked, and it left a
+     * settlement whose figures no chip could be traced back to.
+     *
+     * The void flow replaced that. A wrong bank is now voided on the live table
+     * and re-taken at the right amount, both audited, so every chip in a
+     * settlement can name the request it came from. Deriving the figure here is
+     * what makes that guarantee hold rather than merely be available.
+     *
+     * Read on `tx`, under the FOR UPDATE lock taken at the top of this
+     * transaction, so it cannot move while the settlement is being computed.
+     * It is also read AFTER assertPhase — a call that is going to be refused
+     * should not query — which costs nothing, because the lock means the answer
+     * is the same wherever in the transaction it is asked.
+     *
+     * `status: 'approved'` by equality is what excludes voided rows, exactly as
+     * every live calculation does; there is no second notion of "counts" to
+     * keep in step.
+     */
+    const approvedByPlayer = await tx.buyInRequest.groupBy({
+      by: ['userId'],
+      where: { sessionId, status: 'approved' },
+      _sum: { amount: true },
+    });
+    const authoritativeBuyIn = new Map(
+      approvedByPlayer.map((r) => [r.userId, r._sum.amount ?? 0])
+    );
+
     const users = await tx.user.findMany({ where: { id: { in: activePlayerUids } }, select: { id: true, displayName: true } });
     const nameByUid = new Map(users.map((u) => [u.id, u.displayName]));
 
@@ -1496,7 +1544,9 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
       return {
         userId: uid,
         userDisplayName: nameByUid.get(uid) || 'Player',
-        buyIn: Number(entry?.buyIn || 0),
+        // Never `entry.buyIn`. A stale or hand-edited client may submit
+        // anything; what the player put in is the sum of their approved banks.
+        buyIn: authoritativeBuyIn.get(uid) ?? 0,
         cashOut: lockedCashOut.has(uid) ? lockedCashOut.get(uid)! : Number(entry?.cashOut || 0),
         manualWinner: entry?.manualWinner,
       };

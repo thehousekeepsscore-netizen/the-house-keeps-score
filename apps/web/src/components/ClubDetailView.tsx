@@ -4390,16 +4390,34 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
+                        {/*
+                          Read, not entered.
+
+                          This was a text field, and for a long time it had to
+                          be: approving a bank is one-way, so typing over the
+                          figure here was the only way to fix a bank approved
+                          for the wrong amount. The void flow moved that
+                          correction onto the live table, and the server now
+                          derives this number from the player's approved banks
+                          — so a field would accept typing that changes
+                          nothing, which is worse than no field at all.
+
+                          Presented the same way as a locked cash-out below,
+                          because it is the same kind of fact: a figure the
+                          server already decided.
+                        */}
                         <div className="space-y-1">
                           <label className="text-[10px] font-medium text-text-muted uppercase">Buy-in</label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            value={buyInInputs[uid] ?? ''}
-                            onChange={(e) => { setBuyInInputs({ ...buyInInputs, [uid]: e.target.value }); setConfirmingSettle(false); setMismatchAcknowledged(false); }}
-                            className={SETTLEMENT_AMOUNT_INPUT}
-                          />
+                          <div
+                            data-testid={`settle-buyin-${uid}`}
+                            className="w-full bg-surface/60 border border-line rounded-xl px-3 py-2 flex items-center justify-between gap-2"
+                          >
+                            <span className="text-base font-mono font-medium text-text tabular-nums">
+                              {Number(buyInInputs[uid] || 0).toLocaleString()}
+                            </span>
+                            <Lock className="w-2.5 h-2.5 text-text-faint shrink-0" />
+                          </div>
+                          <p className="text-[9px] text-text-faint leading-tight">From approved banks</p>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-medium text-text-muted uppercase flex items-center gap-1">
