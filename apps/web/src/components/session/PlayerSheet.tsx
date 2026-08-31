@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Seat } from '../../lib/night-state';
+import { agoLabel } from '../../lib/night-feed';
 import { Sheet } from '../ui/Sheet';
 import { Button } from '../ui/Button';
 import { PlayerAvatar } from './PlayerAvatar';
@@ -64,9 +65,22 @@ export interface PlayerSheetProps {
    */
   askForChips?: boolean;
   busy?: boolean;
+  /**
+   * This player's approved banks, newest last, for the correction path.
+   *
+   * Passed as rows rather than a total because a void acts on ONE approved
+   * buy-in — "which 5,000" is the question, and a total cannot answer it.
+   * Empty or omitted hides the correction entirely.
+   */
+  banks?: { id: string; amount: number; at: string }[];
+  /**
+   * Take back an approved bank. Absent when the caller cannot offer it — a
+   * player, or a night that has already been frozen for settling.
+   */
+  onVoidBank?: (requestId: string, reason?: string) => void;
 }
 
-type Mode = 'idle' | 'bank' | 'count';
+type Mode = 'idle' | 'bank' | 'count' | 'void';
 
 /** One line, in the vocabulary of the state. Never a figure standing in for a
  *  situation — that is the "Arjun · 0 Chips" defect, restated. */
@@ -103,6 +117,8 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
   onSitBackDown,
   askForChips = false,
   busy = false,
+  banks = [],
+  onVoidBank,
 }) => {
   const state = seat?.state ?? null;
 
@@ -114,6 +130,12 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
   // The count an admin is confirming starts at what the player submitted, so
   // agreeing is one tap and correcting is an edit rather than a re-entry.
   const [count, setCount] = useState('');
+  /** Which approved bank is being taken back, and why. */
+  const [voidId, setVoidId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  /* One instant for the whole list, so two banks a second apart cannot be
+     labelled against two different "now"s in the same render. */
+  const [nowMs] = useState(() => Date.now());
 
   // Keyed on the person, not on the seat: a seat appearing means they just
   // joined, and resetting on that would throw away what they are looking at.
@@ -122,6 +144,8 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
     setChoice(null);
     setCustom('');
     setCount(seat?.pendingCashOut != null ? String(seat.pendingCashOut) : '');
+    setVoidId(null);
+    setVoidReason('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, askForChips]);
 
@@ -299,6 +323,80 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
           </div>
         )}
 
+        {/*
+            Taking a bank back.
+
+            Two steps on purpose. Step one picks WHICH bank, because a player
+            with three approved buy-ins has three different 5,000s and only one
+            of them is the mistake. Step two states the consequence in full and
+            asks again — this removes money from a live night, and a single tap
+            is the wrong weight for that.
+
+            The word is "voided" everywhere, never "edited" or "changed": the
+            original request keeps its amount, and the feed will say so.
+        */}
+        {mode === 'void' && isAdmin && onVoidBank && (
+          <div className="w-full space-y-3">
+            {voidId === null ? (
+              <>
+                <p className="text-sm text-text-muted text-center leading-relaxed">
+                  Which bank was wrong? The whole bank is taken back — it is not
+                  changed to a different amount.
+                </p>
+                {banks.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setVoidId(b.id)}
+                    className="w-full min-h-[56px] px-4 rounded-[var(--radius-sm)] bg-bg flex items-center justify-between gap-3 cursor-pointer hover:bg-surface-alt transition-colors"
+                  >
+                    <span className="text-lg tabular-nums text-text">{formatAmount(b.amount)}</span>
+                    <span className="text-xs text-text-faint">{agoLabel(b.at, nowMs)}</span>
+                  </button>
+                ))}
+                <Button variant="ghost" size="md" fullWidth onClick={() => setMode('idle')}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-text text-center leading-relaxed">
+                  Void{' '}
+                  <span className="text-accent tabular-nums">
+                    {formatAmount(banks.find((b) => b.id === voidId)?.amount ?? 0)}
+                  </span>{' '}
+                  from {name}&apos;s bank?
+                </p>
+                <p className="text-xs text-text-muted text-center leading-relaxed">
+                  These chips stop counting toward their total and toward the table
+                  maximum. The original buy-in is kept on record as voided. If they
+                  should have had a different amount, add it as a new bank afterwards.
+                </p>
+                <input
+                  aria-label="Reason (optional)"
+                  placeholder="Reason (optional)"
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  maxLength={200}
+                  className="w-full min-h-[48px] px-3 rounded-[var(--radius-sm)] bg-bg text-base text-text outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                />
+                <Button
+                  variant="danger"
+                  size="lg"
+                  fullWidth
+                  loading={busy}
+                  onClick={() => onVoidBank(voidId, voidReason.trim() || undefined)}
+                >
+                  Void this bank
+                </Button>
+                <Button variant="ghost" size="md" fullWidth onClick={() => setVoidId(null)}>
+                  Back
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
         {mode === 'idle' && mayAct && (
           <div className="w-full space-y-2">
             {/* Asked, and waiting. Nothing to do — the countdown is the content. */}
@@ -325,6 +423,28 @@ export const PlayerSheet: React.FC<PlayerSheetProps> = ({
                   Stand up
                 </Button>
               </>
+            )}
+
+            {/*
+                The correction path, deliberately last and deliberately quiet.
+
+                Approving a bank is one-way, so a host who approved 5,000
+                instead of 2,000 previously had nothing to press and the chips
+                counted all night.
+
+                The word is "void", not "correct" and not "edit", and it is the
+                word from the very first tap. "Correct a bank" reads like it
+                leads to a field you can retype; this leads to taking the whole
+                approved bank back while the original stays on record. Naming
+                that up front is the difference between an audit trail and a
+                rewrite. If they should have had 2,000, that is a new bank
+                afterwards — which is why this sits below "Add to bank" rather
+                than replacing it.
+            */}
+            {isAdmin && onVoidBank && banks.length > 0 && (state === 'inPlay' || state === 'seatedNoChips') && (
+              <Button variant="ghost" size="md" fullWidth onClick={() => setMode('void')}>
+                Void bank
+              </Button>
             )}
 
             {/* The count is the one figure in the night read off a physical

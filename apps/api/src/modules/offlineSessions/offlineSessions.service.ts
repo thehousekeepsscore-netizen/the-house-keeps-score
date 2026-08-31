@@ -1279,6 +1279,136 @@ export async function decideBuyInRequest(
   return getActiveOfflineSession(session.clubId);
 }
 
+/**
+ * Take back an approved buy-in without pretending it never had its amount.
+ *
+ * Approving is one-way — the function above refuses anything that is not still
+ * `pending` — so a host who approved 5,000 instead of 2,000 had nothing to
+ * press. The chips went on counting toward that player's bank, toward
+ * `chipsInPlay`, and toward the MATCH_HIGHEST ceiling every other player is
+ * allowed to match, for the rest of the night. The only correction available
+ * was to type a different number into the settlement sheet hours later, which
+ * fixes the money and records nothing about why it moved.
+ *
+ * VOID, NOT EDIT. `amount` is never rewritten. The original row survives as it
+ * was approved and gains a terminal `voided` status, a time, an actor and a
+ * reason. A player who should have had 2,000 makes a NEW request for 2,000 —
+ * separately timed, separately approved, separately visible. Rewriting 5,000 to
+ * 2,000 in place would leave a ledger that cannot explain itself.
+ *
+ * Nothing downstream needed changing for this. Every consumer of a live bank —
+ * the ceiling, readiness, remove-from-lobby, the on-behalf cash-out check, the
+ * feed, `bankByUid`, settlement seeding — filters `status === 'approved'` by
+ * equality, so a voided row leaves all of them the moment its status changes.
+ * That is the whole reason this is a status transition rather than a delete.
+ */
+export async function voidBuyInRequest(
+  sessionId: string,
+  requesterId: string,
+  isSuperAdmin: boolean,
+  requestId: string,
+  reason?: string
+) {
+  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new HttpError(404, 'Session not found');
+  const club = await clubsService.getClubOrThrow(session.clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { result } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    /*
+     * Not `settling`. Once the table is frozen the host is reading a count that
+     * was seeded from these very rows, and moving one underneath them would
+     * change the figures they are checking without their asking. The way back
+     * is the documented one: return to the table, correct, then settle.
+     */
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
+    if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
+    if (req.status === 'voided') throw new HttpError(409, 'This buy-in has already been voided');
+    if (req.status !== 'approved') {
+      throw new HttpError(409, 'Only an approved buy-in can be voided');
+    }
+
+    /*
+     * The same rule as self-approval, for the same reason. Voiding your own
+     * buy-in shrinks the amount you are recorded as having put in, which
+     * improves your net at settlement — it is self-dealing in the opposite
+     * direction, and the existing guard would be pointless if you could undo
+     * an approval you were not allowed to grant.
+     */
+    if (req.userId === requesterId && hasAnotherAdminHere(club, requesterId, state)) {
+      throw new HttpError(403, 'Another Club Admin must void your own buy-in');
+    }
+
+    // Conditional by status, exactly as the approve path is: two admins pressing
+    // together are separated by the database, not by this process.
+    const claimed = await tx.buyInRequest.updateMany({
+      where: { id: requestId, status: 'approved' },
+      data: { status: 'voided', voidedAt: new Date(), voidedBy: requesterId, voidReason: reason ?? null },
+    });
+    if (claimed.count === 0) throw new HttpError(409, 'This buy-in has already been voided');
+
+    const voided = await tx.buyInRequest.findUniqueOrThrow({ where: { id: requestId } });
+
+    const [actor, player] = await Promise.all([
+      tx.user.findUnique({ where: { id: requesterId }, select: { displayName: true } }),
+      tx.user.findUnique({ where: { id: req.userId }, select: { displayName: true } }),
+    ]);
+
+    /*
+     * Audited in the same transaction as the void, so chips can never leave a
+     * player's bank with no record of who took them off. This is the first
+     * audited buy-in event — approvals are not logged — which is a deliberate
+     * asymmetry: an approval is the ordinary course of an evening, a void is
+     * somebody correcting the record.
+     */
+    await tx.auditLog.create({
+      data: {
+        clubId: session.clubId,
+        sessionId,
+        sessionTitle: row.sessionName,
+        action: 'void_buy_in',
+        changedBy: requesterId,
+        changedByName: actor?.displayName ?? 'Unknown',
+        details:
+          `Voided ${player?.displayName ?? 'a player'}'s approved buy-in of ${req.amount}` +
+          `${reason ? ` — ${reason}` : ''}. The original request is unchanged.`,
+        changes: {
+          requestId,
+          playerId: req.userId,
+          playerName: player?.displayName ?? null,
+          amount: req.amount,
+          approvedBy: req.approvedBy,
+          voidedBy: requesterId,
+          voidedByName: actor?.displayName ?? null,
+          reason: reason ?? null,
+        } as never,
+      },
+    });
+
+    /*
+     * The seat stays. `activePlayerUids` is who is AT the table, not who holds
+     * chips — a player whose only bank was voided is still sitting there, and
+     * night-state renders them as seated with no chips. Removing them here
+     * would evict somebody from a chair they never left.
+     */
+    return { state, result: { req, voided } };
+  });
+
+  // After the commit, never inside it: an event emitted from within a
+  // transaction is a claim about state that may still roll back.
+  emitToClub(session.clubId, 'club:buyin-voided', {
+    sessionId,
+    requestId,
+    userId: result.req.userId,
+    amount: result.req.amount,
+    request: result.voided,
+  });
+
+  return getActiveOfflineSession(session.clubId);
+}
+
 export interface SettleInput {
   // Buy-in is auto-populated client-side from approved BuyInRequest sums but
   // editable by the admin at settle time (e.g. to correct a data-entry

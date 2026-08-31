@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PlayerSheet, PlayerSheetProps } from './PlayerSheet';
 import { Seat } from '../../lib/night-state';
@@ -292,5 +292,88 @@ describe('someone else’s seat', () => {
     show({ seat: seat(), isSelf: false, isAdmin: false });
     expect(screen.getByText(/nothing to do here/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /bank|stand|join/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('taking a bank back', () => {
+  /*
+   * A void is not an edit, and the sheet has to say so at every step. It never
+   * offers "change 5,000 to 2,000": it takes the whole bank back, names the
+   * original figure, and leaves a replacement as a separate act.
+   */
+  const banks = [
+    { id: 'b1', amount: 5000, at: new Date().toISOString() },
+    { id: 'b2', amount: 1000, at: new Date().toISOString() },
+  ];
+
+  it('offers the correction to an admin, and not to the player', async () => {
+    show({ isAdmin: true, banks, onVoidBank: vi.fn() });
+    expect(screen.getByRole('button', { name: /void bank/i })).toBeInTheDocument();
+
+    cleanup();
+    show({ isAdmin: false, isSelf: true, banks, onVoidBank: vi.fn() });
+    expect(screen.queryByRole('button', { name: /void bank/i })).not.toBeInTheDocument();
+  });
+
+  it('offers nothing when there are no approved banks to take back', () => {
+    // The settling case arrives here as an empty list, because the server
+    // refuses a void once the table is frozen.
+    show({ isAdmin: true, banks: [], onVoidBank: vi.fn() });
+    expect(screen.queryByRole('button', { name: /void bank/i })).not.toBeInTheDocument();
+  });
+
+  it('asks which bank, then asks again before doing it', async () => {
+    const user = userEvent.setup();
+    const props = show({ isAdmin: true, banks, onVoidBank: vi.fn() });
+
+    await user.click(screen.getByRole('button', { name: /void bank/i }));
+    // Step one: which one. Both banks are offered, by amount.
+    expect(screen.getByRole('button', { name: /5,000/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /1,000/ })).toBeInTheDocument();
+    expect(props.onVoidBank, 'choosing is not doing').not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /5,000/ }));
+    // Step two: the consequence, stated, and a second press.
+    expect(screen.getByText(/stop counting toward/i)).toBeInTheDocument();
+    expect(props.onVoidBank, 'still not done').not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /void this bank/i }));
+    expect(props.onVoidBank).toHaveBeenCalledWith('b1', undefined);
+  });
+
+  it('passes the reason when one is given', async () => {
+    const user = userEvent.setup();
+    const props = show({ isAdmin: true, banks, onVoidBank: vi.fn() });
+
+    await user.click(screen.getByRole('button', { name: /void bank/i }));
+    await user.click(screen.getByRole('button', { name: /5,000/ }));
+    await user.type(screen.getByLabelText(/reason/i), 'approved twice');
+    await user.click(screen.getByRole('button', { name: /void this bank/i }));
+
+    expect(props.onVoidBank).toHaveBeenCalledWith('b1', 'approved twice');
+  });
+
+  it('backing out changes nothing', async () => {
+    const user = userEvent.setup();
+    const props = show({ isAdmin: true, banks, onVoidBank: vi.fn() });
+
+    await user.click(screen.getByRole('button', { name: /void bank/i }));
+    await user.click(screen.getByRole('button', { name: /5,000/ }));
+    await user.click(screen.getByRole('button', { name: /^back$/i }));
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(props.onVoidBank).not.toHaveBeenCalled();
+    // And the ordinary actions are back.
+    expect(screen.getByRole('button', { name: /add to bank/i })).toBeInTheDocument();
+  });
+
+  it('never offers to change the amount', async () => {
+    const user = userEvent.setup();
+    show({ isAdmin: true, banks, onVoidBank: vi.fn() });
+    await user.click(screen.getByRole('button', { name: /void bank/i }));
+    await user.click(screen.getByRole('button', { name: /5,000/ }));
+
+    expect(screen.queryByText(/edit|change the amount|correct to/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/kept on record as voided/i)).toBeInTheDocument();
   });
 });

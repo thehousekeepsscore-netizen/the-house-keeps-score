@@ -192,6 +192,22 @@ export async function listBuyInRequests(req: Request, res: Response) {
   return res.json(requests);
 }
 
+/**
+ * Void an approved buy-in. The reason is optional and free text; it is trimmed
+ * and dropped if empty so the audit line never carries a blank "because".
+ */
+export async function voidBuyInRequest(req: Request, res: Response) {
+  const raw = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  const session = await offlineSessionsService.voidBuyInRequest(
+    req.params.sessionId,
+    req.user!.sub,
+    req.user!.isSuperAdmin,
+    req.params.requestId,
+    raw ? raw.slice(0, 200) : undefined
+  );
+  return res.json(session);
+}
+
 export async function decideBuyInRequest(req: Request, res: Response) {
   const approve = req.params.decision === 'approve';
   const session = await offlineSessionsService.decideBuyInRequest(

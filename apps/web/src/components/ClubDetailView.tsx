@@ -1242,6 +1242,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       write);
     };
     const onBuyinRequested = (p: { request?: ApiBuyInRequest }) => patchBuyIn(p);
+    /*
+      A void changes a ROW, not the session's engineState — the seat stays, the
+      player is still at the table, and only the status of one buy-in moved.
+      `patchBuyIn` replaces that row in place, which is what makes the bank
+      totals, the ceiling and the feed all correct on every other device at
+      once, since every one of them is derived from these rows.
+    */
+    const onBuyinVoided = (p: { userId?: string; request?: ApiBuyInRequest }) => patchBuyIn(p);
     const onBuyinDecided = (p: { userId?: string; expired?: boolean; request?: ApiBuyInRequest }) => {
       notifyIfExpired(p, 'Buy-in request', 'Ask for chips again.');
       // An approval also seats the player, which lives in the session's
@@ -1295,6 +1303,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     socket.on('club:session-started', onSessionStarted);
     socket.on('club:buyin-requested', onBuyinRequested);
     socket.on('club:buyin-decided', onBuyinDecided);
+    socket.on('club:buyin-voided', onBuyinVoided);
     for (const [event, handler] of sessionHandlers) socket.on(event, handler);
     socket.on('club:session-settled', onSessionSettled);
     socket.on('club:history-updated', onHistoryUpdated);
@@ -1307,6 +1316,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:session-started', onSessionStarted);
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
+      socket.off('club:buyin-voided', onBuyinVoided);
       for (const [event, handler] of sessionHandlers) socket.off(event, handler);
       socket.off('club:session-settled', onSessionSettled);
       socket.off('club:history-updated', onHistoryUpdated);
@@ -2694,6 +2704,25 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       );
     }, 'Please try again.');
 
+  /*
+    Take back an approved bank.
+
+    Closes the sheet on success rather than returning to the menu: the bank the
+    admin was looking at no longer exists, and a list that silently loses a row
+    under the thumb is the movement the brief warns about. The refreshed session
+    carries the new totals, and the feed carries the correction.
+  */
+  const voidBank = (requestId: string, reason?: string) =>
+    runSheet(async () => {
+      if (!activeSession) return;
+      applySession(
+        await offlineSessionsApi.voidBuyInRequest(club.id, activeSession.id, requestId, reason)
+      );
+      await refreshActiveSession();
+      setSheetAsksForChips(false);
+      setSheetUid(null);
+    }, 'Could not void that bank. Please try again.');
+
   const approveChangeAction = useAction(handleApproveChangeRequest);
   const rejectChangeAction = useAction(handleRejectChangeRequest);
   const restoreSessionAction = useAction(handleRestoreSession);
@@ -3115,6 +3144,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onStandUp={standUp}
                 onConfirmCount={confirmCount}
                 onSitBackDown={sitBackDown}
+                /* Only this player's own approved banks, oldest first, and only
+                   while the night can still be corrected — the server refuses a
+                   void once the table is frozen for settling, so offering it
+                   here would be a button that always fails. */
+                banks={
+                  activeSession?.settlingAt
+                    ? []
+                    : activeSessionBuyIns
+                        .filter((r) => r.userId === sheetUid && r.status === 'approved')
+                        .map((r) => ({ id: r.id, amount: r.amount, at: r.createdAt }))
+                }
+                onVoidBank={voidBank}
               />
             )}
 
