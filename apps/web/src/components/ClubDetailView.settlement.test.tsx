@@ -163,7 +163,17 @@ const buyIn = (id: string, userId: string, amount: number): BuyInRequest => ({
   createdAt: ago(80),
 });
 
-function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
+function renderClub(
+  over: Partial<PokerSession> = {},
+  clubOver: Partial<Club> = {},
+  // Additive THIRD argument, defaulted, so every existing caller is unchanged.
+  // Needed since settlement began deriving the buy-in from approved banks:
+  // proving a multi-bank sum, or that a voided bank is left out, requires
+  // shaping the rows the screen reads. Setting the mock before calling this
+  // would not work — the line below overwrites it, the same trap the roles
+  // test documents.
+  buyInsOver?: BuyInRequest[]
+) {
   const active = { ...session, ...over };
   // Additive second argument, defaulted, so every existing caller is unchanged.
   // Needed only to prove the winner control ignores the club — which cannot be
@@ -181,10 +191,9 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
   vi.mocked(clubRecordsApi.listAuditLog).mockResolvedValue([]);
   vi.mocked(clubRecordsApi.listDeletedSessions).mockResolvedValue([]);
   vi.mocked(offlineSessionsApi.getActiveSession).mockResolvedValue(active);
-  vi.mocked(offlineSessionsApi.listBuyInRequests).mockResolvedValue([
-    buyIn('b1', 'host', 5000),
-    buyIn('b2', 'priya', 5000),
-  ]);
+  vi.mocked(offlineSessionsApi.listBuyInRequests).mockResolvedValue(
+    buyInsOver ?? [buyIn('b1', 'host', 5000), buyIn('b2', 'priya', 5000)]
+  );
   // The freeze hands back a session carrying settlingAt, exactly as the server does.
   vi.mocked(offlineSessionsApi.beginSettling).mockResolvedValue({
     ...active,
@@ -234,8 +243,12 @@ function renderClub(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = 
  * carries it while the night runs, and the frozen band carries it once it does
  * not. Both call the same handler.
  */
-async function openSettlement(over: Partial<PokerSession> = {}, clubOver: Partial<Club> = {}) {
-  renderClub(over, clubOver);
+async function openSettlement(
+  over: Partial<PokerSession> = {},
+  clubOver: Partial<Club> = {},
+  buyInsOver?: BuyInRequest[]
+) {
+  renderClub(over, clubOver, buyInsOver);
   await waitFor(() => {
     expect(offlineSessionsApi.listBuyInRequests).toHaveBeenCalled();
   });
@@ -244,7 +257,13 @@ async function openSettlement(over: Partial<PokerSession> = {}, clubOver: Partia
   await screen.findByRole('heading', { name: /settle night/i });
 }
 
-/** The settlement screen's own inputs, in the order the players are listed. */
+/**
+ * The settlement screen's typeable amounts, in player order.
+ *
+ * Cash-outs only. Buy-ins were fields until settlement began deriving them from
+ * approved banks; they are now read-only figures, so a player contributes at
+ * most one entry here — and none at all once their count is locked.
+ */
 const amountFields = () =>
   screen.getAllByRole('spinbutton') as HTMLInputElement[];
 
@@ -303,16 +322,17 @@ describe('settling a night', () => {
   it('lists every player who participated, exactly once', async () => {
     await openSettlement();
 
-    // Two players, each with a buy-in and a cash-out field.
-    expect(amountFields()).toHaveLength(4);
+    // Two players. Only the cash-out is typed now — the buy-in is derived.
+    expect(amountFields()).toHaveLength(2);
   });
 
-  it('pre-fills what each player has already put up', async () => {
+  it('shows what each player has already put up, as a figure rather than a field', async () => {
+    // The buy-in is derived server-side from approved banks, so the sheet
+    // reports it instead of offering it for typing.
     await openSettlement();
 
-    const fields = amountFields();
-    expect(fields[0].value).toBe('5000');
-    expect(fields[2].value).toBe('5000');
+    expect(screen.getAllByText('5,000').length, 'both banks on screen').toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/from approved banks/i)).toHaveLength(2);
   });
 
   it('will not arm the commit until every player has a cash-out', async () => {
@@ -323,17 +343,17 @@ describe('settling a night', () => {
     expect(screen.getByText(/count everyone before you can settle/i)).toBeInTheDocument();
 
     // One of the two is not enough.
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
 
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 
   it('shows a preview only — nothing is committed by counting', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
 
     expect(await findPreview()).not.toHaveLength(0);
     expect(offlineSessionsApi.settleSession).not.toHaveBeenCalled();
@@ -341,8 +361,8 @@ describe('settling a night', () => {
 
   it('shows each player their whole arithmetic, not just the answer', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
 
     await findPreview();
     // Buy-in, cash-out and the difference, per player — the three lines that
@@ -354,8 +374,8 @@ describe('settling a night', () => {
 
   it('takes a second, deliberate tap to commit', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     await findPreview();
 
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
@@ -394,8 +414,8 @@ describe('settling a night', () => {
    */
   async function commitSettlement() {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     await findPreview();
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
@@ -471,8 +491,8 @@ describe('settling a night', () => {
      * redesign intact, and it is what this asserts now.
      */
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     await findPreview();
 
     // Arm it: the second, deliberate tap appears only once armed.
@@ -480,7 +500,7 @@ describe('settling a night', () => {
     expect(await screen.findByRole('button', { name: /confirm & settle/i })).toBeInTheDocument();
 
     // The host miscounted a stack.
-    fireEvent.change(amountFields()[3], { target: { value: '2500' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2500' } });
 
     // The armed confirmation is withdrawn — nothing can be committed against
     // figures that have moved without arming again.
@@ -501,9 +521,9 @@ describe('a player who stood up early', () => {
   it('still settles, rather than vanishing from the night', async () => {
     await openSettlement(stoodUp);
 
-    // Host has both fields; Priya's cash-out is locked, so she contributes a
-    // buy-in field only. Three, not two: she is still in the settlement.
-    expect(amountFields()).toHaveLength(3);
+    // Only the host's cash-out is typeable: Priya's is locked from her
+    // confirmed count, and neither player's buy-in is a field any more.
+    expect(amountFields()).toHaveLength(1);
   });
 
   it('has the agreed count locked, not re-typed from memory', async () => {
@@ -517,7 +537,7 @@ describe('a player who stood up early', () => {
     await openSettlement(stoodUp);
 
     // Only the host's cash-out is outstanding.
-    fireEvent.change(amountFields()[1], { target: { value: '2600' } });
+    fireEvent.change(amountFields()[0], { target: { value: '2600' } });
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 });
@@ -563,8 +583,8 @@ describe('the summary bar holds still while the count changes it', () => {
 
   it('DIFF as a long phrase, and OUT keeps its own layout slot', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '10' } });
-    fireEvent.change(amountFields()[3], { target: { value: '7' } });
+    fireEvent.change(amountFields()[0], { target: { value: '10' } });
+    fireEvent.change(amountFields()[1], { target: { value: '7' } });
     await findPreview();
 
     expect(spans()[2].textContent).toMatch(/more in than out/);
@@ -573,8 +593,8 @@ describe('the summary bar holds still while the count changes it', () => {
 
   it('a balanced night \u2014 the shortest text of all, same allocation', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '6000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '4000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '4000' } });
     await findPreview();
 
     expect(spans()[2].textContent).toMatch(/balanced/i);
@@ -586,20 +606,80 @@ describe('the summary bar holds still while the count changes it', () => {
     await openSettlement();
     expectStableMechanism();
 
-    fireEvent.change(amountFields()[1], { target: { value: '100' } });
-    fireEvent.change(amountFields()[3], { target: { value: '50' } });
+    fireEvent.change(amountFields()[0], { target: { value: '100' } });
+    fireEvent.change(amountFields()[1], { target: { value: '50' } });
     await findPreview();
     expect(spans()[2].textContent).toMatch(/more in than out/);
     expectStableMechanism();
 
-    fireEvent.change(amountFields()[1], { target: { value: '6000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '4000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '4000' } });
     await waitFor(() => expect(spans()[2].textContent).toMatch(/balanced/i));
     expectStableMechanism();
 
-    fireEvent.change(amountFields()[3], { target: { value: '4100' } });
+    fireEvent.change(amountFields()[1], { target: { value: '4100' } });
     await waitFor(() => expect(spans()[2].textContent).toMatch(/more out than in/));
     expectStableMechanism();
+  });
+});
+
+describe('the buy-in is reported, not entered', () => {
+  /*
+   * The field became a figure when the server started deriving it.
+   *
+   * While the form was authoritative, typing over the buy-in was the only way
+   * to fix a bank approved for the wrong amount. The void flow moved that
+   * correction onto the live table and settlement now derives the number from
+   * approved banks — so an input here would accept typing that changes nothing,
+   * which is worse than having no input at all.
+   *
+   * These pin the presentation rather than a disabled attribute: a disabled
+   * input still LOOKS like something you could fix, and the point is that this
+   * is a fact rather than a choice.
+   */
+  it('offers no way to type a buy-in', async () => {
+    await openSettlement();
+
+    // Every remaining number field belongs to a cash-out.
+    const typeable = amountFields();
+    expect(typeable).toHaveLength(2);
+    for (const f of typeable) {
+      expect(f.placeholder, 'only cash-outs are typeable').toMatch(/cash-out/i);
+    }
+  });
+
+  it('is not a disabled input either — it is a figure', async () => {
+    await openSettlement();
+
+    const shown = screen.getByTestId('settle-buyin-host');
+    expect(shown.querySelector('input'), 'no input hiding inside it').toBeNull();
+    expect(shown).toHaveTextContent('5,000');
+  });
+
+  it('says where the figure comes from', async () => {
+    await openSettlement();
+    expect(screen.getAllByText(/from approved banks/i)).toHaveLength(2);
+  });
+
+  it('reports the sum when a player has several banks', async () => {
+    // 2,000 + 5,000 + 1,000 — the case a single field could never explain.
+    await openSettlement(undefined, undefined, [
+      buyIn('b1', 'host', 2000), buyIn('b2', 'host', 5000), buyIn('b3', 'host', 1000),
+      buyIn('b4', 'priya', 5000),
+    ]);
+
+    expect(screen.getByTestId('settle-buyin-host')).toHaveTextContent('8,000');
+  });
+
+  it('leaves a voided bank out of the reported figure', async () => {
+    await openSettlement(undefined, undefined, [
+      buyIn('b1', 'host', 2000),
+      { ...buyIn('b2', 'host', 5000), status: 'voided' as const },
+      buyIn('b3', 'host', 1000),
+      buyIn('b4', 'priya', 5000),
+    ]);
+
+    expect(screen.getByTestId('settle-buyin-host')).toHaveTextContent('3,000');
   });
 });
 
@@ -701,8 +781,8 @@ describe('a night with no rules of its own', () => {
 
   it('does not quietly substitute the club settings', async () => {
     await openSettlement(frozenNoRules());
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
 
     // No preview at all: the admin is never shown numbers the server would
     // refuse to commit.
@@ -834,8 +914,8 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
   /** Cash-outs that do not sum to the buy-ins, so the engine has a mismatch. */
   async function openWithMismatch() {
     await openSettlement({ settlementRules: MANUAL_RULES });
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // 10,300 out vs 10,000 in
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2300' } }); // 10,300 out vs 10,000 in
     return await screen.findByRole('checkbox');
   }
 
@@ -850,7 +930,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 
     // The typo correction. This is the exact sequence that shipped: the figure
     // moves, and the acknowledgement used to stay behind.
-    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '32000' } });
 
     // The warning must be back, and unticked. If the flag had survived, the
     // engine would still be told the mismatch was acknowledged and nothing
@@ -888,10 +968,12 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
       expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
     );
 
-    // +1,000 on one buy-in and +1,000 on one cash-out. Both totals move; the
-    // difference between them does not.
-    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
-    fireEvent.change(amountFields()[1], { target: { value: '9000' } });
+    // The buy-in side is no longer typeable, so the mismatch is held constant
+    // the only way left: +1,000 on one cash-out and -1,000 on the other. Total
+    // out is unchanged, total in never moved, so the difference is identical —
+    // and the acknowledgement must still be withdrawn.
+    fireEvent.change(amountFields()[0], { target: { value: '9000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '1300' } });
 
     const again = await screen.findByRole('checkbox');
     expect(
@@ -910,8 +992,8 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
       expect(screen.queryByText(/manual mismatch resolution/i)).not.toBeInTheDocument()
     );
 
-    fireEvent.change(amountFields()[3], { target: { value: '9999' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2300' } }); // back to the acknowledged night
+    fireEvent.change(amountFields()[1], { target: { value: '9999' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2300' } }); // back to the acknowledged night
 
     const again = await screen.findByRole('checkbox');
     expect(screen.getByText(/manual mismatch resolution/i)).toBeInTheDocument();
@@ -927,7 +1009,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
       expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled()
     );
 
-    fireEvent.change(amountFields()[3], { target: { value: '32000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '32000' } });
     await screen.findByRole('checkbox');
 
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
@@ -969,8 +1051,8 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
     // The club in this fixture charges nothing. If the preview were reading it,
     // there would be no rake line at all.
     await openSettlement({ settlementRules: RULES });
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
 
     await findPreview();
     // Anchored: the header now carries "House takes" too, and this is about
@@ -1000,7 +1082,7 @@ describe('setting a running night\'s rules, then arriving from everywhere', () =
 describe('entering figures', () => {
   it('does not leave a 0 behind when a field is cleared', async () => {
     await openSettlement();
-    const cashOut = amountFields()[1];
+    const cashOut = amountFields()[0];
 
     fireEvent.change(cashOut, { target: { value: '5000' } });
     fireEvent.change(cashOut, { target: { value: '' } });
@@ -1013,7 +1095,7 @@ describe('entering figures', () => {
 
   it('keeps what was typed, without a leading zero', async () => {
     await openSettlement();
-    const cashOut = amountFields()[1];
+    const cashOut = amountFields()[0];
 
     fireEvent.change(cashOut, { target: { value: '0' } });
     fireEvent.change(cashOut, { target: { value: '5000' } });
@@ -1024,13 +1106,13 @@ describe('entering figures', () => {
   it('holds the commit shut while a field is blank', async () => {
     await openSettlement();
 
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
 
     // The bug: a cleared field kept its key, so `uid in cashOutInputs` stayed
     // true and this settled somebody at a zero they never agreed to.
-    fireEvent.change(amountFields()[3], { target: { value: '' } });
+    fireEvent.change(amountFields()[1], { target: { value: '' } });
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeDisabled();
   });
 
@@ -1039,16 +1121,16 @@ describe('entering figures', () => {
     // count, even though a blank does not.
     await openSettlement();
 
-    fireEvent.change(amountFields()[1], { target: { value: '10000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '0' } });
+    fireEvent.change(amountFields()[0], { target: { value: '10000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '0' } });
 
     expect(screen.getByRole('button', { name: /^settle session$/i })).toBeEnabled();
   });
 
   it('sends the figures as numbers, not as the text that was typed', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     await findPreview();
     fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
     fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
@@ -1091,7 +1173,7 @@ describe('a figure nobody has entered is not a figure', () => {
     await openSettlement();
 
     // Two players; count only the first.
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
 
     // Nothing is claimed about anybody while a figure is outstanding.
     expect(previewLines(), 'no per-player arithmetic yet').toHaveLength(0);
@@ -1109,15 +1191,15 @@ describe('a figure nobody has entered is not a figure', () => {
 
   it('A5 — a cleared field withdraws the figures again', async () => {
     await openSettlement();
-    fireEvent.change(amountFields()[1], { target: { value: '8000' } });
-    fireEvent.change(amountFields()[3], { target: { value: '2000' } });
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
     // The Calculate gate is still here in 7A; 7B is what removes it. The
     // invariant below is about the blank, not about how the figures got shown.
     await findPreview();
 
     // Blank is not zero. Clearing it must take the results away, not settle
     // that player at nothing.
-    fireEvent.change(amountFields()[3], { target: { value: '' } });
+    fireEvent.change(amountFields()[1], { target: { value: '' } });
 
     expect(previewLines()).toHaveLength(0);
     expect(screen.getAllByText('—').length, 'and the seats read as uncounted again').toBeGreaterThan(0);
