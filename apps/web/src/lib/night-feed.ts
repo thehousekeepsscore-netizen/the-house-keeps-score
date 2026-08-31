@@ -35,6 +35,15 @@ export type FeedKind =
   | 'bought-in'
   /** Any chips after that. */
   | 'topped-up'
+  /**
+   * An approved bank taken back by an admin.
+   *
+   * The one line in this feed about a correction rather than the game. It says
+   * the original amount out loud on purpose: a void that quietly removed 5,000
+   * would leave the story reading as though those chips were never there, which
+   * is the opposite of what a correction should look like.
+   */
+  | 'voided'
   /** Counted up, waiting on somebody to agree. */
   | 'stood-up'
   /** Agreed. They are out of the game and in the room. */
@@ -66,6 +75,10 @@ export interface FeedEvent {
   amount?: number;
   /** How many events this line stands for, when it stands for more than one. */
   count?: number;
+  /** Who performed a correction, for the kinds that have one. Resolved to a
+   *  name by the same `nameOf` every other line uses, so the feed has exactly
+   *  one way of turning an id into a person. */
+  byUserId?: string;
 }
 
 export interface FeedInput {
@@ -121,6 +134,16 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
     .slice()
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
 
+  /*
+   * Voids come from the same rows, filtered the other way. They are deliberately
+   * NOT fed into `banks`: the ceiling and every bank total must behave as though
+   * those chips were never approved, so this only ever adds lines to the story.
+   */
+  const voidedRows = buyIns
+    .filter((r) => r.sessionId === session.id && r.status === 'voided' && r.voidedAt)
+    .slice()
+    .sort((a, b) => Date.parse(a.voidedAt!) - Date.parse(b.voidedAt!));
+
   const banks = new Map<string, number>();
   let ceiling = ceilingOf(banks, buyInMode, clubMaxBuyIn);
 
@@ -172,6 +195,17 @@ export function deriveFeed(input: FeedInput): FeedEvent[] {
   // confirmation time, so emitting both "stood up" and "left" would put two
   // lines at one timestamp — the line simply becomes the later of the two when
   // the count is agreed, and keeps the figure either way.
+  for (const r of voidedRows) {
+    events.push({
+      id: `void:${r.id}`,
+      kind: 'voided',
+      at: r.voidedAt!,
+      userId: r.userId,
+      amount: r.amount,
+      byUserId: r.voidedBy ?? undefined,
+    });
+  }
+
   for (const c of session.cashOuts ?? []) {
     events.push({
       id: `cashout:${c.userId}`,
@@ -305,6 +339,7 @@ const ICON: Record<FeedKind, string> = {
   joined: '👤',
   'bought-in': '🟢',
   'topped-up': '💰',
+  voided: '↩',
   'stood-up': '💵',
   left: '✅',
   ceiling: '⬆️',
@@ -336,6 +371,15 @@ export function feedLine(
       return { icon, text: `${who} bought in for ${amount(n)}` };
     case 'topped-up':
       return { icon, text: `${who} bought another ${amount(n)}` };
+    case 'voided':
+      // Names the actor: a bank does not vanish by itself, and the room should
+      // be able to see who took it off.
+      return {
+        icon,
+        text: event.byUserId
+          ? `${who}'s ${amount(n)} bank was voided by ${nameOf(event.byUserId)}`
+          : `${who}'s ${amount(n)} bank was voided`,
+      };
     case 'stood-up':
       return { icon, text: `${who} stood up with ${amount(n)}` };
     case 'left':

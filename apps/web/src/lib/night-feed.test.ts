@@ -412,3 +412,57 @@ describe('a night extended over and over', () => {
     expect(lines5).toContain('Extended 3 more times, by 1 hour 30 minutes in total');
   });
 });
+
+describe('a bank taken back', () => {
+  /*
+   * The one correction the feed reports. It has to name the ORIGINAL amount:
+   * a line that quietly removed 5,000 would leave the story reading as though
+   * those chips were never on the table, which is the opposite of what a
+   * correction is for.
+   */
+  const voidedRow = (over: Partial<BuyInRequest> = {}): BuyInRequest =>
+    buyIn({
+      userId: 'priya', amount: 5000, createdAt: ago(60),
+      status: 'voided', voidedAt: ago(10), voidedBy: 'host',
+      ...over,
+    });
+
+  it('says whose bank, how much it was, and who took it back', () => {
+    const events = deriveFeed({
+      session: session({ activePlayerUids: ['priya'] }),
+      buyIns: [voidedRow()],
+    });
+    const voided = events.find((e) => e.kind === 'voided');
+    expect(voided, 'the void is in the story').toBeTruthy();
+
+    const line = feedLine(voided!, (id) => (id === 'host' ? 'Aniket' : 'Priya'), fmt);
+    expect(line.text).toBe("Priya's 5,000 bank was voided by Aniket");
+  });
+
+  it('keeps the voided chips out of the banks the ceiling is built from', () => {
+    // The load-bearing claim: the feed may TALK about the chips while every
+    // figure behaves as though they were never approved.
+    const events = deriveFeed({
+      session: session({ activePlayerUids: ['priya', 'arjun'] }),
+      buyIns: [
+        voidedRow(),
+        buyIn({ userId: 'arjun', amount: 2000, createdAt: ago(50), status: 'approved' }),
+      ],
+      buyInMode: 'MATCH_HIGHEST',
+      clubMaxBuyIn: 5000,
+    });
+
+    // No 'bought-in' line for the voided row, and no ceiling raised to 5,000.
+    expect(events.some((e) => e.kind === 'bought-in' && e.userId === 'priya')).toBe(false);
+    const ceilings = events.filter((e) => e.kind === 'ceiling').map((e) => e.amount);
+    expect(ceilings, 'never lifted by chips that were taken back').not.toContain(5000);
+  });
+
+  it('says nothing when the row is merely rejected', () => {
+    const events = deriveFeed({
+      session: session({ activePlayerUids: ['priya'] }),
+      buyIns: [buyIn({ userId: 'priya', amount: 5000, createdAt: ago(60), status: 'rejected' })],
+    });
+    expect(events.some((e) => e.kind === 'voided')).toBe(false);
+  });
+});

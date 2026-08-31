@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Timer, Flag, Play, UserRound, CirclePlus, Coins, Banknote,
-  CircleCheck, ArrowUp, ClipboardList, type LucideIcon,
+  CircleCheck, ArrowUp, ClipboardList, Undo2, type LucideIcon,
 } from 'lucide-react';
 import { FeedEvent, FeedKind, agoLabel, feedLine } from '../../lib/night-feed';
 
@@ -22,6 +22,9 @@ const GLYPH: Record<FeedKind, LucideIcon> = {
   joined: UserRound,
   'bought-in': CirclePlus,
   'topped-up': Coins,
+  // A correction, not an event in the game — the only line here that undoes
+  // something rather than reporting it.
+  voided: Undo2,
   'stood-up': Banknote,
   left: CircleCheck,
   ceiling: ArrowUp,

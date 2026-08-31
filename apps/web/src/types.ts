@@ -256,7 +256,11 @@ export interface BuyInRequest {
   userId: string;
   userDisplayName: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'voided';
+  /** Set only on a voided row; the original `amount` is never rewritten. */
+  voidedAt?: string | null;
+  voidedBy?: string | null;
+  voidReason?: string | null;
   requestedBy: string;
   approvedBy?: string;
   createdAt: string;

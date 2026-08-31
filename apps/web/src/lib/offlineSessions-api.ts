@@ -77,10 +77,13 @@ export interface ApiBuyInRequest {
   clubId: string;
   userId: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'voided';
   requestedBy: string;
   approvedBy: string | null;
   createdAt: string;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
+  voidReason?: string | null;
 }
 
 // userDisplayName isn't stored server-side (it's derived from the club
@@ -92,6 +95,9 @@ export function toBuyInRequest(r: ApiBuyInRequest): BuyInRequest {
     sessionId: r.sessionId,
     clubId: r.clubId,
     userId: r.userId,
+    voidedAt: r.voidedAt ?? null,
+    voidedBy: r.voidedBy ?? null,
+    voidReason: r.voidReason ?? null,
     userDisplayName: '',
     amount: r.amount,
     status: r.status,
@@ -269,6 +275,23 @@ export async function decideBuyInRequest(clubId: string, sessionId: string, requ
   const s = await apiFetch<ApiOfflineSession | null>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests/${requestId}/${approve ? 'approve' : 'reject'}`,
     { method: 'POST' }
+  );
+  return s ? toPokerSession(s) : null;
+}
+
+/**
+ * Take back an approved buy-in. Separate call from approve/reject because it
+ * acts on a different state and carries a different authorization rule.
+ */
+export async function voidBuyInRequest(
+  clubId: string,
+  sessionId: string,
+  requestId: string,
+  reason?: string
+): Promise<PokerSession | null> {
+  const s = await apiFetch<ApiOfflineSession | null>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests/${requestId}/void`,
+    { method: 'POST', body: { reason } }
   );
   return s ? toPokerSession(s) : null;
 }

@@ -33,6 +33,13 @@ offlineSessionsRouter.post(
   '/:sessionId/buy-in-requests/:requestId/:decision(approve|reject)',
   asyncHandler(offlineSessionsController.decideBuyInRequest)
 );
+// Separate from the decision route above rather than a third `decision` verb:
+// approve/reject act on a PENDING request, this acts on an APPROVED one, and
+// collapsing them would hide two different authorization paths behind one URL.
+offlineSessionsRouter.post(
+  '/:sessionId/buy-in-requests/:requestId/void',
+  asyncHandler(offlineSessionsController.voidBuyInRequest)
+);
 // Tells a night what it is playing for, once. POST rather than PATCH because
 // it creates something that did not exist and cannot be repeated — a PATCH
 // implies an edit, and an edit is exactly what this refuses to be.

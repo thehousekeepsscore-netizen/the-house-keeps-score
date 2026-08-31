@@ -216,10 +216,27 @@ model BuyInRequest {
   userId      String
   user        User         @relation("BuyInRequester", fields: [userId], references: [id])
   amount      Int
-  status      String       @default("pending") // pending | approved | rejected
+  /// pending | approved | rejected | voided
+  ///
+  /// `voided` is terminal and reachable only from `approved`. It exists because
+  /// approving a buy-in is one-way — `decideBuyInRequest` refuses anything that
+  /// is not still `pending` — so a host who approved 5,000 instead of 2,000 had
+  /// no way to take it back, and the chips went on counting toward the player's
+  /// bank and the MATCH_HIGHEST ceiling for the rest of the night.
+  ///
+  /// A void is NOT an edit. `amount` is never rewritten: the original request
+  /// survives exactly as it was approved, and the correction is a separate row
+  /// in the audit log. If the player should have had 2,000, that is a new
+  /// buy-in request, with its own time and its own approval.
+  status      String       @default("pending")
   requestedBy String
   approvedBy  String?
   createdAt   DateTime     @default(now())
+  voidedAt    DateTime?
+  voidedBy    String?
+  /// Free text, optional. Recorded because "why" is the part a settlement
+  /// dispute three weeks later actually turns on.
+  voidReason  String?
 
   @@index([sessionId])
   @@index([clubId])
