@@ -119,6 +119,19 @@ export function SettlementPreview({
   const potEnabled = settings?.potEnabled ?? club.potEnabled;
   const showHouseTake = flatRake > 0 || result.totalRakeCollected > 0;
 
+  /*
+    Two blocks further down already state the difference in words: the demand to
+    resolve it by hand, and the acknowledgement that replaces that demand once
+    it is ticked. Where either speaks, the Difference row would print the same
+    sentence a second time, and one panel saying "300 more out than in" twice
+    reads as two separate findings about the night.
+  */
+  const mismatchStatedElsewhere =
+    result.requiresManualResolution ||
+    (result.mismatchResolution === 'manual_pending' &&
+      result.mismatchAmount !== 0 &&
+      !!mismatchAcknowledgement?.checked);
+
   return (
     <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
       {/* Who ends up with what, and what came off them on the way. */}
@@ -174,15 +187,47 @@ export function SettlementPreview({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5 text-center font-mono pt-1 border-t border-line">
-        <div className="p-2.5 bg-surface rounded-xl">
-          <div className="text-[9px] text-text-muted">Total buy-ins</div>
-          <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalBuyIns)}</div>
+      <div className="pt-1 border-t border-line space-y-2.5">
+        <div className="grid grid-cols-2 gap-2.5 text-center font-mono">
+          <div className="p-2.5 bg-surface rounded-xl">
+            <div className="text-[9px] text-text-muted">Total buy-ins</div>
+            <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalBuyIns)}</div>
+          </div>
+          <div className="p-2.5 bg-surface rounded-xl">
+            <div className="text-[9px] text-text-muted">Total cash-outs</div>
+            <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalCashOuts)}</div>
+          </div>
         </div>
-        <div className="p-2.5 bg-surface rounded-xl">
-          <div className="text-[9px] text-text-muted">Total cash-outs</div>
-          <div className="text-xs font-medium text-text tabular-nums">{formatAmount(result.totalCashOuts)}</div>
-        </div>
+
+        {/*
+          The difference, stated once, next to the two figures it compares.
+
+          It used to be a bar pinned to the top of the count, kept on screen
+          through the keyboard by a viewport-following effect. That bar was
+          nearly mute while it mattered — OUT and DIFF both read "—" until the
+          last seat was counted — and it only spoke at the exact moment the
+          count completed, which is when the reader is here anyway. So the
+          figure lives where its inputs are, and nothing on this screen chases
+          the keyboard any more.
+
+          Warning colour only when it does not balance, which is the same rule
+          the old bar used.
+
+          Stands down where another block already says it — see
+          `mismatchStatedElsewhere` above.
+        */}
+        {!mismatchStatedElsewhere && (
+          <div className="p-2.5 bg-surface rounded-xl text-center font-mono">
+            <div className="text-[9px] text-text-muted">Difference</div>
+            <div
+              className={`text-sm font-semibold tabular-nums ${
+                result.mismatchAmount !== 0 ? 'text-warning' : 'text-text'
+              }`}
+            >
+              {describeMismatch(result.mismatchAmount, formatAmount)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/*

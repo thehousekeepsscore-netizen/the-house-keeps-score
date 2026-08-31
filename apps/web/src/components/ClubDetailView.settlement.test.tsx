@@ -1,7 +1,9 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 /**
  * Finishing a poker night, end to end.
@@ -542,87 +544,6 @@ describe('a player who stood up early', () => {
   });
 });
 
-describe('the summary bar holds still while the count changes it', () => {
-  /*
-   * The lurch, measured before the fix at 390px: the bar was
-   * flex/justify-between, so the instant the last cash-out field got its
-   * first digit, DIFF went from "DIFF \u2014" (40px) to a 152px phrase and the
-   * OUT label jumped 69px left in the same frame \u2014 and again at every
-   * digit-count boundary, and again when the night hit "balanced".
-   *
-   * The mechanism under contract: IN and OUT are shrink-0 at fixed positions
-   * on a plain gap row (no justify-between to redistribute), and DIFF is
-   * anchored to the right edge with ml-auto + text-right, growing leftward
-   * into space that belongs to nobody. jsdom does no layout, so this asserts
-   * the mechanism's classes on the RENDERED bar across every DIFF state; the
-   * pixel proof (OUT immobile at 320\u2013430px) is the browser measurement in
-   * the PR record.
-   */
-  const summaryRow = () => {
-    const inLabel = screen.getByText(/^IN\b/);
-    return inLabel.closest('div')!;
-  };
-  const spans = () => [...summaryRow().querySelectorAll(':scope > span')] as HTMLElement[];
-
-  const expectStableMechanism = () => {
-    const row = summaryRow();
-    expect(row.className).not.toContain('justify-between');
-    expect(row.className).toContain('gap-3');
-    const [inSpan, outSpan, diffSpan] = spans();
-    expect(inSpan.className).toContain('shrink-0');
-    expect(outSpan.className).toContain('shrink-0');
-    expect(diffSpan.className).toContain('ml-auto');
-    expect(diffSpan.className).toContain('text-right');
-  };
-
-  it('DIFF empty \u2014 the mechanism is in place before a single digit exists', async () => {
-    await openSettlement();
-    expect(spans()[2].textContent).toMatch(/DIFF/);
-    expectStableMechanism();
-  });
-
-  it('DIFF as a long phrase, and OUT keeps its own layout slot', async () => {
-    await openSettlement();
-    fireEvent.change(amountFields()[0], { target: { value: '10' } });
-    fireEvent.change(amountFields()[1], { target: { value: '7' } });
-    await findPreview();
-
-    expect(spans()[2].textContent).toMatch(/more in than out/);
-    expectStableMechanism();
-  });
-
-  it('a balanced night \u2014 the shortest text of all, same allocation', async () => {
-    await openSettlement();
-    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
-    fireEvent.change(amountFields()[1], { target: { value: '4000' } });
-    await findPreview();
-
-    expect(spans()[2].textContent).toMatch(/balanced/i);
-    expectStableMechanism();
-  });
-
-  it('transitions between the states never change the mechanism', async () => {
-    // empty -> phrase -> balanced -> phrase again, asserted at each stop.
-    await openSettlement();
-    expectStableMechanism();
-
-    fireEvent.change(amountFields()[0], { target: { value: '100' } });
-    fireEvent.change(amountFields()[1], { target: { value: '50' } });
-    await findPreview();
-    expect(spans()[2].textContent).toMatch(/more in than out/);
-    expectStableMechanism();
-
-    fireEvent.change(amountFields()[0], { target: { value: '6000' } });
-    fireEvent.change(amountFields()[1], { target: { value: '4000' } });
-    await waitFor(() => expect(spans()[2].textContent).toMatch(/balanced/i));
-    expectStableMechanism();
-
-    fireEvent.change(amountFields()[1], { target: { value: '4100' } });
-    await waitFor(() => expect(spans()[2].textContent).toMatch(/more out than in/));
-    expectStableMechanism();
-  });
-});
-
 describe('the buy-in is reported, not entered', () => {
   /*
    * The field became a figure when the server started deriving it.
@@ -680,6 +601,82 @@ describe('the buy-in is reported, not entered', () => {
     ]);
 
     expect(screen.getByTestId('settle-buyin-host')).toHaveTextContent('3,000');
+  });
+});
+
+describe('the reconciliation arrives when the count is complete', () => {
+  /*
+   * There is no running aggregate during the count, deliberately.
+   *
+   * A static "Total buy-ins" line briefly stood above the player rows, put
+   * there to replace the running total the pinned bar used to carry.
+   * Server-authoritative buy-ins made it redundant: the figure is derived,
+   * immutable while settling, and already stated per player as "From approved
+   * banks", so the line restated a number the rows own — and it scrolled out of
+   * view by the middle of a long count anyway, which is exactly when an
+   * aggregate would have earned its place.
+   *
+   * So the aggregate appears once, as the conclusion, when the last seat is
+   * counted. That is what these pin.
+   */
+  it('hands the count over to the preview once every seat is counted', async () => {
+    await openSettlement();
+    fireEvent.change(amountFields()[0], { target: { value: '4000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '6000' } });
+    await findPreview();
+
+    /*
+     * Scoped to the totals block. "Total buy-ins" also labels each player's own
+     * line in the breakdown, so an unscoped query matches several elements —
+     * the aggregate is the one sitting beside the Difference.
+     */
+    const totals = screen.getByText('Difference').parentElement!.parentElement!;
+    expect(within(totals).getByText('Total buy-ins')).toBeInTheDocument();
+    expect(within(totals).getByText('Total cash-outs')).toBeInTheDocument();
+    expect(within(totals).getByText(/balances|more (in|out)/i)).toBeInTheDocument();
+  });
+
+  it('states no aggregate at all while the count is still going', async () => {
+    /*
+     * The negative half, and the one that pins the removal. NOTE the wording:
+     * this asserts no AGGREGATE "Total buy-ins" exists mid-count. The same
+     * words appear as a per-player label inside the preview breakdown, which is
+     * why the positive test above scopes its query — two different things that
+     * happen to share a string.
+     */
+    await openSettlement();
+
+    expect(previewLines(), 'no preview yet').toHaveLength(0);
+    expect(screen.queryByTestId('count-total-in')).not.toBeInTheDocument();
+    expect(screen.queryByText('Total buy-ins'), 'no aggregate before the end').not.toBeInTheDocument();
+  });
+});
+
+describe('the keyboard follower is gone, and the source says so', () => {
+  /*
+   * A source contract, deliberately. The follower was not a rendering bug a DOM
+   * assertion can catch — it was a visualViewport listener writing a transform
+   * onto a pinned element, and the way it comes back is somebody re-adding that
+   * listener. jsdom has no visual viewport to exercise, so the only honest
+   * guard at this level is the source itself.
+   *
+   * Precedent: touch-targets.test.ts reads index.css for the same reason.
+   */
+  const WEB_ROOT = resolve(__dirname, '..');
+  const clubDetail = readFileSync(join(WEB_ROOT, 'components/ClubDetailView.tsx'), 'utf8');
+
+  it('registers no visualViewport listener', () => {
+    expect(clubDetail).not.toMatch(/window\.visualViewport/);
+  });
+
+  it('imports no summary-offset helper, and the module is gone', () => {
+    expect(clubDetail).not.toMatch(/summary-offset/);
+    expect(clubDetail).not.toMatch(/computeSummaryOffset/);
+    expect(existsSync(join(WEB_ROOT, 'lib/summary-offset.ts')), 'module deleted').toBe(false);
+  });
+
+  it('keeps no ref for a summary element to be repositioned through', () => {
+    expect(clubDetail).not.toMatch(/summaryRef/);
   });
 });
 
@@ -1244,11 +1241,6 @@ describe('the settlement screen is the structure that was measured', () => {
     expect(scroller!.contains(settle), 'the commit control must not scroll with the figures').toBe(false);
     expect(panel.contains(settle)).toBe(true);
 
-    // And the summary is sticky inside the scroller, which is what commit 4
-    // will have to reposition when the keyboard displaces the viewport.
-    const sticky = scroller!.querySelector('.sticky');
-    expect(sticky, 'pinned IN/OUT/DIFF').not.toBeNull();
-    expect(sticky!.textContent).toMatch(/IN/);
   });
 });
 
@@ -1331,18 +1323,24 @@ describe('the count does not make iOS zoom the page', () => {
     }
   });
 
-  it('still pins IN / OUT / DIFF, so the fix does not cost #55', async () => {
-    // The clipping was only ever visible because #55 keeps this on screen with
-    // the keyboard up. Fixing the horizontal problem must not lose the vertical
-    // one it exposed.
+  it('pins nothing inside the count, so nothing can chase the keyboard', async () => {
+    /*
+     * The count used to carry a sticky IN/OUT/DIFF bar held in the visible band
+     * by a visualViewport-following effect, because the keyboard pushed the top
+     * of the panel out of view. Both are gone. The bar was nearly mute while it
+     * mattered — OUT and DIFF each read "—" until the last seat was counted —
+     * and it only spoke at the moment the count completed, which is when the
+     * reader is at the preview anyway.
+     *
+     * This is the regression guard: anything pinned inside the scroller brings
+     * back the element the follower existed to chase.
+     */
     await openSettlement();
 
     const panel = screen.getByRole('dialog');
     const scroller = Array.from(panel.children).find((c) =>
       c.className.includes('overflow-y-auto')
     );
-    const sticky = scroller!.querySelector('.sticky');
-    expect(sticky, 'pinned IN/OUT/DIFF').not.toBeNull();
-    expect(sticky!.textContent).toMatch(/IN/);
+    expect(scroller!.querySelector('.sticky'), 'nothing is pinned inside the count').toBeNull();
   });
 });

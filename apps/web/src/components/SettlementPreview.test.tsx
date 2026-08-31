@@ -246,6 +246,135 @@ describe('the mismatch says which way it runs', () => {
   });
 });
 
+describe('the difference is reported here, once', () => {
+  /*
+   * This used to be the DIFF in a bar pinned to the top of the count, held in
+   * the visible band through the keyboard by a viewport-following effect. The
+   * bar was nearly mute while it mattered — OUT and DIFF each read "—" until
+   * the last seat had a figure — and it only spoke at the moment the count
+   * completed, which is when the reader is down here anyway. So the difference
+   * is stated where the two totals it comes from already sit, and nothing on
+   * the settlement screen chases the keyboard any more.
+   *
+   * "Once" is half the contract: two other blocks state the same sentence in
+   * words, and the row stands down for both rather than printing it twice.
+   */
+  const auto = () => rules({ mismatchStrategy: 'PROPORTIONAL_WINNERS' });
+
+  const differenceRow = () => {
+    const label = screen.getByText('Difference');
+    return label.parentElement as HTMLElement;
+  };
+
+  it('states an excess next to the totals it came from', () => {
+    // 10,000 in, 10,300 out.
+    const result = show(auto(), [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)]);
+    expect(result.mismatchAmount, 'fixture must be an excess').toBeGreaterThan(0);
+
+    const row = differenceRow();
+    expect(within(row).getByText(/300 more out than in/)).toBeInTheDocument();
+
+    // Adjacency is the point, so assert it structurally: the row shares a
+    // container with the two totals it reconciles, rather than merely being
+    // somewhere on the same panel.
+    const totalsSection = row.parentElement as HTMLElement;
+    expect(within(totalsSection).getByText('Total buy-ins')).toBeInTheDocument();
+    expect(within(totalsSection).getByText('Total cash-outs')).toBeInTheDocument();
+
+    // A night that does not balance is coloured as such — the same rule the
+    // old pinned bar used, kept so the change is a move and not a redesign.
+    expect(within(row).getByText(/300 more out than in/).className).toContain('text-warning');
+  });
+
+  it('states a shortfall in the other direction', () => {
+    const result = show(auto(), [player('Priya', 5000, 7700), player('Rahul', 5000, 2000)]);
+    expect(result.mismatchAmount, 'fixture must be a shortfall').toBeLessThan(0);
+
+    expect(within(differenceRow()).getByText(/300 more in than out/)).toBeInTheDocument();
+    expect(screen.queryByText(/more out than in/), 'must not invert').not.toBeInTheDocument();
+  });
+
+  it('says so plainly when the night balances', () => {
+    const result = show(auto(), [player('Priya', 5000, 6000), player('Rahul', 5000, 4000)]);
+    expect(result.mismatchAmount, 'fixture must balance').toBe(0);
+
+    const balanced = within(differenceRow()).getByText(/balances/i);
+    expect(balanced).toBeInTheDocument();
+    expect(balanced.className, 'a balanced night is not a warning').not.toContain('text-warning');
+  });
+
+  it('names the engine\'s figure rather than one recomputed here', () => {
+    const result = show(auto(), [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)]);
+    expect(
+      within(differenceRow()).getByText(
+        new RegExp(`${Math.abs(result.mismatchAmount)} more out than in`)
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('reads as the conclusion rather than a third peer figure', () => {
+    /*
+     * Hierarchy, not decoration. The two totals are this row's INPUTS, and the
+     * difference is the answer the host opened the panel for — "does this
+     * balance?". Rendered at the same weight as its own inputs it scanned as a
+     * third statistic in a row of three, which is what the production review
+     * called out. It carries more weight than the figures it reconciles.
+     */
+    const result = show(auto(), [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)]);
+    expect(result.mismatchAmount).not.toBe(0);
+
+    const row = differenceRow();
+    const value = within(row).getByText(/300 more out than in/);
+    expect(value.className).toContain('text-sm');
+    expect(value.className).toContain('font-semibold');
+
+    // Stronger than the totals directly above it, which stay at text-xs.
+    const totalsSection = row.parentElement as HTMLElement;
+    const buyInsValue = within(totalsSection).getByText('Total buy-ins')
+      .nextElementSibling as HTMLElement;
+    expect(buyInsValue.className).toContain('text-xs');
+    expect(value.className).not.toContain('text-xs');
+  });
+
+  it('stands down while manual resolution is being demanded', () => {
+    // The demand states the same sentence AND says what to do about it, so the
+    // row would be the second of two identical findings.
+    show(rules({ mismatchStrategy: 'MANUAL' }), [
+      player('Priya', 5000, 8300),
+      player('Rahul', 5000, 2000),
+    ]);
+
+    expect(screen.queryByText('Difference'), 'row suppressed').not.toBeInTheDocument();
+    expect(screen.getAllByText(/300 more out than in/), 'stated exactly once').toHaveLength(1);
+  });
+
+  it('stands down once that mismatch has been acknowledged', () => {
+    // Acknowledging clears requiresManualResolution but the acknowledgement
+    // block then states the difference itself — the duplication just moves.
+    const settings = rules({ mismatchStrategy: 'MANUAL' });
+    const result = computeSettlement(
+      [player('Priya', 5000, 8300), player('Rahul', 5000, 2000)],
+      settings,
+      { currentPotBalance: 0, mismatchAcknowledged: true }
+    );
+    expect(result.requiresManualResolution, 'the demand is satisfied').toBe(false);
+
+    render(
+      <SettlementPreview
+        result={result}
+        club={club}
+        settings={settings}
+        formatAmount={fmt}
+        formatSigned={signed}
+        mismatchAcknowledgement={{ checked: true, onChange: vi.fn() }}
+      />
+    );
+
+    expect(screen.queryByText('Difference'), 'row suppressed').not.toBeInTheDocument();
+    expect(screen.getAllByText(/300 more out than in/), 'stated exactly once').toHaveLength(1);
+  });
+});
+
 describe('invariants the settlement redesign must not break', () => {
   /*
    * A9. The Mismatch steps name who was charged — whoPaid() in the engine puts

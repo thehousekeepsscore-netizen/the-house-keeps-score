@@ -34,8 +34,7 @@ type SessionResource = { session: PokerSession | null; buyIns: BuyInRequest[] };
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
 import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
-import { SettlementPreview, SettlementConfirm, describeMismatch } from './SettlementPreview';
-import { computeSummaryOffset } from '../lib/summary-offset';
+import { SettlementPreview, SettlementConfirm } from './SettlementPreview';
 import {
   Club,
   PokerSession,
@@ -907,70 +906,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setConfirmingSettle(false);
   }, [confirmedCashOutByUid]);
 
-  /*
-    Keep IN / OUT / DIFF on screen while the keyboard is up.
-
-    Measured on an iPhone: with the numeric keyboard open, visualViewport.height
-    went 656 → 356 and offsetTop 0 → 263. Safari shifts the VISUAL viewport to
-    keep the focused field in view, which carries the top of the panel — header
-    and this summary — out of the visible band. dvh does not help; it tracks the
-    layout viewport, which did not move. Sticky does not help either; it sticks
-    to the scroller, and the scroller is what left.
-
-    So the bar is translated back down into the band, by transform rather than
-    top: visualViewport fires continuously through the keyboard animation, and
-    anything that triggers layout chases the keyboard instead of tracking it.
-
-    The base position is read with the transform removed, because the element's
-    own rect includes whatever was applied last — measuring without clearing it
-    first feeds the offset back into itself.
-  */
-  const summaryRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    const el = summaryRef.current;
-    if (!vv || !el || !showCashoutModal) return;
-
-    let frame = 0;
-    const apply = () => {
-      frame = 0;
-      const node = summaryRef.current;
-      if (!node) return;
-
-      node.style.transform = '';
-      const rect = node.getBoundingClientRect();
-
-      const active = document.activeElement as HTMLElement | null;
-      const focusedTop =
-        active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
-          ? active.getBoundingClientRect().top
-          : null;
-
-      const offset = computeSummaryOffset({
-        summaryBaseTop: rect.top,
-        summaryHeight: rect.height,
-        viewportOffsetTop: vv.offsetTop,
-        focusedTop,
-      });
-      node.style.transform = offset > 0 ? `translateY(${offset}px)` : '';
-    };
-
-    const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(apply);
-    };
-
-    apply();
-    vv.addEventListener('resize', schedule);
-    vv.addEventListener('scroll', schedule);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      vv.removeEventListener('resize', schedule);
-      vv.removeEventListener('scroll', schedule);
-      const node = summaryRef.current;
-      if (node) node.style.transform = '';
-    };
-  }, [showCashoutModal]);
 
   // The redesigned screen derives everything it needs from one place, rather
   // than from the two dozen inline computations above that it will replace.
@@ -2209,11 +2144,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const settleAction = useAction(handleSettleSession);
 
   /** Buy-ins are known from the moment the screen opens; cash-outs are not. */
-  const settlementTotalIn = settlementUids.reduce(
-    (sum, uid) => sum + (Number(buyInInputs[uid]) || 0),
-    0
-  );
-
   /*
     The action row, in Sheet's footer slot rather than at the bottom of the
     scroll.
@@ -4217,51 +4147,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           footer={settlementFooter}
         >
           <div className="space-y-4">
-
-              {/*
-                IN / OUT / DIFF, pinned to the top of the count.
-
-                It is the running total the host checks WHILE typing, which is
-                why it is up here and not in the panel below. OUT and DIFF stay
-                as — until every seat has a figure: an uncounted player's blank
-                is a zero to the engine and takes a share of the mismatch, so a
-                partial total is not a smaller truth, it is a wrong one. IN is
-                honest throughout, because the buy-ins are already known.
-
-                Keyboard behaviour is NOT handled here. On iOS this bar leaves
-                the visible viewport when the keyboard opens, which is measured
-                and is the next commit's problem.
-              */}
-              <div
-                ref={summaryRef}
-                className="sticky top-0 z-10 -mx-5 px-5 py-2.5 bg-bg/95 backdrop-blur-xl border-b border-line will-change-transform"
-              >
-                {/*
-                  NOT justify-between, deliberately. Between shares every width
-                  change across all three spans: the moment the last cash-out
-                  got its first digit, DIFF went from "DIFF \u2014" (40px) to a
-                  152px phrase and OUT lurched 69px left in the same frame --
-                  measured at 390px -- and every digit-count boundary after
-                  that jumped it again. A running total the host reads WHILE
-                  typing must hold still.
-
-                  So IN and OUT sit at fixed positions on the left (their own
-                  digits are tabular, and IN is frozen for the whole count),
-                  and DIFF is anchored to the RIGHT edge with ml-auto: its text
-                  grows leftward into the free middle, which belongs to nobody.
-                  The only thing that moves when the phrase changes is the
-                  phrase's own left edge.
-                */}
-                <div className="flex items-baseline gap-3 text-[11px] font-mono tabular-nums">
-                  <span className="shrink-0 text-text-muted">IN <span className="text-text">{formatVal(settlementTotalIn)}</span></span>
-                  <span className="shrink-0 text-text-muted">OUT <span className="text-text">{allCashOutsEntered && preview ? formatVal(preview.totalCashOuts) : '\u2014'}</span></span>
-                  <span className={`ml-auto min-w-0 text-right ${allCashOutsEntered && preview && preview.mismatchAmount !== 0 ? 'text-warning' : 'text-text-muted'}`}>
-                    {allCashOutsEntered && preview
-                      ? (preview.mismatchAmount === 0 ? 'balanced' : describeMismatch(preview.mismatchAmount, formatVal))
-                      : 'DIFF —'}
-                  </span>
-                </div>
-              </div>
 
               {/* Says the thing that makes the figures below trustworthy. A host
                   counting a stack needs to know the numbers cannot move while
