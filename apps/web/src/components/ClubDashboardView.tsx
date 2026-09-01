@@ -356,7 +356,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
             {/* Sign Out */}
             <button
               onClick={onSignOut}
-              className="p-2 bg-surface/80 hover:bg-danger/15 border border-line hover:border-danger/40 text-text-muted hover:text-danger rounded-full transition-all cursor-pointer"
+              className="tap-44 p-2 bg-surface/80 hover:bg-danger/15 border border-line hover:border-danger/40 text-text-muted hover:text-danger rounded-full transition-all cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -496,7 +496,11 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                 </p>
               </div>
 
-              {/* Search Bar */}
+              {/* Search Bar.
+                  text-base, not text-xs: iOS zooms a focused input below 16px,
+                  and on this page the zoom clips the club grid sideways. Same
+                  mechanism as SETTLEMENT_AMOUNT_INPUT in ClubDetailView, where
+                  it was measured on a real iPhone. */}
               <div className="relative w-full sm:w-64">
                 <Search className="w-4 h-4 text-text-muted absolute left-3 top-2.5" />
                 <input
@@ -504,7 +508,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="Search by club name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl pl-9 pr-4 py-2 text-xs text-text font-medium focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl pl-9 pr-4 py-2 text-base text-text font-medium focus:border-accent outline-none"
                 />
               </div>
             </div>
@@ -553,25 +557,31 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                         </div>
                       </div>
 
+                      {/* min-h-[44px], the project's touch floor (ui/Button.tsx).
+                          These measured 36px. tap-44 is the wrong tool here — its
+                          pseudo-element is a centred 44px square, so on a
+                          full-width button it would fix only the middle and leave
+                          the edges at 36. The disabled variants carry it too so
+                          the cards stay the same height whatever state they're in. */}
                       <div className="pt-3 border-t border-line">
                         {isMember ? (
                           <button
                             onClick={() => onSelectClub(club)}
-                            className="w-full bg-accent hover:bg-accent text-accent-contrast font-semibold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full min-h-[44px] bg-accent hover:bg-accent text-accent-contrast font-semibold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" /> Enter club
                           </button>
                         ) : myPendingReq ? (
                           <button
                             disabled
-                            className="w-full furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed flex items-center justify-center gap-2"
+                            className="w-full min-h-[44px] furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed flex items-center justify-center gap-2"
                           >
                             <Clock className="w-3.5 h-3.5 text-warning" /> Request pending
                           </button>
                         ) : isFull ? (
                           <button
                             disabled
-                            className="w-full furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed"
+                            className="w-full min-h-[44px] furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed"
                           >
                             CLUB FULL ({club.maxCapacity || 50}/{club.maxCapacity || 50})
                           </button>
@@ -579,7 +589,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                           <button
                             onClick={() => requestJoin.run(club.id, club)}
                             disabled={requestJoin.isPending(club.id)}
-                            className="w-full bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+                            className="w-full min-h-[44px] bg-surface-alt hover:bg-line-strong border border-line-strong text-text font-medium py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
                           >
                             <Plus className="w-3.5 h-3.5 text-accent" /> Request to join
                           </button>
@@ -603,7 +613,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   type="button"
                   onClick={() => setActiveTab('myClubs')}
                   aria-label="Back to my clubs"
-                  className="shrink-0 w-9 h-9 rounded-xl border border-line text-text-muted hover:text-text hover:border-line-strong transition-colors flex items-center justify-center cursor-pointer mt-0.5"
+                  className="tap-44 shrink-0 w-9 h-9 rounded-xl border border-line text-text-muted hover:text-text hover:border-line-strong transition-colors flex items-center justify-center cursor-pointer mt-0.5"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
@@ -630,6 +640,10 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               </div>
             )}
 
+            {/* Every field in this form is text-base for the same reason as
+                SETTLEMENT_AMOUNT_INPUT in ClubDetailView: iOS zooms a focused
+                input below 16px (12px zooms at 16/12, 14px still zooms at
+                16/14) and then scrolls the page sideways. */}
             <form onSubmit={handleCreateClub} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
@@ -641,7 +655,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="e.g. Royal Flush Syndicate"
                   value={newClubName}
                   onChange={(e) => setNewClubName(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-medium focus:border-accent outline-none"
+                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-base text-text font-medium focus:border-accent outline-none"
                 />
               </div>
 
@@ -654,7 +668,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   placeholder="Private weekend Hold'em games and tournament leaderboards..."
                   value={newClubDesc}
                   onChange={(e) => setNewClubDesc(e.target.value)}
-                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-xs text-text font-medium focus:border-accent outline-none resize-none"
+                  className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-base text-text font-medium focus:border-accent outline-none resize-none"
                 />
               </div>
 
@@ -693,7 +707,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     max={100}
                     value={devaluationFactor}
                     onChange={(e) => setDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-24 furniture rounded-xl px-3 py-2.5 text-sm text-text font-mono font-medium outline-none focus:border-accent"
+                    className="w-24 furniture rounded-xl px-3 py-2.5 text-base text-text font-mono font-medium outline-none focus:border-accent"
                   />
                   <span className="text-sm text-text font-mono font-medium">Chips = ₹1</span>
                 </div>
@@ -758,7 +772,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     step={50}
                     value={sessionRake}
                     onChange={(e) => setSessionRake(Math.max(0, Number(e.target.value)))}
-                    className="w-full furniture rounded-xl px-3 py-2.5 text-sm font-mono font-medium text-text focus:border-accent outline-none"
+                    className="w-full furniture rounded-xl px-3 py-2.5 text-base font-mono font-medium text-text focus:border-accent outline-none"
                     placeholder="0"
                   />
                   {/* Chips AND rupees, and the total for a plausible table.
@@ -786,7 +800,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       max={100}
                       value={winnersCutPercent}
                       onChange={(e) => setWinnersCutPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
-                      className="w-24 furniture rounded-xl px-3 py-2.5 text-sm font-mono font-medium text-text focus:border-accent outline-none"
+                      className="w-24 furniture rounded-xl px-3 py-2.5 text-base font-mono font-medium text-text focus:border-accent outline-none"
                     />
                     <span className="text-sm font-mono font-medium text-text">% of each winner&apos;s profit</span>
                   </div>
