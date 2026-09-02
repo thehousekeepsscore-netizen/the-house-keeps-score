@@ -135,6 +135,65 @@ describe('a night that started free of rake stays free of it', () => {
   });
 });
 
+describe('a night with no rules of its own cannot be frozen', () => {
+  /*
+   * The guard that stops a stranded night being created.
+   *
+   * `startPlaying` takes the snapshot, so only nights that reached the table
+   * before it existed lack one. Settling such a night is refused by
+   * `settlementRulesFor`, and the repair — `initSettlementRules` — is legal only
+   * from `playing`. So freezing one is a trap: it can then be neither settled
+   * nor repaired without being resumed first, which is precisely how a
+   * production night sat frozen for weeks.
+   *
+   * The app asks for the rules before it reaches beginSettling. This proves the
+   * server says the same thing to any caller that is not that screen.
+   */
+  beforeEach(async () => {
+    await seed(RAKED);
+    sessionId = await playANight();
+    // Strip the snapshot to reproduce a pre-snapshot night exactly.
+    const row = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const { settlementRules, ...rest } = row.engineState as Record<string, unknown>;
+    void settlementRules;
+    await prisma.pokerSession.update({
+      where: { id: sessionId }, data: { engineState: rest as never },
+    });
+  });
+
+  it('refuses to freeze it, and leaves the night on the table', async () => {
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toThrow(
+      /no rules of its own/i
+    );
+
+    const after = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const state = after.engineState as { settlingAt?: string | null };
+    expect(state.settlingAt, 'not frozen, so the repair is still reachable').toBeFalsy();
+  });
+
+  it('freezes normally once the rules are set', async () => {
+    // The documented recovery, end to end: set the rules, then freeze.
+    await initSettlementRules(sessionId, clubId, ownerId, false, {
+      sessionRakeAmount: 1_000, winnersCutPercent: 5,
+    } as never);
+
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).resolves.toBeTruthy();
+
+    const after = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    expect((after.engineState as { settlingAt?: string }).settlingAt).toBeTruthy();
+  });
+
+  it('still complains about the queue first when both are wrong', async () => {
+    // Ordering matters: the waiting request is the problem the host can see on
+    // screen, so it is the one they are told about.
+    await requestBuyIn(sessionId, clubId, priyaId, 1_000);
+
+    await expect(beginSettling(sessionId, clubId, ownerId, false)).rejects.toThrow(
+      /still waiting/i
+    );
+  });
+});
+
 describe('a night that started raked stays raked', () => {
   beforeEach(async () => {
     await seed(RAKED);
@@ -369,7 +428,25 @@ describe('telling a night what it plays for', () => {
   });
 
   it('is refused once the table is frozen', async () => {
-    await beginSettling(sessionId, clubId, ownerId, false);
+    /*
+     * Frozen by writing the state directly, NOT by calling beginSettling.
+     *
+     * beginSettling now refuses a night with no rules, precisely so this
+     * combination can no longer be created. But it exists in production on
+     * nights frozen before that guard, and those are the ones that need
+     * resuming — so the state still has to be reachable in a test even though
+     * the service will no longer produce it.
+     */
+    const row = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: {
+        engineState: {
+          ...(row.engineState as object),
+          settlingAt: new Date().toISOString(),
+        } as never,
+      },
+    });
 
     await expect(
       initSettlementRules(sessionId, clubId, ownerId, false, RAKED)

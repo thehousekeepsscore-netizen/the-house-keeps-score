@@ -64,6 +64,21 @@ async function seed() {
       startedById: owner.id,
       engineState: {
         startedPlayingAt: new Date().toISOString(),
+        /*
+         * The snapshot startPlaying would have written.
+         *
+         * These fixtures hand-build a night already under way rather than
+         * playing one, which used to be harmless. It is not any more:
+         * beginSettling refuses a night with no rules of its own, because
+         * freezing one strands it. A hand-built `playing` night therefore has
+         * to carry what a real one carries.
+         */
+        settlementRules: {
+          sessionRakeAmount: 0, winnersCutPercent: 0, rakeEnabled: false,
+          rakeMethod: 'PERCENT_PROFIT', rakeValue: 0, potEnabled: false,
+          mismatchStrategy: 'PROPORTIONAL_WINNERS', rakeOrder: 'MISMATCH_FIRST',
+          winnerDefinition: 'PROFIT_POSITIVE', winnerTopN: 1, roundingRule: 'NONE',
+        },
         activePlayerUids: [ownerId, priyaId],
         pendingSitInUids: [],
         cashOuts: [],
