@@ -284,13 +284,30 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       window.removeEventListener('offline', off);
     };
   }, []);
-  const connection: 'live' | 'reconnecting' | 'offline' | 'auth-error' = !browserOnline
+  /*
+   * A first connect is not a fault, so `never-connected` gets its own value
+   * instead of being folded into 'reconnecting'.
+   *
+   * This screen's own render is what creates the socket, and the handshake
+   * costs two sequential round trips — around half a second against
+   * production. For that whole window a cold open has never connected once, so
+   * "Reconnecting" named something that had not happened and put a pulsing
+   * warning on screen during ordinary startup. A badge that fires on every cold
+   * load is one people learn to read past, which costs exactly the cases it
+   * exists for.
+   *
+   * Nothing is shown while connecting. The indicator is reserved for trouble,
+   * and starting up is not trouble.
+   */
+  const connection: 'live' | 'connecting' | 'reconnecting' | 'offline' | 'auth-error' = !browserOnline
     ? 'offline'
     : socketConnection.state === 'auth-error'
       ? 'auth-error'
       : socketConnection.state === 'connected'
         ? 'live'
-        : 'reconnecting';
+        : socketConnection.state === 'never-connected'
+          ? 'connecting'
+          : 'reconnecting';
 
   /**
    * The badge's copy, decided here rather than in three parallel ternaries in
@@ -2816,7 +2833,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 {/* Only shown when something is wrong. A permanent green badge
                     becomes furniture people stop reading; an indicator that
                     appears only on trouble keeps its meaning. */}
-                {connection !== 'live' && (
+                {connection !== 'live' && connection !== 'connecting' && (
                   <span
                     title={connectionBadge.title}
                     className={`px-2 py-0.5 border font-extrabold text-[10px] uppercase rounded-full flex items-center gap-1.5 ${
