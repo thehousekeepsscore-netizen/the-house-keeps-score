@@ -1003,6 +1003,33 @@ export async function beginSettling(
           : `${waiting} requests are still waiting — decide them before settling`
       );
     }
+    /*
+     * A night with no rules of its own must not be frozen.
+     *
+     * The snapshot is taken once, by startPlaying. A night that reached the
+     * table before that existed has none, and settleSession refuses it —
+     * `settlementRulesFor` throws rather than falling back to the club, because
+     * the club's rules may have moved since the night began.
+     *
+     * Freezing such a night strands it. `initSettlementRules`, the repair, is
+     * only legal from `playing`, so once `settlingAt` is stamped the night can
+     * neither be settled nor repaired where it stands: it has to be resumed
+     * first. That is exactly how one production night sat frozen for weeks.
+     *
+     * The app already asks for the rules before it gets here — the settle
+     * button opens a sheet when the snapshot is missing. This is the same rule
+     * stated where it cannot be skipped, for any caller that is not that
+     * screen. Checked AFTER the pending-request gate so a host with both
+     * problems is told about the queue first, which is the one they can see.
+     */
+    if (!state.settlementRules) {
+      throw new HttpError(
+        409,
+        'This night has no rules of its own yet. Set its rake and winners\' cut ' +
+          'before settling — freezing it first would leave it unsettleable.'
+      );
+    }
+
     // Idempotent: two hosts tapping together should not stamp two times.
     if (state.settlingAt) return { state, result: null };
     return { state: { ...state, settlingAt: new Date().toISOString() }, result: null };
