@@ -97,6 +97,14 @@ describe('zone A — identity and vitals', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('says nothing while the socket is still opening for the first time', () => {
+    // 'connecting' is a cold open, not a recovery. It used to arrive here as
+    // 'reconnecting' and put a warning above the felt for the length of the
+    // handshake, which is ordinary startup rather than trouble.
+    renderScreen({ connection: 'connecting' });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('warns that the table may be stale when the socket drops', () => {
     renderScreen({ connection: 'reconnecting' });
     expect(screen.getByRole('status')).toHaveTextContent(/reconnecting/i);

@@ -39,8 +39,8 @@ export interface LiveSessionProps {
   isAdmin: boolean;
   /** Display names and photos, keyed by uid. */
   users: Record<string, { displayName?: string; avatarUrl?: string } | undefined>;
-  /** Surfaced only when it is not 'live' — see below. */
-  connection: 'live' | 'reconnecting' | 'offline' | 'auth-error';
+  /** Surfaced only when it is neither 'live' nor 'connecting' — see below. */
+  connection: 'live' | 'connecting' | 'reconnecting' | 'offline' | 'auth-error';
   onStartSession: () => void;
   onSelectPlayer: (userId: string) => void;
   /** Built by the screen that owns the mutations, not by the queue. */
@@ -442,7 +442,7 @@ const Header: React.FC<{
         in a full sentence and wrapped to two lines on a 375px screen, pushing
         the felt down to say something the dot and one word already say. It
         stays in the header's own rhythm, beside the other reference figures. */}
-    {connection !== 'live' && (
+    {connection !== 'live' && connection !== 'connecting' && (
       // 'auth-error' reads danger rather than warning, and does not say
       // "Reconnecting": the server refused the handshake, so socket.io-client
       // has destroyed the socket and nothing is retrying. Promising a recovery
