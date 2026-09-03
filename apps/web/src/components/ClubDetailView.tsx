@@ -19,6 +19,7 @@ import { JoinRequestList } from './JoinRequestList';
 import { getSocket } from '../lib/socket';
 import { useSocketConnection } from '../lib/socket-connection';
 import { useForegroundRecovery } from '../lib/use-foreground-recovery';
+import { probeSocketLiveness } from '../lib/socket-liveness';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import { JOIN_REQUESTS_KEY } from '../lib/clubs-api';
@@ -1116,6 +1117,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     socket: getSocket(),
     authFailed: socketConnection.state === 'auth-error',
     onResume: resync,
+    // A socket that still says `connected` after a screen lock or a network
+    // hop may be dead underneath, and the heartbeat takes up to 45 seconds to
+    // find out — every bank added in that window is lost to this phone. The
+    // probe asks the server for the room-join acknowledgement it already
+    // sends; silence forces a reconnect, and `connect` above does the rest.
+    verifyAlive: () => probeSocketLiveness(getSocket(), initialClub.id),
   });
 
   // Live sync: join this club's room and refetch the affected slice on each

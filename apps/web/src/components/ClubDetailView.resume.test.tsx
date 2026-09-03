@@ -36,7 +36,14 @@ vi.mock('../lib/auth-context', async () => {
   };
 });
 
-/** Reports connected throughout — see the note above. */
+/**
+ * Reports connected throughout — see the note above — and, by default, ANSWERS:
+ * the resume now asks a socket claiming `connected` to prove it, by
+ * acknowledging the room join within a bounded timeout. A fake that could not
+ * answer would read as dead and be reconnected, which is the behaviour under
+ * test below, not the baseline.
+ */
+const emitWithAck = vi.fn(async (_event: string, _arg: unknown) => ({ ok: true }));
 const fakeSocket = {
   connected: true,
   active: true,
@@ -44,6 +51,8 @@ const fakeSocket = {
   off: vi.fn(),
   emit: vi.fn(),
   connect: vi.fn(),
+  disconnect: vi.fn(),
+  timeout: vi.fn((_ms: number) => ({ emitWithAck })),
 };
 
 vi.mock('../lib/socket', () => ({
@@ -198,6 +207,38 @@ describe('the club screen refetches when the user returns to the app', () => {
     fireVisibility('visible');
 
     await waitFor(() => expect(fakeSocket.emit).toHaveBeenCalledWith('club:join', 'c1'));
+  });
+
+  it('asks a connected socket to prove it, and leaves one that answers alone', async () => {
+    // The zombie case: a socket that says `connected` after a screen lock may
+    // be dead underneath, and the heartbeat takes 45 seconds to notice. The
+    // screen asks the server to acknowledge the join it already sends; an
+    // answer means the socket is fine and nothing is torn down.
+    renderClub();
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    vi.clearAllMocks();
+
+    fireVisibility('hidden');
+    fireVisibility('visible');
+
+    await waitFor(() => expect(emitWithAck).toHaveBeenCalledWith('club:join', 'c1'));
+    expect(fakeSocket.timeout).toHaveBeenCalled();
+    await act(async () => {});
+    expect(fakeSocket.disconnect).not.toHaveBeenCalled();
+    expect(fakeSocket.connect).not.toHaveBeenCalled();
+  });
+
+  it('forces a reconnect when a connected socket does not answer in time', async () => {
+    renderClub();
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    vi.clearAllMocks();
+    emitWithAck.mockRejectedValueOnce(new Error('operation has timed out'));
+
+    fireVisibility('hidden');
+    fireVisibility('visible');
+
+    await waitFor(() => expect(fakeSocket.disconnect).toHaveBeenCalledTimes(1));
+    expect(fakeSocket.connect).toHaveBeenCalledTimes(1);
   });
 
   it('reconnects as well as refetching when the socket is actually down', async () => {
