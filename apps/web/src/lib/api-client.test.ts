@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ApiError, apiFetch, refreshAccessToken, setAccessToken } from './api-client';
+import { ApiError, accessTokenExpiresWithin, apiFetch, refreshAccessToken, setAccessToken } from './api-client';
 
 /**
  * The seam between an HTTP response and a typed error.
@@ -221,5 +221,59 @@ describe('refreshing is shared, not repeated', () => {
     const data = await apiFetch<{ ok: boolean }>('/clubs/c1');
     expect(data.ok).toBe(true);
     expect(server.refreshCalls()).toBe(1);
+  });
+});
+
+/**
+ * Reading the token's own expiry, so a handshake never sends one the server
+ * is certain to refuse. Decoded, never verified: the client only needs to
+ * know when, not whether.
+ */
+describe('accessTokenExpiresWithin', () => {
+  const b64 = (o: unknown) =>
+    Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const jwtExpiringIn = (ms: number) => `${b64({ alg: 'HS256' })}.${b64({ sub: 'u', exp: Math.floor((Date.now() + ms) / 1000) })}.sig`;
+
+  it('is false for a token with more life than the margin', () => {
+    setAccessToken(jwtExpiringIn(10 * 60_000));
+    expect(accessTokenExpiresWithin(30_000)).toBe(false);
+  });
+
+  it('is true for a token inside the margin, and for one already expired', () => {
+    setAccessToken(jwtExpiringIn(20_000));
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+    setAccessToken(jwtExpiringIn(-5_000));
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+  });
+
+  it('treats the boundary as expiring: exactly the margin left is not enough', () => {
+    // exp is whole seconds; build one landing exactly on the margin.
+    const exp = Math.floor(Date.now() / 1000) + 30;
+    setAccessToken(`${b64({})}.${b64({ exp })}.sig`);
+    const remaining = exp * 1000 - Date.now();
+    expect(accessTokenExpiresWithin(remaining)).toBe(true);
+    expect(accessTokenExpiresWithin(remaining - 1)).toBe(false);
+  });
+
+  it('is true when there is no token', () => {
+    setAccessToken(null);
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+  });
+
+  it('is true for a token that is not a JWT, or has no readable exp', () => {
+    // Unknown is treated as expiring: one spare refresh beats one certain refusal.
+    setAccessToken('opaque-token');
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+    setAccessToken(`${b64({})}.${b64({ sub: 'u' })}.sig`);
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+    setAccessToken(`${b64({})}.not-base64-json.sig`);
+    expect(accessTokenExpiresWithin(30_000)).toBe(true);
+  });
+
+  it('reads base64url payloads, which is what JWTs use', () => {
+    // A payload whose base64 contains + and / in standard form.
+    const payload = { sub: 'u', exp: Math.floor(Date.now() / 1000) + 600, pad: '????>>>>' };
+    setAccessToken(`${b64({})}.${b64(payload)}.sig`);
+    expect(accessTokenExpiresWithin(30_000)).toBe(false);
   });
 });
