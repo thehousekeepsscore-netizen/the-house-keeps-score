@@ -38,6 +38,10 @@ function makeFakeSocket({ connected = false } = {}) {
     connect: vi.fn(function (this: { connected: boolean }) {
       return this;
     }),
+    disconnect: vi.fn(function (this: { connected: boolean }) {
+      this.connected = false;
+      return this;
+    }),
   };
 }
 
@@ -45,11 +49,15 @@ type FakeSocket = ReturnType<typeof makeFakeSocket>;
 
 function mountRecovery(
   socket: FakeSocket,
-  { authFailed = false, strict = false }: { authFailed?: boolean; strict?: boolean } = {}
+  {
+    authFailed = false,
+    strict = false,
+    verifyAlive,
+  }: { authFailed?: boolean; strict?: boolean; verifyAlive?: () => Promise<boolean> } = {}
 ) {
   const onResume = vi.fn();
   const Probe = () => {
-    useForegroundRecovery({ socket: socket as unknown as Socket, authFailed, onResume });
+    useForegroundRecovery({ socket: socket as unknown as Socket, authFailed, onResume, verifyAlive });
     return null;
   };
   const tree = <Probe />;
@@ -258,5 +266,177 @@ describe('listener hygiene', () => {
 
     expect(first.onResume).not.toHaveBeenCalled();
     expect(second.onResume).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A socket that SAYS connected after a resume is asked to prove it.
+ *
+ * The refetch above makes the screen right for the instant of resume. If the
+ * socket underneath died with the screen lock, every event until the transport
+ * heartbeat notices — 45 seconds — is lost and nothing refetches again. The
+ * probe closes that window: an answered acknowledgement leaves the socket
+ * alone, an unanswered one forces it through disconnect → connect so the
+ * existing `connect` listener re-joins and refetches.
+ */
+describe('a socket that claims to be connected is verified, not trusted', () => {
+  /** Resolves the probe on demand, so each test decides the verdict and when. */
+  function deferredProbe() {
+    let resolve!: (alive: boolean) => void;
+    const verifyAlive = vi.fn(
+      () => new Promise<boolean>((r) => { resolve = r; })
+    );
+    return { verifyAlive, answer: (alive: boolean) => act(async () => { resolve(alive); }) };
+  }
+
+  it('leaves a socket alone when the server answers', async () => {
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    const { onResume } = mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+    expect(verifyAlive).toHaveBeenCalledTimes(1);
+    await answer(true);
+
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(socket.connect).not.toHaveBeenCalled();
+    expect(onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('forces disconnect → connect when the server does not answer in time', async () => {
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+    await answer(false);
+
+    // Through the ordinary path, in the ordinary order: the `connect` that
+    // follows is what re-joins the room and refetches, via the listener that
+    // already handles every other reconnect.
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+    expect(socket.disconnect.mock.invocationCallOrder[0])
+      .toBeLessThan(socket.connect.mock.invocationCallOrder[0]);
+  });
+
+  it('never disconnects without reconnecting', async () => {
+    // A disconnect on its own would turn a zombie into a corpse: socket.io
+    // does not auto-reconnect after a manual disconnect.
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+    await answer(false);
+
+    expect(socket.connect).toHaveBeenCalledTimes(socket.disconnect.mock.calls.length);
+  });
+
+  it('still refetches immediately, without waiting for the verdict', async () => {
+    // The data path must not be hostage to the probe any more than to the
+    // handshake. The refetch has already run while the probe is still open.
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive } = deferredProbe();
+    const { onResume } = mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(verifyAlive).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not probe a socket that already says it is down — that path is unchanged', () => {
+    const socket = makeFakeSocket({ connected: false });
+    const verifyAlive = vi.fn(async () => true);
+    const { onResume } = mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+
+    // Exactly the behaviour before the probe existed.
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(verifyAlive).not.toHaveBeenCalled();
+  });
+
+  it('does not probe, and does not reconnect, a socket the server refused', () => {
+    // auth-error is terminal: the same credentials would be refused again,
+    // and a probe on a destroyed socket could only time out and reconnect it
+    // into another refusal. Refetch over HTTP, leave the socket alone.
+    const socket = makeFakeSocket({ connected: true });
+    const verifyAlive = vi.fn(async () => false);
+    const { onResume } = mountRecovery(socket, { authFailed: true, verifyAlive });
+
+    fireVisibilityChange('visible');
+
+    expect(verifyAlive).not.toHaveBeenCalled();
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(socket.connect).not.toHaveBeenCalled();
+    expect(onResume).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads auth-error at verdict time: a refusal that lands mid-probe stops the reconnect', async () => {
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    let authFailed = false;
+    const onResume = vi.fn();
+    const Probe = () => {
+      useForegroundRecovery({ socket: socket as unknown as Socket, authFailed, onResume, verifyAlive });
+      return null;
+    };
+    const { rerender } = render(<Probe />);
+
+    fireVisibilityChange('visible');
+    authFailed = true;
+    rerender(<Probe />);
+    await answer(false);
+
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(socket.connect).not.toHaveBeenCalled();
+  });
+
+  it('does not reconnect a socket that dropped and recovered on its own while the probe was open', async () => {
+    // The verdict arrives after a wait. If the transport heartbeat closed and
+    // reopened the socket meanwhile, `connected` is a fresh claim about a
+    // fresh socket, and the stale verdict must not tear that one down.
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+    socket.connected = false; // heartbeat closed the dead one...
+    await answer(false);
+
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('runs one probe at a time', async () => {
+    // Two resumes inside one timeout window must not stack two verdicts: the
+    // second could reconnect a socket the first had just brought back.
+    const socket = makeFakeSocket({ connected: true });
+    const { verifyAlive, answer } = deferredProbe();
+    mountRecovery(socket, { verifyAlive });
+
+    fireVisibilityChange('visible');
+    fireVisibilityChange('hidden');
+    fireVisibilityChange('visible');
+    expect(verifyAlive).toHaveBeenCalledTimes(1);
+
+    await answer(true);
+    fireVisibilityChange('hidden');
+    fireVisibilityChange('visible');
+    expect(verifyAlive).toHaveBeenCalledTimes(2);
+  });
+
+  it('behaves exactly as before when no probe is supplied', () => {
+    const socket = makeFakeSocket({ connected: true });
+    const { onResume } = mountRecovery(socket);
+
+    fireVisibilityChange('visible');
+
+    expect(onResume).toHaveBeenCalledTimes(1);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(socket.connect).not.toHaveBeenCalled();
   });
 });
