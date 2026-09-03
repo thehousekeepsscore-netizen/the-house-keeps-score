@@ -32,6 +32,15 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("30d"),
+  /**
+   * Keys the derivation of a rotated refresh token from the one it replaces
+   * (auth.service.ts, refreshTokens). Deliberately its own secret rather than
+   * JWT_ACCESS_SECRET: rotating the access-token secret must not silently
+   * change which refresh replays are recognised, and forging an access token
+   * and predicting a refresh token are different capabilities that should
+   * not share a key.
+   */
+  REFRESH_TOKEN_DERIVATION_SECRET: z.string().min(16),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -133,6 +142,15 @@ if (parsed.NODE_ENV === "production") {
   // verbatim, which satisfies min(16) while being publicly known.
   if (process.env.JWT_ACCESS_SECRET?.trim() === "change_me_access_secret") {
     problems.push("JWT_ACCESS_SECRET is still the .env.example placeholder — anyone can forge an access token");
+  }
+  if (process.env.REFRESH_TOKEN_DERIVATION_SECRET?.trim() === "replace-with-a-different-long-random-string") {
+    problems.push("REFRESH_TOKEN_DERIVATION_SECRET is still the .env.example placeholder — anyone can predict a rotated refresh token");
+  }
+  if (
+    process.env.REFRESH_TOKEN_DERIVATION_SECRET &&
+    process.env.REFRESH_TOKEN_DERIVATION_SECRET === process.env.JWT_ACCESS_SECRET
+  ) {
+    problems.push("REFRESH_TOKEN_DERIVATION_SECRET must differ from JWT_ACCESS_SECRET — the two primitives must not share a key");
   }
 
   if (problems.length > 0) {

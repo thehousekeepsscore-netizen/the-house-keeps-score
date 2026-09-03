@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ApiError, apiFetch, setAccessToken } from './api-client';
+import { ApiError, apiFetch, refreshAccessToken, setAccessToken } from './api-client';
 
 /**
  * The seam between an HTTP response and a typed error.
@@ -138,5 +138,88 @@ describe('successful responses', () => {
 
     await expect(apiFetch('/clubs/c1', { method: 'DELETE' })).resolves.toBeUndefined();
     expect(jsonSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * One refresh at a time, whoever asks.
+ *
+ * The server rotates the refresh cookie on every refresh and reads a second
+ * presentation of the same cookie as theft. So everything that refreshes from
+ * one document — a burst of 401s, and the auth bootstrap on page load — must
+ * share a single in-flight request. The bootstrap used to call the endpoint
+ * directly, which was the one path outside this dedupe.
+ */
+describe('refreshing is shared, not repeated', () => {
+  /** Routes by URL: the refresh answers with a token; everything else 401s until refreshed, then 200s. */
+  function serverThatRotates() {
+    let refreshed = false;
+    let refreshCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/auth/refresh')) {
+        refreshCalls += 1;
+        // Slow enough that concurrent callers overlap it.
+        await new Promise((r) => setTimeout(r, 20));
+        refreshed = true;
+        return json(200, { accessToken: 'fresh-token' });
+      }
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      if (!refreshed || auth !== 'Bearer fresh-token') return json(401, { error: 'Unauthorized' });
+      return json(200, { ok: true, url });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return { fetchMock, refreshCalls: () => refreshCalls };
+  }
+
+  it('five concurrent 401s produce exactly one refresh request', async () => {
+    const server = serverThatRotates();
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => apiFetch<{ ok: boolean }>(`/clubs/c${i}`))
+    );
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(server.refreshCalls(), 'one cookie presentation, not five').toBe(1);
+  });
+
+  it('the bootstrap refresh and a 401 retry overlap into one request', async () => {
+    // Exactly the pair that used to be two independent mechanisms: the
+    // startup refresh (now refreshAccessToken) and a 401-triggered one.
+    const server = serverThatRotates();
+
+    const [booted, data] = await Promise.all([
+      refreshAccessToken(),
+      apiFetch<{ ok: boolean }>('/clubs/c1'),
+    ]);
+
+    expect(booted).toBe(true);
+    expect(data.ok).toBe(true);
+    expect(server.refreshCalls()).toBe(1);
+  });
+
+  it('a refresh that has settled is not reused for a later request', async () => {
+    // The dedupe is for overlap only. Once a refresh completes, the next
+    // caller that needs one gets a fresh request — a cached false forever
+    // would be as bad as a duplicate.
+    const server = serverThatRotates();
+    await refreshAccessToken();
+    await refreshAccessToken();
+    expect(server.refreshCalls()).toBe(2);
+  });
+
+  it('answers false, never rejects, when the refresh is refused', async () => {
+    respondWith(json(401, { error: 'Refresh token reuse detected, please log in again' }));
+    await expect(refreshAccessToken()).resolves.toBe(false);
+  });
+
+  it('stores the access token it receives', async () => {
+    const server = serverThatRotates();
+    await refreshAccessToken();
+    expect(server.refreshCalls()).toBe(1);
+    // Proven by a subsequent request carrying it: no 401, so no second refresh.
+    const data = await apiFetch<{ ok: boolean }>('/clubs/c1');
+    expect(data.ok).toBe(true);
+    expect(server.refreshCalls()).toBe(1);
   });
 });

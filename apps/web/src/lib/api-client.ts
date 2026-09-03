@@ -21,7 +21,20 @@ export class ApiError extends Error {
 
 let refreshPromise: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<boolean> {
+/**
+ * Exchange the refresh cookie for a new access token — once at a time.
+ *
+ * Every caller in a document shares the in-flight request: a burst of 401s
+ * from a resync, and the auth bootstrap on page load, all await the same
+ * promise rather than each sending the cookie. That matters because the
+ * server rotates the cookie on every refresh and treats a second presentation
+ * of the same one as theft. The bootstrap used to call the endpoint directly,
+ * which left it the one refresh path outside this dedupe.
+ *
+ * Resolves true when a new access token has been stored, false otherwise.
+ * Never rejects: a failed refresh is an answer, not an exception.
+ */
+export async function refreshAccessToken(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
       .then(async (res) => {
