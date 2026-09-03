@@ -10,9 +10,11 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  BUY_IN_SOURCE_APPROVED_BANKS,
   buildCanonicalInputs,
   canonicalOutputsFrom,
   copyRules,
+  hasAuthoritativeBuyIns,
   potBalanceAffectsResult,
   replayCanonical,
   validateCanonicalInputs,
@@ -279,5 +281,50 @@ describe('outputs keep the two house charges apart', () => {
     const shaped = canonicalOutputsFrom(direct, captured);
     const replayed = replayCanonical(captured);
     expect({ ...shaped, computedAt: '' }).toEqual({ ...replayed, computedAt: '' });
+  });
+});
+
+describe('buy-in provenance is additive to the contract', () => {
+  /*
+   * `buyInSource` says the figures were derived from approved banks. It is
+   * optional because every record written before it existed lacks it, and
+   * because eight production nights carry `capturedFrom: 'settleSession'`
+   * while their buy-ins were still the form's — so absence has to stay a
+   * valid, replayable state rather than a validation failure.
+   */
+  it('validates and replays with the stamp absent', () => {
+    const legacy = inputs();
+    expect(legacy).not.toHaveProperty('buyInSource');
+    expect(validateCanonicalInputs(legacy)).toEqual([]);
+    expect(() => replayCanonical(legacy)).not.toThrow();
+  });
+
+  it('validates and replays with the stamp present', () => {
+    const stamped = inputs({ buyInSource: BUY_IN_SOURCE_APPROVED_BANKS });
+    expect(stamped.buyInSource).toBe('approved-banks');
+    expect(validateCanonicalInputs(stamped)).toEqual([]);
+    expect(replayCanonical(stamped)).toEqual(replayCanonical(inputs()));
+  });
+
+  it('rejects a provenance the contract does not know', () => {
+    const odd = { ...inputs(), buyInSource: 'the-form' };
+    expect(validateCanonicalInputs(odd).join(' | ')).toMatch(/buyInSource "the-form" is not a provenance/);
+  });
+
+  it('is written as a key only when given', () => {
+    // A JSON column cannot tell `undefined` from absent, so the builder must
+    // not emit the key at all for a caller that has nothing to say.
+    expect(Object.keys(inputs())).not.toContain('buyInSource');
+    expect(Object.keys(inputs({ buyInSource: BUY_IN_SOURCE_APPROVED_BANKS }))).toContain('buyInSource');
+  });
+
+  it('is read strictly, by equality on the one known value', () => {
+    expect(hasAuthoritativeBuyIns(inputs({ buyInSource: BUY_IN_SOURCE_APPROVED_BANKS }))).toBe(true);
+    expect(hasAuthoritativeBuyIns(inputs())).toBe(false);
+    expect(hasAuthoritativeBuyIns({ ...inputs(), buyInSource: 'approved-bank' })).toBe(false);
+    expect(hasAuthoritativeBuyIns({ ...inputs(), buyInSource: null })).toBe(false);
+    expect(hasAuthoritativeBuyIns(null)).toBe(false);
+    expect(hasAuthoritativeBuyIns(undefined)).toBe(false);
+    expect(hasAuthoritativeBuyIns('approved-banks')).toBe(false);
   });
 });

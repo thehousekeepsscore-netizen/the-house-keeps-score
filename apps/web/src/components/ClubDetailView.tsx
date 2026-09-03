@@ -4973,15 +4973,49 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Buy-In (Chips)</label>
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              min={0}
-                              required
-                              value={p.buyIn}
-                              onChange={(e) => handlePlayerStatChange(idx, 'buyIn', Number(e.target.value))}
-                              className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-medium focus:border-accent outline-none"
-                            />
+                            {/*
+                              A figure or a field, decided by the record's own
+                              provenance — the same test the server applies
+                              when the edit lands.
+
+                              A night the server settled from approved banks
+                              says so on its record, and re-derives the buy-in
+                              on every edit; a field here would accept typing
+                              that changes nothing. Shown the way the settle
+                              sheet shows it (#90), because it is the same fact.
+
+                              A night settled before that — or typed in from a
+                              notebook — keeps the field. Its buy-ins may hold
+                              corrections no bank ever recorded, and the server
+                              honours the form for it, so the form must offer
+                              one. Keyed on the marker, not on sourceType:
+                              most settled nights in production predate the
+                              marker and stay editable.
+                            */}
+                            {editingSession?.sourceType === 'cashout' && editingSession?.buyInSource === 'approved-banks' ? (
+                              <>
+                                <div
+                                  data-testid={`edit-buyin-${idx}`}
+                                  className="w-full bg-surface/60 border border-line rounded-lg px-2.5 py-1 flex items-center justify-between gap-2"
+                                >
+                                  <span className="text-xs font-mono font-medium text-text tabular-nums">
+                                    {Number(p.buyIn || 0).toLocaleString()}
+                                  </span>
+                                  <Lock className="w-2.5 h-2.5 text-text-faint shrink-0" />
+                                </div>
+                                <p className="text-[9px] text-text-faint leading-tight">From approved banks</p>
+                              </>
+                            ) : (
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                required
+                                value={p.buyIn}
+                                onChange={(e) => handlePlayerStatChange(idx, 'buyIn', Number(e.target.value))}
+                                className="w-full bg-bg border border-line rounded-lg px-2.5 py-1 text-xs text-text font-mono font-medium focus:border-accent outline-none"
+                              />
+                            )}
                           </div>
                           <div>
                             <label className="text-[10px] text-text-muted font-medium block mb-0.5">Cash-Out (Chips)</label>

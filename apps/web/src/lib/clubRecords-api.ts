@@ -16,6 +16,13 @@ export interface NormalizedSession {
   playerStats: { name: string; buyIn: number; cashOut: number; profit: number; userId?: string }[];
   dayNumber: number;
   dayTitle: string;
+  /**
+   * Present when the server derived this night's buy-ins from approved banks
+   * and will do so again on any edit — so the edit form shows the figure
+   * rather than a field. Absent on historical records and on nights settled
+   * before the server began deriving, whose buy-ins stay editable.
+   */
+  buyInSource?: 'approved-banks';
 }
 
 export async function listHistory(clubId: string): Promise<NormalizedSession[]> {
