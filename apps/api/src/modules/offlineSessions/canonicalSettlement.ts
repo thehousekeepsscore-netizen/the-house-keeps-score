@@ -108,6 +108,25 @@ export interface CanonicalPotState {
   affectsResult: boolean;
 }
 
+/**
+ * Where the participants' buy-ins came from.
+ *
+ * `'approved-banks'` means every `buyIn` below was derived by the server from
+ * the player's approved, non-voided BuyInRequest rows, and whatever the client
+ * submitted was ignored (#90). It is the only value, and it is stamped by
+ * settleSession alone.
+ *
+ * ABSENT means legacy: the figure was whatever the settlement sheet said. That
+ * covers every night settled before #90 shipped — including eight that already
+ * carry `canonicalInputs` and `capturedFrom: 'settleSession'`, because the
+ * canonical contract landed two weeks before the derivation did. Neither of
+ * those fields can therefore stand in for this one; a production audit proved
+ * that the hard way. Provenance is established at creation, never inferred
+ * afterwards, and never promoted by an edit.
+ */
+export const BUY_IN_SOURCE_APPROVED_BANKS = 'approved-banks' as const;
+export type BuyInSource = typeof BUY_IN_SOURCE_APPROVED_BANKS;
+
 export interface CanonicalSettlementInputs {
   engineVersion: EngineVersion;
   /** A verbatim copy. Never a club id, never a lookup. */
@@ -118,6 +137,24 @@ export interface CanonicalSettlementInputs {
   mismatchAcknowledged: boolean;
   capturedAt: string;
   capturedFrom: CanonicalOrigin;
+  /**
+   * Optional and additive. Absent on every record written before it existed,
+   * and on every record whose buy-ins were not server-derived. See
+   * BUY_IN_SOURCE_APPROVED_BANKS.
+   */
+  buyInSource?: BuyInSource;
+}
+
+/**
+ * Does this record's buy-in figure carry the authoritative-bank provenance?
+ *
+ * Strict by equality on the one known value. Anything else — absent, null, an
+ * unexpected string, a record that is not an object — is legacy. A legacy
+ * record keeps its editable buy-ins; only a stamped one has them derived.
+ */
+export function hasAuthoritativeBuyIns(inputs: unknown): boolean {
+  if (!inputs || typeof inputs !== 'object') return false;
+  return (inputs as { buyInSource?: unknown }).buyInSource === BUY_IN_SOURCE_APPROVED_BANKS;
 }
 
 /** Recorded on a player whose two house charges cannot be told apart. */
@@ -205,6 +242,14 @@ export function buildCanonicalInputs(args: {
   mismatchAcknowledged?: boolean;
   capturedFrom: CanonicalOrigin;
   capturedAt?: Date;
+  /**
+   * Set by settleSession, which derived the figures. An edit passes the
+   * record's EXISTING value through (so a stamped night stays stamped after a
+   * cash-out correction) and never supplies one of its own; a backfill or a
+   * back-dated night passes nothing. Omitted from the output when undefined,
+   * so a legacy record's JSON does not gain a key it never had.
+   */
+  buyInSource?: BuyInSource;
 }): CanonicalSettlementInputs {
   const participants: CanonicalParticipant[] = args.players.map((p, i) => ({
     seatIndex: i,
@@ -229,6 +274,7 @@ export function buildCanonicalInputs(args: {
     mismatchAcknowledged: args.mismatchAcknowledged === true,
     capturedAt: (args.capturedAt ?? new Date()).toISOString(),
     capturedFrom: args.capturedFrom,
+    ...(args.buyInSource !== undefined ? { buyInSource: args.buyInSource } : {}),
   };
 }
 
@@ -365,6 +411,13 @@ export function validateCanonicalInputs(inputs: unknown): string[] {
   }
   if (typeof v.mismatchAcknowledged !== 'boolean') {
     problems.push('mismatchAcknowledged is missing');
+  }
+
+  // Additive and optional: absent is the legacy case and is fine. Present, it
+  // must be the one value the contract knows — a record claiming a provenance
+  // this code cannot vouch for is not one to replay quietly.
+  if (v.buyInSource !== undefined && v.buyInSource !== BUY_IN_SOURCE_APPROVED_BANKS) {
+    problems.push(`buyInSource ${JSON.stringify(v.buyInSource)} is not a provenance this contract knows`);
   }
 
   return problems;

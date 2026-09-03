@@ -3,7 +3,12 @@ import { HttpError } from '../../middleware/errorHandler.js';
 import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from '../offlineSessions/settlementEngine.js';
-import { buildCanonicalInputs, canonicalOutputsFrom } from '../offlineSessions/canonicalSettlement.js';
+import {
+  BUY_IN_SOURCE_APPROVED_BANKS,
+  buildCanonicalInputs,
+  canonicalOutputsFrom,
+  hasAuthoritativeBuyIns,
+} from '../offlineSessions/canonicalSettlement.js';
 import { AUDIT_SCHEMA_VERSION } from './auditMeta.js';
 import { Prisma } from '@prisma/client';
 
@@ -332,6 +337,15 @@ export async function listHistory(clubId: string, requesterId: string, isSuperAd
     rake: number;
     playersCount: number;
     playerStats: { name: string; buyIn: number; cashOut: number; profit: number; userId?: string }[];
+    /**
+     * Whether this record's buy-ins are server-derived from approved banks.
+     * The edit form reads it to decide whether the buy-in is a field or a
+     * figure — the same test the server applies when the edit lands, so the
+     * screen and the service cannot disagree about which nights are locked.
+     * Absent on historical records and on every settlement stamped before
+     * the marker existed.
+     */
+    buyInSource?: 'approved-banks';
   }
 
   const rawList: RawItem[] = [];
@@ -372,6 +386,7 @@ export async function listHistory(clubId: string, requesterId: string, isSuperAd
       rake: cs.rakeCollected,
       playersCount: stats.length,
       playerStats: stats.map((p) => ({ name: p.userDisplayName, buyIn: p.totalBuyIn, cashOut: p.cashOut, profit: p.netResult, userId: p.userId })),
+      ...(hasAuthoritativeBuyIns(cs.canonicalInputs) ? { buyInSource: BUY_IN_SOURCE_APPROVED_BANKS } : {}),
     });
   });
 
@@ -689,10 +704,67 @@ async function applySessionChange(
      * states that manualWinner was false for everybody, so a night mis-settled
      * this way is afterwards identifiable instead of indistinguishable.
      */
+    /*
+     * WHERE THE BUY-IN COMES FROM depends on where it came from the first time.
+     *
+     * settleSession has derived every buy-in from approved banks since #90, and
+     * says so on the record (`canonicalInputs.buyInSource`). This path did not
+     * follow, so the guarantee held at settle time and was lost on the first
+     * edit: the form's `totalBuyIn` was taken at face value, exactly the
+     * workaround #90 closed.
+     *
+     * It follows now — for records that CARRY the stamp. A record without it
+     * was settled from the sheet, and its buy-ins may hold corrections that no
+     * bank ever recorded: one production night carries two such figures,
+     * deliberately typed under the old workflow, that the approved banks cannot
+     * reproduce. Deriving those would silently rewrite a correct settlement. So
+     * a legacy record keeps the behaviour it was created under, and only a
+     * stamped one is held to the invariant.
+     *
+     * The stamp is READ here and passed through; it is never written here. An
+     * edit that added it would promote a legacy night into the derived
+     * population on its second edit, which is the same silent rewrite one step
+     * removed. Only settleSession stamps.
+     */
+    const authoritative =
+      staged.sourceType === 'cashout' &&
+      hasAuthoritativeBuyIns(
+        (await tx.cashOutSettlement.findUniqueOrThrow({
+          where: { id: recordId }, select: { canonicalInputs: true },
+        })).canonicalInputs
+      );
+
+    let derivedBuyIn: Map<string, number> | null = null;
+    if (authoritative) {
+      const { sessionId } = await tx.cashOutSettlement.findUniqueOrThrow({
+        where: { id: recordId }, select: { sessionId: true },
+      });
+      // `status: 'approved'` by equality — voided rows drop out exactly as they
+      // do in settleSession and every live calculation. Read on `tx`, inside
+      // the same transaction that will write the figures it produces.
+      const approvedByPlayer = await tx.buyInRequest.groupBy({
+        by: ['userId'],
+        where: { sessionId, status: 'approved' },
+        _sum: { amount: true },
+      });
+      if (approvedByPlayer.length === 0) {
+        // A stamped record with nothing to derive from is a contradiction, not
+        // a night where nobody bought in. Refuse rather than settle at zero or
+        // fall back to the form — either would put a number on the record that
+        // no request can name.
+        throw new HttpError(409,
+          'This night was settled from approved banks, but none exist to derive its buy-ins from. It cannot be re-settled.');
+      }
+      derivedBuyIn = new Map(approvedByPlayer.map((r) => [r.userId, r._sum.amount ?? 0]));
+    }
+
     const enginePlayers = entries.map((e: any, i: number) => ({
       userId: e.userId || `unlinked:${i}:${e.userName ?? e.userDisplayName}`,
       userDisplayName: e.userName ?? e.userDisplayName,
-      buyIn: Number(e.totalBuyIn || 0),
+      // Derived when the record says its buy-ins are derived; the form's figure
+      // otherwise. A stamped player with no approved bank put in nothing, which
+      // is what settleSession would have said about them too.
+      buyIn: derivedBuyIn ? (derivedBuyIn.get(e.userId) ?? 0) : Number(e.totalBuyIn || 0),
       cashOut: Number(e.cashOut || 0),
     }));
 
@@ -703,6 +775,10 @@ async function applySessionChange(
       players: enginePlayers,
       currentPotBalance: club.clubPotBalance,
       capturedFrom: 'applySessionChange',
+      // Carried forward, never introduced: a stamped night stays stamped, an
+      // unstamped one stays unstamped. Its buy-ins above were derived iff it
+      // was, so the stamp remains true of what this record now holds.
+      ...(authoritative ? { buyInSource: BUY_IN_SOURCE_APPROVED_BANKS } : {}),
     });
     const canonicalOutputs = canonicalOutputsFrom(result, canonicalInputs);
 

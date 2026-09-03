@@ -5,7 +5,7 @@ import { emitToClub } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import * as notificationsService from '../notifications/notifications.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from './settlementEngine.js';
-import { buildCanonicalInputs, canonicalOutputsFrom } from './canonicalSettlement.js';
+import { BUY_IN_SOURCE_APPROVED_BANKS, buildCanonicalInputs, canonicalOutputsFrom } from './canonicalSettlement.js';
 import { AUDIT_SCHEMA_VERSION } from '../clubRecords/auditMeta.js';
 
 // Offline and Lazy Dealer sessions don't run the automated poker engine —
@@ -1599,6 +1599,12 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
       currentPotBalance: club.clubPotBalance,
       mismatchAcknowledged: input.mismatchAcknowledged,
       capturedFrom: 'settleSession',
+      // The buy-ins above came from `authoritativeBuyIn`, never from the form.
+      // Said on the record itself, because nothing else about the record can
+      // say it: `capturedFrom` and `engineVersion` predate the derivation, and
+      // eight production nights carry both while their buy-ins were typed.
+      // This is the only place the stamp is written.
+      buyInSource: BUY_IN_SOURCE_APPROVED_BANKS,
     });
     const canonicalOutputs = canonicalOutputsFrom(engineResult, canonicalInputs);
 
