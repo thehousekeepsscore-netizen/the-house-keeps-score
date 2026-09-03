@@ -247,12 +247,22 @@ describe('accessTokenExpiresWithin', () => {
   });
 
   it('treats the boundary as expiring: exactly the margin left is not enough', () => {
-    // exp is whole seconds; build one landing exactly on the margin.
-    const exp = Math.floor(Date.now() / 1000) + 30;
-    setAccessToken(`${b64({})}.${b64({ exp })}.sig`);
-    const remaining = exp * 1000 - Date.now();
-    expect(accessTokenExpiresWithin(remaining)).toBe(true);
-    expect(accessTokenExpiresWithin(remaining - 1)).toBe(false);
+    // The clock is frozen for this case. Computing `remaining` and then
+    // calling the function a moment later let a slow runner advance the clock
+    // by a millisecond in between, which turned "exactly the margin" into
+    // "inside it" — a flake that reached CI once.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-03T20:00:00.000Z'));
+      const exp = Math.floor(Date.now() / 1000) + 30; // lands exactly on a whole second
+      setAccessToken(`${b64({})}.${b64({ exp })}.sig`);
+      const remaining = exp * 1000 - Date.now();
+      expect(remaining).toBe(30_000);
+      expect(accessTokenExpiresWithin(remaining)).toBe(true);
+      expect(accessTokenExpiresWithin(remaining - 1)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is true when there is no token', () => {
