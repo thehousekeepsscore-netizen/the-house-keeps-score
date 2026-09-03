@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch, setAccessToken } from './api-client';
+import { apiFetch, refreshAccessToken, setAccessToken } from './api-client';
 import { resetSocket } from './socket';
 import { AppUser } from './auth-types';
 
@@ -188,8 +188,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setPhase('refreshing');
       try {
-        const result = await apiFetch<{ accessToken: string }>('/auth/refresh', { method: 'POST', skipAuthRetry: true });
-        setAccessToken(result.accessToken);
+        // Through the shared refresh, never the endpoint directly: this is the
+        // same request a 401 retry makes, and two of them in flight from one
+        // document would present the same rotating cookie twice — which the
+        // server reads as theft. The shared promise stores the access token
+        // itself; a false answer means no session.
+        if (!(await refreshAccessToken())) throw new Error('no session');
         await loadMe();
       } catch {
         markSignedOut();

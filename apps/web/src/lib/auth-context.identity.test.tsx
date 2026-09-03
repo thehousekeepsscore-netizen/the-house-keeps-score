@@ -23,16 +23,19 @@ import { MemoryRouter } from 'react-router-dom';
  * input and pass no matter what the provider did.
  */
 
-const { resetSocket, apiFetch } = vi.hoisted(() => ({
+const { resetSocket, apiFetch, refreshAccessToken } = vi.hoisted(() => ({
   resetSocket: vi.fn(),
   apiFetch: vi.fn(),
+  refreshAccessToken: vi.fn(),
 }));
 
 vi.mock('./socket', () => ({ resetSocket, getSocket: vi.fn() }));
 
 vi.mock('./api-client', async () => {
   const actual = await vi.importActual<typeof import('./api-client')>('./api-client');
-  return { ...actual, apiFetch, setAccessToken: vi.fn() };
+  // The boot refresh now goes through the shared refreshAccessToken rather
+  // than apiFetch, so the double has to answer it; false = no session.
+  return { ...actual, apiFetch, refreshAccessToken, setAccessToken: vi.fn() };
 });
 
 import { AuthProvider, useAuth } from './auth-context';
@@ -65,6 +68,7 @@ function renderProvider() {
 
 /** The boot refresh, answered as "no session" so tests start signed out. */
 function noSession() {
+  refreshAccessToken.mockResolvedValue(false);
   apiFetch.mockRejectedValue(new ApiError(401, 'Unauthorized'));
 }
 
@@ -85,6 +89,7 @@ async function signOut() {
 beforeEach(() => {
   resetSocket.mockClear();
   apiFetch.mockReset();
+  refreshAccessToken.mockReset();
   noSession();
 });
 

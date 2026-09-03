@@ -81,6 +81,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/poker_test
       NODE_ENV: test
       JWT_ACCESS_SECRET: ci_only_access_secret_not_used_anywhere_else
+      REFRESH_TOKEN_DERIVATION_SECRET: ci_only_refresh_derivation_secret_not_used_anywhere
       WEB_ORIGIN: http://localhost:5173
 
     steps:
