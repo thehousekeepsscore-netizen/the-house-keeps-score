@@ -200,7 +200,7 @@ export async function createPastSession(
   // The key is deliberately the club, the date AND the exact figures rather
   // than club+date alone: two genuinely different sessions on one evening are
   // plausible, two sessions with an identical set of players and identical
-  // buy-ins and cash-outs to the rupee are not.
+  // buy-ins and cash-outs to the chip are not.
   const sameDay = await prisma.historicalSessionRecord.findMany({
     where: { clubId, sessionDate: when.toISOString(), isDeleted: false },
     select: { id: true, playerStats: true },

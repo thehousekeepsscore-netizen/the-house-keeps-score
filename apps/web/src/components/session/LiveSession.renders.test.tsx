@@ -42,7 +42,6 @@ const club = {
   id: 'c1',
   name: 'Club',
   code: '0007',
-  currency: 'INR',
   ownerUid: 'host',
   adminUids: ['host'],
   memberUids: ['host'],

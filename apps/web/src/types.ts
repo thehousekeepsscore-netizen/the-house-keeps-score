@@ -54,10 +54,8 @@ export interface Club {
   maxCapacity: number; // Default 50 players
   /** MATCH_HIGHEST | UNCAPPED — how the table's buy-in ceiling is decided. */
   buyInMode?: 'MATCH_HIGHEST' | 'UNCAPPED';
-  minBuyIn?: number; // Default ₹1,000
-  maxBuyIn?: number; // Default ₹5,000
-  devaluationFactor?: number; // Devaluation ratio (e.g. 5 means 5 points = ₹1 INR cash)
-  enableDevaluation?: boolean; // Whether currency devaluation is enabled
+  minBuyIn?: number; // Default 1,000 chips
+  maxBuyIn?: number; // Default 5,000 chips
   clubPotBalance?: number;
   leaderboardVisibleToPlayers?: boolean; // Owner-controlled — when false, only Owner/Admins can view the Leaderboard tab
   // ---- Settlement Rules (config-driven Cashout Engine, see lib/settlementEngine.ts) ----

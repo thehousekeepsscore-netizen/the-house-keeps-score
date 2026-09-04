@@ -24,8 +24,6 @@ export interface ApiClub {
   buyInMode: 'MATCH_HIGHEST' | 'UNCAPPED';
   minBuyIn: number;
   maxBuyIn: number;
-  devaluationFactor: number;
-  enableDevaluation: boolean;
   clubPotBalance: number;
   leaderboardVisibleToPlayers: boolean;
   sessionRakeAmount: number;
@@ -72,8 +70,6 @@ export function toClub(c: ApiClub): Club {
     buyInMode: c.buyInMode,
     minBuyIn: c.minBuyIn,
     maxBuyIn: c.maxBuyIn,
-    devaluationFactor: c.devaluationFactor,
-    enableDevaluation: c.enableDevaluation,
     clubPotBalance: c.clubPotBalance,
     leaderboardVisibleToPlayers: c.leaderboardVisibleToPlayers,
     sessionRakeAmount: c.sessionRakeAmount,
@@ -124,8 +120,6 @@ export interface CreateClubInput {
   buyInMode?: 'MATCH_HIGHEST' | 'UNCAPPED';
   minBuyIn?: number;
   maxBuyIn?: number;
-  devaluationFactor?: number;
-  enableDevaluation?: boolean;
   sessionRakeAmount?: number;
   winnersCutPercent?: number;
   rakeEnabled?: boolean;
@@ -149,8 +143,6 @@ export interface UpdateClubInput {
   buyInMode?: 'MATCH_HIGHEST' | 'UNCAPPED';
   minBuyIn?: number;
   maxBuyIn?: number;
-  devaluationFactor?: number;
-  enableDevaluation?: boolean;
   leaderboardVisibleToPlayers?: boolean;
   sessionRakeAmount?: number;
   winnersCutPercent?: number;

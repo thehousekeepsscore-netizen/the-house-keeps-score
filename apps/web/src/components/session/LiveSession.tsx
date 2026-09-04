@@ -46,10 +46,9 @@ export interface LiveSessionProps {
   /** Built by the screen that owns the mutations, not by the queue. */
   waiting: WaitingRow[];
   /**
-   * The club's own formatter. Threaded in rather than written here, because
-   * the club decides whether a figure is chips or rupees — a club with
-   * devaluation on values several chips at ₹1, so a hardcoded ₹ on the felt
-   * would be stating something false about money.
+   * The club's own formatter, threaded in rather than written here so every
+   * figure on the felt is rendered by the one function that renders figures
+   * everywhere else.
    */
   formatAmount: (n: number) => string;
   /**

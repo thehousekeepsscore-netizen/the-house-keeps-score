@@ -39,8 +39,6 @@ const apiClub = {
   buyInMode: 'UNCAPPED',
   minBuyIn: 0,
   maxBuyIn: 0,
-  devaluationFactor: 1,
-  enableDevaluation: false,
   clubPotBalance: 0,
   leaderboardVisibleToPlayers: true,
   sessionRakeAmount: 0,
