@@ -17,9 +17,7 @@ import { SettlementResult, SettlementSettings } from '../lib/settlementEngine';
  * cash-outs, a back-dated night needs a date and a member picker, an edit
  * needs account links) and share the part that shouldn't differ at all.
  *
- * Amounts are always in Chips. The Chips/₹ switch belongs to History and the
- * Leaderboard, where you are reading past results; these screens are where you
- * enter and commit chip counts, so showing rupees would invite entering them.
+ * Amounts are always in Chips, here and everywhere else in the app.
  */
 
 /** Right-aligned amount column with tabular figures so digits line up. */

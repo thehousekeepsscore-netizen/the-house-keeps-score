@@ -95,8 +95,6 @@ export interface CreateClubInput {
   description?: string;
   minBuyIn?: number;
   maxBuyIn?: number;
-  devaluationFactor?: number;
-  enableDevaluation?: boolean;
   rakeEnabled?: boolean;
   rakeMethod?: RakeMethod;
   buyInMode?: 'MATCH_HIGHEST' | 'UNCAPPED';
@@ -136,8 +134,6 @@ export async function createClub(ownerId: string, input: CreateClubInput) {
       ownerId,
       minBuyIn: input.minBuyIn ?? 1000,
       maxBuyIn: input.maxBuyIn ?? 5000,
-      devaluationFactor: input.devaluationFactor ?? 1,
-      enableDevaluation: input.enableDevaluation ?? false,
       rakeEnabled: input.rakeEnabled ?? false,
       rakeMethod: input.rakeMethod ?? "PERCENT_PROFIT",
       buyInMode: input.buyInMode ?? 'MATCH_HIGHEST',
@@ -163,8 +159,6 @@ export interface UpdateClubInput {
   name?: string;
   minBuyIn?: number;
   maxBuyIn?: number;
-  enableDevaluation?: boolean;
-  devaluationFactor?: number;
   leaderboardVisibleToPlayers?: boolean;
   rakeEnabled?: boolean;
   rakeMethod?: RakeMethod;
@@ -195,7 +189,7 @@ export interface UpdateClubInput {
  * rule and is meant to be toggled.
  */
 const IMMUTABLE_CLUB_RULES = [
-  'minBuyIn', 'maxBuyIn', 'enableDevaluation', 'devaluationFactor', 'buyInMode',
+  'minBuyIn', 'maxBuyIn', 'buyInMode',
   'rakeEnabled', 'rakeMethod', 'rakeValue', 'sessionRakeAmount', 'winnersCutPercent',
   'potEnabled', 'mismatchStrategy', 'rakeOrder', 'winnerDefinition', 'winnerTopN',
   'roundingRule',

@@ -43,7 +43,7 @@ function awardPotToWinner(state: VTEngineState, winner: VTSeat | undefined, reas
       street: 'Showdown',
       currentTurnSeat: null,
       winningAnnouncement: { winners: [winner.name], handDesc: reason, amountWon: pot },
-      actionLog: appendLog(state.actionLog, `🏆 ${winner.name} won ₹${pot} (${reason})`)
+      actionLog: appendLog(state.actionLog, `🏆 ${winner.name} won ${pot} chips (${reason})`)
     },
     historyRecord: makeHistoryRecord(state, [winner.name], reason, pot)
   };
@@ -84,7 +84,7 @@ function performShowdown(state: VTEngineState): EngineMutationResult | null {
       street: 'Showdown',
       currentTurnSeat: null,
       winningAnnouncement: { winners: winnerNames, handDesc: bestHandDesc, amountWon: pot },
-      actionLog: appendLog(state.actionLog, `🏆 ${winnerNames.join(', ')} won ₹${pot} with ${bestHandDesc}`)
+      actionLog: appendLog(state.actionLog, `🏆 ${winnerNames.join(', ')} won ${pot} chips with ${bestHandDesc}`)
     },
     historyRecord: makeHistoryRecord(state, winnerNames, bestHandDesc, pot)
   };
@@ -251,7 +251,7 @@ export function dealNewHand(state: VTEngineState): EngineMutationResult | null {
       winningAnnouncement: null,
       isGameStarted: true,
       handNumber: nextHandNumber,
-      actionLog: appendLog(state.actionLog, `♠️ Hand #${nextHandNumber} started. Dealer: Seat ${dealerSeatNum}, SB: ₹${sb}, BB: ₹${bb}`)
+      actionLog: appendLog(state.actionLog, `♠️ Hand #${nextHandNumber} started. Dealer: Seat ${dealerSeatNum}, SB: ${sb}, BB: ${bb}`)
     }
   };
 }
@@ -295,7 +295,7 @@ export function callSeat(state: VTEngineState, seatNumber: number): EngineMutati
     ...state,
     playerSeats: updatedSeats,
     potSize: (state.potSize || 0) + callAmt,
-    actionLog: appendLog(state.actionLog, `💰 ${seat.name} Called ₹${callAmt}`)
+    actionLog: appendLog(state.actionLog, `💰 ${seat.name} Called ${callAmt}`)
   });
 }
 
@@ -327,7 +327,7 @@ export function betRaiseSeat(state: VTEngineState, seatNumber: number, targetBet
     playerSeats: updatedSeats,
     currentHighBet: newHighBet,
     potSize: (state.potSize || 0) + actualBetAmt,
-    actionLog: appendLog(state.actionLog, `🔥 ${seat.name} Raised to ₹${newHighBet}`)
+    actionLog: appendLog(state.actionLog, `🔥 ${seat.name} Raised to ${newHighBet}`)
   });
 }
 

@@ -661,8 +661,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   };
 
-  // Every figure in the club UI is denominated in chips — the rupee
-  // conversion (club.devaluationFactor) is deliberately not surfaced here.
+  // Every figure in the app is denominated in chips; there is no currency.
   // `customClub` is kept on the signature since callers still pass it.
   // Proportional mismatch adjustments land on fractions (a 12.5% share of 300
   // is 37.50), so whole-chip rounding here would show figures that don't add
@@ -685,49 +684,10 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const formatPts = formatVal;
   const formatSignedPts = formatSignedVal;
 
-  // A club can declare that N chips are worth ₹1. Where that's true, past
-  // results can be read either way, so History and the Leaderboard carry a
-  // Chips/₹ switch. Chips are the default everywhere: they're what was
-  // actually on the table, and the rupee value is a derived view of them.
-  // The switch is shared by both tabs so the two never disagree, and it is
-  // display-only — nothing stored or sent is ever converted.
-  const rupeeFactor = (club.enableDevaluation ?? false) ? (club.devaluationFactor ?? 1) : 1;
-  const canShowRupees = rupeeFactor > 1;
-  const [recordsUnit, setRecordsUnit] = useState<'chips' | 'inr'>('chips');
-  const activeUnit = canShowRupees ? recordsUnit : 'chips';
-
-  const rupeeStr = (chips: number) => chipStr(chips / rupeeFactor);
-  const formatUnit = (chips: number) =>
-    activeUnit === 'chips' ? formatVal(chips) : `₹${rupeeStr(chips)}`;
-  const formatSignedUnit = (chips: number) => {
-    if (activeUnit === 'chips') return formatSignedVal(chips);
-    const sign = chips > 0 ? '+' : chips < 0 ? '-' : '';
-    return `${sign}₹${rupeeStr(Math.abs(chips))}`;
-  };
-
-  const currencyToggle = canShowRupees ? (
-    <div className="inline-flex items-center bg-bg border border-line rounded-full p-0.5 shrink-0">
-      {([['chips', 'Chips'], ['inr', '₹']] as const).map(([value, label]) => (
-        <button
-          key={value}
-          type="button"
-          onClick={() => setRecordsUnit(value)}
-          aria-pressed={recordsUnit === value}
-          className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-colors ${
- recordsUnit === value
- ? 'bg-accent text-accent-contrast'
-              : 'text-text-muted hover:text-text'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-      <InfoHint>
-        Your club values {rupeeFactor} Chips at ₹1. Switch to see these figures as rupees — it only
-        changes how they're shown here, never what's recorded.
-      </InfoHint>
-    </div>
-  ) : null;
+  // One unit everywhere. These aliases remain because History, the
+  // Leaderboard and the settlement toast read through them.
+  const formatUnit = formatVal;
+  const formatSignedUnit = formatSignedVal;
 
   // Club Settings Modal (Admin only)
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -735,8 +695,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [editBuyInMode, setEditBuyInMode] = useState<'MATCH_HIGHEST' | 'UNCAPPED'>(club.buyInMode ?? 'MATCH_HIGHEST');
   const [editMinBuyIn, setEditMinBuyIn] = useState(club.minBuyIn || 1000);
   const [editMaxBuyIn, setEditMaxBuyIn] = useState(club.maxBuyIn || 5000);
-  const [editEnableDevaluation, setEditEnableDevaluation] = useState(club.enableDevaluation ?? true);
-  const [editDevaluationFactor, setEditDevaluationFactor] = useState(club.devaluationFactor ?? 5);
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Settlement Rules (config-driven Cashout Engine)
@@ -756,8 +714,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setEditBuyInMode(club.buyInMode ?? 'MATCH_HIGHEST');
     setEditMinBuyIn(club.minBuyIn || 1000);
     setEditMaxBuyIn(club.maxBuyIn || 5000);
-    setEditEnableDevaluation(club.enableDevaluation ?? true);
-    setEditDevaluationFactor(club.devaluationFactor ?? 5);
     setEditRakeEnabled(club.rakeEnabled ?? true);
     setEditRakeMethod(club.rakeMethod ?? 'PERCENT_PROFIT');
     setEditRakeValue(club.rakeValue ?? 5);
@@ -2116,8 +2072,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
        * the modal, so the acknowledgement is on screen as the surface leaves.
        *
        * Figures come from the settlement that was actually committed, through
-       * the same unit-aware formatter the screen uses, so a club reading in
-       * rupees is told in rupees.
+       * the same formatter the screen uses.
        */
       pushToast(
         'Night settled',
@@ -2853,14 +2808,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     {connectionBadge.label}
                   </span>
                 )}
-                {/* Balances display in Chips everywhere, so the cash rate has
-                    to be discoverable somewhere or players can't value their
-                    stack. Only shown when it isn't the trivial 1:1. */}
-                {(club.enableDevaluation ?? false) && (club.devaluationFactor ?? 1) > 1 && (
-                  <span className="px-2 py-0.5 furniture text-text-muted font-mono text-[10px] rounded-lg">
-                    {club.devaluationFactor} Chips = ₹1
-                  </span>
-                )}
                 <button
                   onClick={() => setShowClubInfoModal(true)}
                   className="tap-44 p-1 text-text-muted hover:text-accent transition-colors cursor-pointer"
@@ -3158,8 +3105,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         the Completed Sessions chip was clipped mid-word. One
                         line whenever it fits, exactly as before. */}
                     <div className="flex flex-wrap items-center gap-2">
-                      {currencyToggle}
-                      {(isOwner || isSuperUser) && (
+                                            {(isOwner || isSuperUser) && (
                         <button
                           onClick={() => setShowPastSessionModal(true)}
                           className="text-xs font-medium bg-accent/15 text-accent border border-accent/40 px-3 py-1.5 rounded-xl hover:bg-accent/25 transition-colors flex items-center gap-1.5"
@@ -3586,8 +3532,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                         Overall standings compiled from settled sessions and historical player records.
                       </p>
                     </div>
-                    {currencyToggle}
-                  </div>
+                                      </div>
 
                   {/* Leaderboard Mobile Cards (< sm) */}
                   <div className="sm:hidden space-y-3 font-mono">
@@ -3796,9 +3741,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     onChange={(e) => setBuyInAmount(Number(e.target.value))}
                     className="w-full bg-bg border border-line rounded-xl px-4 py-3 text-lg font-mono font-semibold text-accent focus:border-accent outline-none"
                   />
-                  <p className="text-[11px] text-accent font-mono font-medium">
-                    Equivalent Real Bank Cash: ₹{Math.round(buyInAmount / ((club.enableDevaluation ?? true) ? (club.devaluationFactor ?? 5) : 1)).toLocaleString()} INR
-                  </p>
                 </div>
 
                 {/* Min/max are enforced on submit via a toast rather than
@@ -4475,12 +4417,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 <span className="text-text-muted">Mismatch Handling</span>
                 <strong className="text-warning">{MISMATCH_STRATEGY_LABELS[club.mismatchStrategy ?? 'PROPORTIONAL_WINNERS']}</strong>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Ratio</span>
-                <strong className="text-accent">
-                  {(club.enableDevaluation ?? true) ? `${club.devaluationFactor ?? 5} Chips = ₹1 INR` : '1 Chip = ₹1 INR'}
-                </strong>
-              </div>
 
               {activeSession && (
                 <>
@@ -4512,13 +4448,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         />
       )}
 
-      {/* MODAL 2: CLUB SETTINGS & DEVALUATION RATIO (ADMIN ONLY) */}
+      {/* MODAL 2: CLUB SETTINGS (ADMIN ONLY) */}
       {showSettingsModal && isAdmin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="furniture w-full max-w-lg p-6 rounded-3xl space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="text-base font-semibold text-text flex items-center gap-2">
-                <Settings className="w-5 h-5 text-accent" /> Club Rules & Devaluation Settings
+                <Settings className="w-5 h-5 text-accent" /> Club Rules & Settings
               </h3>
               <button onClick={() => setShowSettingsModal(false)} className="text-text-muted hover:text-text cursor-pointer">
                 <X className="w-5 h-5" />
@@ -4547,7 +4483,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 />
               </div>
 
-              {/* Everything from here to the end of the devaluation block is
+              {/* Everything from here to the end of the fieldset is
                   fixed at creation. `disabled` on the fieldset cascades to
                   every control inside it, so the form shows the club's rules
                   without implying they can be edited. The server rejects any
@@ -4719,56 +4655,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                     className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
                   >
                     <option value="NONE">No rounding (nearest point)</option>
-                    <option value="NEAREST_1">Round to nearest ₹1</option>
-                    <option value="NEAREST_5">Round to nearest ₹5</option>
-                    <option value="NEAREST_10">Round to nearest ₹10</option>
+                    <option value="NEAREST_1">Round to nearest 1 chip</option>
+                    <option value="NEAREST_5">Round to nearest 5 chips</option>
+                    <option value="NEAREST_10">Round to nearest 10 chips</option>
                   </select>
                 </div>
               </div>
 
-              {/* Currency Devaluation Controls */}
-              <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editEnableDevaluation}
-                        onChange={(e) => setEditEnableDevaluation(e.target.checked)}
-                        className="w-4 h-4 accent-accent rounded cursor-pointer"
-                      />
-                      Enable Currency Devaluation (e.g. 5 Chips = ₹1 INR Cash)
-                    </label>
-                    <p className="text-[10px] text-text-muted mt-1 pl-6">
-                      Devaluing currency allows players to buy in with points while converting to real bank cash on reports.
-                    </p>
-                  </div>
-                </div>
-
-                {editEnableDevaluation && (
-                  <div className="pt-2 border-t border-line/60 flex flex-wrap items-center gap-3 pl-6">
-                    <label className="text-[11px] font-medium text-text-muted">
-                      Devaluation Ratio:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={editDevaluationFactor}
-                        onChange={(e) => setEditDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="w-20 furniture rounded-lg px-2.5 py-1.5 text-xs text-accent font-mono font-medium outline-none focus:border-accent"
-                      />
-                      <span className="text-xs text-text font-mono font-medium">
-                        Chips = ₹1 Cash
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-accent font-mono font-medium furniture px-3 py-1 rounded-lg w-full">
-                      Preview: 1,000 Chips = ₹{Math.round(1000 / (editDevaluationFactor || 1))} INR Real Cash Bank
-                    </div>
-                  </div>
-                )}
-              </div>
               </fieldset>
 
               {/* Leaderboard Visibility (Owner Only) — a visibility preference,

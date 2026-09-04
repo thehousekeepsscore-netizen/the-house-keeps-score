@@ -107,10 +107,10 @@ describe('initSettlementRules specifically', () => {
     expect(url).toBe(`/api/clubs/${CLUB}/offline-sessions/${SESSION}/settlement-rules`);
   });
 
-  it('sends chips, untouched by any rupee conversion', async () => {
-    // 1,000 chips is 1000 on the wire. The 5-chips-to-a-rupee ratio is a
-    // display concern the engine never reads, so a rake that arrived as 200
-    // would charge a fifth of what the host agreed.
+  it('sends chips, exactly as entered', async () => {
+    // 1,000 chips is 1000 on the wire. There is no unit conversion anywhere
+    // between the form and the engine, and this pins that nothing scales the
+    // figure on the way out.
     await api.initSettlementRules(CLUB, SESSION, { sessionRakeAmount: 1000, winnersCutPercent: 5 });
 
     expect(JSON.parse(lastRequest().raw!)).toEqual({ sessionRakeAmount: 1000, winnersCutPercent: 5 });

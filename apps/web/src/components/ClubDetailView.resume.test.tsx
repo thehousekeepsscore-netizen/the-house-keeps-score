@@ -100,7 +100,6 @@ const club = {
   ownerUid: 'host',
   adminUids: ['host'],
   memberUids: ['host'],
-  currency: 'INR',
 } as unknown as Club;
 
 const currentUser = {

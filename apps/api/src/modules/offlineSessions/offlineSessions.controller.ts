@@ -243,8 +243,8 @@ export async function settleSession(req: Request, res: Response) {
 
 const sessionRulesSchema = z.object({
   // Both required: this initialises a night's rules, so a partial call would
-  // leave it half-decided. Chips, not rupees — the engine is chip-based
-  // throughout and never consults devaluationFactor, which is display only.
+  // leave it half-decided. Everything here is chips; the engine is chip-based
+  // throughout.
   sessionRakeAmount: z.number().int().min(0),
   winnersCutPercent: z.number().int().min(0).max(100),
 });

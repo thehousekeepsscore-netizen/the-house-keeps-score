@@ -149,8 +149,10 @@ describe('typing on the dashboard does not make iOS zoom the page', () => {
 
     await user.click(await screen.findByRole('button', { name: /advanced settings/i }));
 
+    // Session rake and winners' cut. There were three until the chips
+    // valuation field was removed along with the currency it converted to.
     const numberFields = [...document.querySelectorAll('input[type="number"]')];
-    expect(numberFields.length).toBe(3);
+    expect(numberFields.length).toBe(2);
     for (const field of numberFields) {
       expectNoZoomSize(field, 'advanced settings number field');
     }

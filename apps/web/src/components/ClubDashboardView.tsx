@@ -95,11 +95,8 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
   // Create Club Form
   const [newClubName, setNewClubName] = useState('');
   const [newClubDesc, setNewClubDesc] = useState('');
-  // Defaults are deliberately plain: 1 Chip = ₹1 and no rake. Anything more
-  // opinionated is opt-in under Advanced Settings. A ratio of 1 means "no
-  // valuation applied", so there's no separate enable flag to keep in sync.
-  const [devaluationFactor, setDevaluationFactor] = useState(1);
-  const enableDevaluation = devaluationFactor > 1;
+  // Defaults are deliberately plain: no rake. Anything more opinionated is
+  // opt-in under Advanced Settings. Every figure in the app is chips.
 
   // Rake at creation time. The headline choice is a flat per-session amount,
   // which is how most home games actually charge. Anything percentage-based
@@ -206,8 +203,6 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       await clubsApi.createClub({
         name: trimmedName,
         description: newClubDesc.trim() || undefined,
-        enableDevaluation,
-        devaluationFactor: enableDevaluation ? devaluationFactor : 1,
         buyInMode,
         sessionRakeAmount: sessionRake,
         winnersCutPercent,
@@ -673,7 +668,7 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               </div>
 
               {/* Everything below is optional. A club created without opening
-                  this section gets plain defaults: 1 chip = ₹1 and no rake. */}
+                  this section gets plain defaults: no rake. */}
               <button
                 type="button"
                 onClick={() => setShowAdvancedRake((v) => !v)}
@@ -681,44 +676,13 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
               >
                 <span className="text-xs font-medium text-text flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-accent" /> Advanced Settings
-                  <span className="text-[10px] text-text-muted font-normal">Chips valuation & session rake</span>
+                  <span className="text-[10px] text-text-muted font-normal">Buy-in limit & session rake</span>
                 </span>
                 {showAdvancedRake ? <ChevronUp className="w-4 h-4 text-accent" /> : <ChevronDown className="w-4 h-4 text-accent" />}
               </button>
 
               {showAdvancedRake && (
                 <>
-              {/* No enable/disable toggle — a ratio of 1 *is* "off", which
-                  keeps the default (1 Chip = ₹1) self-evident. */}
-              <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
-                <div>
-                  <p className="text-xs font-medium text-text flex items-center gap-1.5">
-                    <Coins className="w-4 h-4 text-accent" /> Chips Valuation
-                    <InfoHint>
-                      What a chip is worth in cash when you settle up. Balances always display in Chips either way.
-                    </InfoHint>
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={devaluationFactor}
-                    onChange={(e) => setDevaluationFactor(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-24 furniture rounded-xl px-3 py-2.5 text-base text-text font-mono font-medium outline-none focus:border-accent"
-                  />
-                  <span className="text-sm text-text font-mono font-medium">Chips = ₹1</span>
-                </div>
-
-                <p className="text-[10px] text-text-muted">
-                  {devaluationFactor === 1
-                    ? 'Standard — a chip is worth a rupee. Leave as 1 unless your table plays otherwise.'
-                    : `1,000 Chips = ₹${Math.round(1000 / devaluationFactor).toLocaleString()} real cash.`}
-                </p>
-              </div>
-
               {/* ---- Rake ---- */}
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-3">
                 <p className="text-xs font-medium text-text flex items-center gap-1.5">
@@ -775,16 +739,11 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                     className="w-full furniture rounded-xl px-3 py-2.5 text-base font-mono font-medium text-text focus:border-accent outline-none"
                     placeholder="0"
                   />
-                  {/* Chips AND rupees, and the total for a plausible table.
-                      The engine is chip-based and never applies the ratio, so a
-                      host thinking in rupees has to do the conversion in their
-                      head — which is exactly how a rake meant to be ₹1,000 a
-                      head gets entered as 1,000 chips and charges ₹200. */}
+                  {/* The total for a plausible table, so the per-head figure
+                      is read as what it charges rather than as a guess. */}
                   <p className="text-[10px] text-text-muted">
                     {sessionRake > 0
-                      ? `${sessionRake.toLocaleString()} Chips from every player who sat down${
-                          enableDevaluation ? ` (₹${Math.round(sessionRake / devaluationFactor).toLocaleString()} each)` : ''
-                        } — a table of five collects ${(sessionRake * 5).toLocaleString()}.`
+                      ? `${sessionRake.toLocaleString()} Chips from every player who sat down — a table of five collects ${(sessionRake * 5).toLocaleString()}.`
                       : 'Charged to every player, winners and losers alike. 0 for none.'}
                   </p>
                 </div>
@@ -831,11 +790,10 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                   <li>Maximum admins: <strong>2 Admins</strong> (plus you as Owner)</li>
                   <li>Join system: Players send a request that only the Club Owner can approve</li>
                   <li className="text-warning">
-                    <strong>Fixed at creation:</strong> the currency ratio, buy-in limit, rake and
+                    <strong>Fixed at creation:</strong> the buy-in limit, rake and
                     winners&apos; cut cannot be changed afterwards — a club that wants different
                     rules is a new club
                   </li>
-                  <li>Currency ratio: <strong>{enableDevaluation ? `${devaluationFactor} Chips = ₹1 INR` : '1 Chip = ₹1 INR (Standard)'}</strong></li>
                   <li>Buy-in limit: <strong>{buyInMode === 'UNCAPPED' ? 'No limit' : 'Match the biggest bank'}</strong></li>
                   <li>Rake: <strong>{[
                     sessionRake > 0 ? `${sessionRake.toLocaleString()} Chips per player` : null,

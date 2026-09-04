@@ -35,7 +35,7 @@ export interface PokerTableProps {
   currentUserId: string;
   users: Record<string, { displayName?: string; avatarUrl?: string } | undefined>;
   onSelectPlayer: (userId: string) => void;
-  /** The club's own formatter — respects the chips/₹ toggle and devaluation. */
+  /** The club's own formatter — the same one every other figure is rendered by. */
   formatAmount: (n: number) => string;
   /**
    * The one control on the felt, and what it does for THIS viewer.
