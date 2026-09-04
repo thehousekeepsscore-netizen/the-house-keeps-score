@@ -698,9 +698,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Settlement Rules (config-driven Cashout Engine)
-  const [editRakeEnabled, setEditRakeEnabled] = useState(club.rakeEnabled ?? true);
-  const [editRakeMethod, setEditRakeMethod] = useState<RakeMethod>(club.rakeMethod ?? 'PERCENT_PROFIT');
-  const [editRakeValue, setEditRakeValue] = useState(club.rakeValue ?? 5);
   const [editPotEnabled, setEditPotEnabled] = useState(club.potEnabled ?? true);
   const [editMismatchStrategy, setEditMismatchStrategy] = useState<MismatchStrategy>(club.mismatchStrategy ?? 'PROPORTIONAL_WINNERS');
   const [editRakeOrder, setEditRakeOrder] = useState<RakeOrder>(club.rakeOrder ?? 'MISMATCH_FIRST');
@@ -714,9 +711,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     setEditBuyInMode(club.buyInMode ?? 'MATCH_HIGHEST');
     setEditMinBuyIn(club.minBuyIn || 1000);
     setEditMaxBuyIn(club.maxBuyIn || 5000);
-    setEditRakeEnabled(club.rakeEnabled ?? true);
-    setEditRakeMethod(club.rakeMethod ?? 'PERCENT_PROFIT');
-    setEditRakeValue(club.rakeValue ?? 5);
     setEditPotEnabled(club.potEnabled ?? true);
     setEditMismatchStrategy(club.mismatchStrategy ?? 'PROPORTIONAL_WINNERS');
     setEditRakeOrder(club.rakeOrder ?? 'MISMATCH_FIRST');
@@ -4533,59 +4527,40 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               <div className="p-4 bg-bg border border-line rounded-2xl space-y-4">
                 <h4 className="text-xs font-semibold text-accent ">Settlement Rules</h4>
 
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editRakeEnabled}
-                      onChange={(e) => setEditRakeEnabled(e.target.checked)}
-                      className="w-4 h-4 accent-accent rounded cursor-pointer"
-                    />
-                    Rake Enabled
-                  </label>
-                </div>
-
-                {editRakeEnabled && (
-                  <div className="grid grid-cols-2 gap-3 pl-6">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-medium text-text-muted uppercase">Rake Method</label>
-                      <select
-                        value={editRakeMethod}
-                        onChange={(e) => setEditRakeMethod(e.target.value as RakeMethod)}
-                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
-                      >
-                        <option value="PERCENT_PROFIT">% of Winner's Profit</option>
-                        <option value="PERCENT_CASHOUT">% of Cashout</option>
-                        <option value="FIXED_PER_WINNER">Fixed Amount / Winner</option>
-                        <option value="FIXED_PER_SESSION">Fixed Amount / Session</option>
-                        <option value="CUSTOM">Custom (coming soon)</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-medium text-text-muted uppercase">
-                        Rake Value {editRakeMethod === 'PERCENT_PROFIT' || editRakeMethod === 'PERCENT_CASHOUT' ? '(%)' : '(Chips)'}
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={editRakeValue}
-                        onChange={(e) => setEditRakeValue(Number(e.target.value))}
-                        className="w-full furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-warning focus:border-accent outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <label className="text-[10px] font-medium text-text-muted uppercase">Rake Collection Order</label>
-                      <select
-                        value={editRakeOrder}
-                        onChange={(e) => setEditRakeOrder(e.target.value as RakeOrder)}
-                        className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
-                      >
-                        <option value="MISMATCH_FIRST">Resolve mismatch first, then rake</option>
-                        <option value="RAKE_FIRST">Rake first, then resolve mismatch</option>
-                      </select>
+                {/*
+                  The two charges the engine actually applies, read from the
+                  fields it actually reads. This used to show the older
+                  single-rule rake — a "Rake Enabled" switch with a method and
+                  a value — which the engine no longer consults, so a club
+                  charging a 1,000-chip seat fee and a 5% cut every night read
+                  here as "rake off". Both are frozen at creation like every
+                  other rule, so they are figures, not fields.
+                */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-text-muted uppercase">Seat fee</label>
+                    <div data-testid="rules-seat-fee" className="furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text">
+                      {(club.sessionRakeAmount ?? 0) > 0 ? `${formatVal(club.sessionRakeAmount ?? 0)} per player` : 'none'}
                     </div>
                   </div>
-                )}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-text-muted uppercase">Winners&apos; cut</label>
+                    <div data-testid="rules-winners-cut" className="furniture rounded-xl px-3 py-2 text-xs font-mono font-medium text-text">
+                      {(club.winnersCutPercent ?? 0) > 0 ? `${club.winnersCutPercent}%` : 'none'}
+                    </div>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-medium text-text-muted uppercase">Rake Collection Order</label>
+                    <select
+                      value={editRakeOrder}
+                      onChange={(e) => setEditRakeOrder(e.target.value as RakeOrder)}
+                      className="w-full furniture rounded-xl px-2.5 py-2 text-xs font-medium text-text focus:border-accent outline-none"
+                    >
+                      <option value="MISMATCH_FIRST">Resolve mismatch first, then rake</option>
+                      <option value="RAKE_FIRST">Rake first, then resolve mismatch</option>
+                    </select>
+                  </div>
+                </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-line/60">
                   <label className="text-xs font-medium text-text flex items-center gap-2 cursor-pointer">
