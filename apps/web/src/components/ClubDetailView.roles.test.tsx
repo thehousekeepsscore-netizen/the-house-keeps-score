@@ -351,8 +351,9 @@ describe('the session-less pot club header — the crush that hid the club\u2019
 
   it('the pot explainer states THIS club\u2019s charges', async () => {
     renderSessionless();
-    const potCard = await screen.findByTitle('View Club Pot Ledger');
-    fireEvent.click(potCard);
+    // Option B: the card itself only toggles the mask; the link opens the ledger.
+    const ledgerLink = await screen.findByRole('button', { name: /view club pot ledger/i });
+    fireEvent.click(ledgerLink);
 
     const blurb = await screen.findByText(/Accumulated from/i);
     expect(blurb.textContent).toContain('750');

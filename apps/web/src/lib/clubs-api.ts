@@ -24,7 +24,8 @@ export interface ApiClub {
   buyInMode: 'MATCH_HIGHEST' | 'UNCAPPED';
   minBuyIn: number;
   maxBuyIn: number;
-  clubPotBalance: number;
+  /** Present only for the owner (or a super admin). Absent means not yours to see, not zero. */
+  clubPotBalance?: number;
   leaderboardVisibleToPlayers: boolean;
   sessionRakeAmount: number;
   winnersCutPercent: number;

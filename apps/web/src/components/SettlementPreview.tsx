@@ -1,5 +1,5 @@
 import React from 'react';
-import { Coins, AlertCircle } from 'lucide-react';
+import { Coins, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Club } from '../types';
 import { SettlementResult, SettlementSettings } from '../lib/settlementEngine';
 
@@ -101,7 +101,18 @@ export interface SettlementPreviewProps {
    * for them.
    */
   settings?: Pick<SettlementSettings, 'sessionRakeAmount' | 'winnersCutPercent' | 'potEnabled'>;
+  /**
+   * The pot balance is the owner's to see, and even the owner sees it masked
+   * until they ask — the same eye toggle the club screen's balance card uses,
+   * threaded in so the two can never disagree. When no toggle is supplied the
+   * figures are shown plainly, which keeps this component honest on its own.
+   */
+  potBalanceRevealed?: boolean;
+  onTogglePotBalance?: () => void;
 }
+
+/** What a masked balance looks like — a password field, not a number. */
+export const MASKED_BALANCE = '••••••';
 
 export function SettlementPreview({
   result,
@@ -111,10 +122,18 @@ export function SettlementPreview({
   potDisplay = 'balance',
   mismatchAcknowledgement,
   settings,
+  potBalanceRevealed,
+  onTogglePotBalance,
 }: SettlementPreviewProps) {
   const cutPercent = settings?.winnersCutPercent ?? club.winnersCutPercent ?? 0;
   const flatRake = settings?.sessionRakeAmount ?? club.sessionRakeAmount ?? 0;
   const potEnabled = settings?.potEnabled ?? club.potEnabled;
+  // No balance in the payload means the caller is not the owner: the API
+  // omits it rather than sending zero. Then there is no pot line at all —
+  // not the contribution either, which the night's own rake would let a
+  // reader back out of.
+  const canSeePot = club.clubPotBalance !== undefined;
+  const balanceRevealed = onTogglePotBalance ? potBalanceRevealed === true : true;
   const showHouseTake = flatRake > 0 || result.totalRakeCollected > 0;
 
   /*
@@ -336,11 +355,22 @@ export function SettlementPreview({
           </div>
         )}
 
-      {potEnabled && (
+      {potEnabled && canSeePot && (
         <div className="p-3 bg-surface border border-accent/30 rounded-xl flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs font-medium text-text min-w-0 flex-1">
             <Coins className="w-4 h-4 text-accent shrink-0" />
             <span className="truncate">{potDisplay === 'share' ? 'Pot share' : 'Club Pot'}</span>
+            {onTogglePotBalance && potDisplay === 'balance' && (
+              <button
+                type="button"
+                onClick={onTogglePotBalance}
+                aria-label={balanceRevealed ? 'Hide club pot balance' : 'Show club pot balance'}
+                aria-pressed={balanceRevealed}
+                className="ml-1 p-1 rounded-lg text-text-muted hover:text-text cursor-pointer shrink-0"
+              >
+                {balanceRevealed ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            )}
           </div>
           <div className="text-right font-mono tabular-nums shrink-0">
             {potDisplay === 'share' ? (
@@ -351,11 +381,11 @@ export function SettlementPreview({
             ) : (
               <>
                 <div className="text-[10px] text-text-muted">
-                  {formatAmount(club.clubPotBalance || 0)} {result.potContribution >= 0 ? '+' : '-'}{' '}
+                  {balanceRevealed ? formatAmount(club.clubPotBalance ?? 0) : MASKED_BALANCE} {result.potContribution >= 0 ? '+' : '-'}{' '}
                   {formatAmount(Math.abs(result.potContribution))}
                 </div>
                 <div className="text-sm font-semibold text-accent">
-                  {formatAmount((club.clubPotBalance || 0) + result.potContribution)}
+                  {balanceRevealed ? formatAmount((club.clubPotBalance ?? 0) + result.potContribution) : MASKED_BALANCE}
                 </div>
               </>
             )}

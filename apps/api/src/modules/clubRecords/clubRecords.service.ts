@@ -514,7 +514,9 @@ export async function getLeaderboard(clubId: string, requesterId: string, isSupe
 
 export async function listPotLog(clubId: string, requesterId: string, isSuperAdmin: boolean) {
   const club = await clubsService.getClubOrThrow(clubId);
-  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+  // Owner-only, like the balance it sums to. An admin who could read the
+  // ledger could read the balance off it, so the two must share one rule.
+  clubsService.assertClubOwner(club, requesterId, isSuperAdmin);
   return prisma.clubPotLog.findMany({ where: { clubId }, orderBy: { createdAt: 'desc' } });
 }
 
