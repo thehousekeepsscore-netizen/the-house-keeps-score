@@ -42,6 +42,10 @@ const fakeSocket = {
   off: vi.fn((e: string, fn: (...a: unknown[]) => void) => socketHandlers.get(e)?.delete(fn)),
   emit: vi.fn(),
   connect: vi.fn(),
+  disconnect: vi.fn(),
+  // A connected resume runs the liveness probe; a fake with no answer would
+  // read as dead and be torn down mid-test. It answers.
+  timeout: vi.fn((_ms: number) => ({ emitWithAck: async () => ({ ok: true }) })),
 };
 function fireSocket(event: string) {
   [...(socketHandlers.get(event) ?? [])].forEach((fn) => fn());
@@ -184,6 +188,9 @@ describe('request volume on resume', () => {
     renderClub();
     await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
     requests.length = 0;
+    // A socket claiming connected: the resume refetches at once. (A socket
+    // admitting it is down defers to `connect` — see the resume suite.)
+    fakeSocket.connected = true;
 
     setVisibility('hidden');
     act(() => {
@@ -206,18 +213,29 @@ describe('request volume on resume', () => {
     await waitFor(() => expect(countExact('/clubs/c1')).toBe(1));
     requests.length = 0;
 
-    setVisibility('hidden');
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
-    setVisibility('visible');
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    // The harder case on purpose: the socket admits it is down and never
+    // comes back. The refetch is deferred to `connect`, but it is not
+    // dropped — the fallback fires it over HTTP, so the floor still holds.
+    expect(fakeSocket.connected).toBe(false);
+    vi.useFakeTimers();
+    try {
+      setVisibility('hidden');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      setVisibility('visible');
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    } finally {
+      vi.useRealTimers();
+    }
 
-    await waitFor(() => expect(requests.length).toBeGreaterThan(0));
+    expect(requests.length).toBeGreaterThan(0);
     expect(requests).toContain('/clubs/c1');
     expect(requests).toContain('/clubs/c1/history');
+    expect(countExact('/clubs/c1')).toBe(1);
   });
 });
 
