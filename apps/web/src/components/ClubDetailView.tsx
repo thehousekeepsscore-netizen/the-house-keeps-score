@@ -20,6 +20,7 @@ import { getSocket } from '../lib/socket';
 import { useSocketConnection } from '../lib/socket-connection';
 import { useForegroundRecovery } from '../lib/use-foreground-recovery';
 import { probeSocketLiveness } from '../lib/socket-liveness';
+import { createResyncCoalescer } from '../lib/resync-coalescer';
 import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import { JOIN_REQUESTS_KEY } from '../lib/clubs-api';
@@ -1027,15 +1028,19 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // neither. Resources gated to admins have a null key and are skipped entirely.
 
   /**
-   * Re-join this club's room and refetch everything the room could have changed.
+   * Re-join this club's room, and refetch everything the room could have changed.
    *
-   * Lifted to component scope because two separate paths need it and must stay
-   * identical: a socket `connect`, and the user returning to the app. Defining
-   * it twice would let them drift.
+   * Two paths need both and must stay identical: a socket `connect`, and the
+   * user returning to the app. The re-join runs on every trigger — rooms live
+   * on the connection, and the join doubles as the liveness probe. The refetch
+   * goes through one policy so that a resume and the reconnect it provokes
+   * cost one cycle rather than two; see resync-coalescer.ts.
    */
-  const resync = useCallback(() => {
-    const socket = getSocket();
-    socket.emit('club:join', initialClub.id);
+  const rejoinRoom = useCallback(() => {
+    getSocket().emit('club:join', initialClub.id);
+  }, [initialClub.id]);
+
+  const refetchAll = useCallback(() => {
     refreshClub();
     refreshActiveSession();
     refreshHistory();
@@ -1048,7 +1053,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // reconnect or a foreground resume left stale.
     refreshJoinRequests();
   }, [
-    initialClub.id,
     refreshClub,
     refreshActiveSession,
     refreshHistory,
@@ -1058,6 +1062,26 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     refreshAuditTrail,
     refreshJoinRequests,
   ]);
+
+  // Read through a ref so the policy is created once per club and never
+  // re-armed because a refresh function changed identity.
+  const refetchAllRef = useRef(refetchAll);
+  refetchAllRef.current = refetchAll;
+  const resyncPolicy = useMemo(
+    () =>
+      createResyncCoalescer({
+        isConnected: () => getSocket().connected,
+        refetch: () => refetchAllRef.current(),
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initialClub.id]
+  );
+  useEffect(() => () => resyncPolicy.dispose(), [resyncPolicy]);
+
+  const onResume = useCallback(() => {
+    rejoinRoom();
+    resyncPolicy.onResume();
+  }, [rejoinRoom, resyncPolicy]);
 
   /**
    * Coming back to the app makes the data current again.
@@ -1071,7 +1095,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   useForegroundRecovery({
     socket: getSocket(),
     authFailed: socketConnection.state === 'auth-error',
-    onResume: resync,
+    onResume,
     // A socket that still says `connected` after a screen lock or a network
     // hop may be dead underneath, and the heartbeat takes up to 45 seconds to
     // find out — every bank added in that window is lost to this phone. The
@@ -1097,9 +1121,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // ask for it. This is what makes the view converge after a drop rather
     // than resuming from a stale snapshot.
     // Connection state is tracked by useSocketConnection; this listener exists
-    // only for the re-join and refetch. `resync` is shared with the foreground
+    // only for the re-join and refetch. Both are shared with the foreground
     // recovery path above so the two cannot diverge.
-    const onConnect = () => { resync(); };
+    const onConnect = () => {
+      rejoinRoom();
+      resyncPolicy.onConnect();
+    };
 
     socket.on('connect', onConnect);
 
@@ -1237,7 +1264,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
     };
-  }, [initialClub.id, resync, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
+  }, [initialClub.id, rejoinRoom, resyncPolicy, refreshActiveSession, refreshHistory, refreshLeaderboard, refreshPotLog, refreshClub, refreshAuditTrail, refreshPendingChanges, pushToast, currentUser.uid, cache, clubKey]);
 
   // Total admins count
   const totalAdminsCount = Array.from(new Set([

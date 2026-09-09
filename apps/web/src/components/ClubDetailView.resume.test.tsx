@@ -240,16 +240,119 @@ describe('the club screen refetches when the user returns to the app', () => {
     expect(fakeSocket.connect).toHaveBeenCalledTimes(1);
   });
 
-  it('reconnects as well as refetching when the socket is actually down', async () => {
+  /**
+   * Below: the socket admits it is down. Measured on the production bundle,
+   * this case used to cost two full passes — one on resume, one 1.3 seconds
+   * later when socket.io reconnected. Now the resume re-joins and reconnects
+   * but leaves the refetch to `connect`, which covers the whole gap; a bounded
+   * fallback refetches over HTTP if no `connect` comes.
+   */
+
+  /**
+   * A `connect` as the socket would deliver it: every listener still
+   * registered, in order. More than one exists — useSocketConnection tracks
+   * state on the same event — and an effect that re-ran has removed its old
+   * listener with `off`, so those are excluded rather than fired twice.
+   */
+  const connectHandler = () => {
+    const live = new Set(
+      fakeSocket.on.mock.calls.filter(([event]) => event === 'connect').map(([, fn]) => fn as () => void)
+    );
+    for (const [event, fn] of fakeSocket.off.mock.calls) if (event === 'connect') live.delete(fn as () => void);
+    if (live.size === 0) throw new Error('no connect listener registered');
+    return () => { for (const fn of live) fn(); };
+  };
+
+  it('DOWN + connect — reconnects, re-joins on both triggers, and refetches exactly once', async () => {
+    renderClub();
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    const onConnect = connectHandler();
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    try {
+      fakeSocket.connected = false;
+      fireVisibility('hidden');
+      fireVisibility('visible');
+
+      expect(fakeSocket.connect).toHaveBeenCalledTimes(1);
+      expect(fakeSocket.emit).toHaveBeenCalledWith('club:join', 'c1');
+      // Nothing yet: the refetch waits for the socket.
+      expect(clubsApi.getClub).not.toHaveBeenCalled();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1300); });
+      fakeSocket.connected = true;
+      await act(async () => { onConnect(); });
+
+      expect(clubsApi.getClub).toHaveBeenCalledTimes(1);
+      expect(clubRecordsApi.listHistory).toHaveBeenCalledTimes(1);
+      expect(clubRecordsApi.listPotLog).toHaveBeenCalledTimes(1);
+      expect(offlineSessionsApi.getActiveSession).toHaveBeenCalledTimes(1);
+      // Both triggers re-joined the room.
+      expect(fakeSocket.emit.mock.calls.filter(([e, id]) => e === 'club:join' && id === 'c1')).toHaveLength(2);
+
+      // And the fallback never adds a second pass.
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(clubsApi.getClub).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('DOWN, no connect — still refetches, over HTTP, after the fallback', async () => {
     renderClub();
     await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    try {
+      fakeSocket.connected = false;
+      fireVisibility('hidden');
+      fireVisibility('visible');
+      expect(fakeSocket.connect).toHaveBeenCalledTimes(1);
 
-    fakeSocket.connected = false;
+      await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
+      expect(clubsApi.getClub).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(clubsApi.getClub).toHaveBeenCalledTimes(1);
+      expect(clubRecordsApi.listHistory).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('connect alone refetches once; a duplicate connect moments later does not', async () => {
+    renderClub();
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    const onConnect = connectHandler();
+    vi.clearAllMocks();
+
+    await act(async () => { onConnect(); });
+    await act(async () => { onConnect(); });
+    expect(clubsApi.getClub).toHaveBeenCalledTimes(1);
+    expect(clubRecordsApi.listHistory).toHaveBeenCalledTimes(1);
+    expect(fakeSocket.emit.mock.calls.filter(([e]) => e === 'club:join')).toHaveLength(2);
+  });
+
+  it('a probe-forced reconnect after a connected resume refetches again — the first pass ran over a dead socket', async () => {
+    renderClub();
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    const onConnect = connectHandler();
+    vi.clearAllMocks();
+    emitWithAck.mockRejectedValueOnce(new Error('operation has timed out'));
+
     fireVisibility('hidden');
     fireVisibility('visible');
-
-    expect(fakeSocket.connect).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fakeSocket.disconnect).toHaveBeenCalledTimes(1));
+
+    // The real probe waits three seconds before giving up; the `connect` that
+    // follows is well outside the duplicate guard.
+    vi.useFakeTimers();
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+      await act(async () => { onConnect(); });
+      expect(clubsApi.getClub).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
