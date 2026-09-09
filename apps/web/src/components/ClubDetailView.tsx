@@ -78,6 +78,8 @@ import {
   Layers,
   Gamepad2,
   Lock,
+  Eye,
+  EyeOff,
   UserCheck,
   Link as LinkIcon,
   Pencil,
@@ -978,11 +980,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const leaderboardData = leaderboardRes.data ?? EMPTY_LEADERBOARD;
   const refreshLeaderboard = leaderboardRes.refresh;
 
+  // Owner-only, like the API that serves it: an admin asking would be refused.
   const potLogRes = useResource<ClubPotLog[]>(
-    isAdmin ? `${clubKey}:pot-log` : null,
+    isOwner ? `${clubKey}:pot-log` : null,
     () => clubRecordsApi.listPotLog(initialClub.id)
   );
   const potLogs = potLogRes.data ?? EMPTY_POT_LOG;
+  // Masked on every mount, like a password field; a reveal is never remembered.
+  const [potRevealed, setPotRevealed] = useState(false);
   const refreshPotLog = potLogRes.refresh;
 
   const pendingChangesRes = useResource<PendingChangeRequest[]>(
@@ -1873,6 +1878,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     return computeSettlement(players, liveSettlementSettings, {
       // The pot as it stands NOW — a balance, not a rule, and deliberately not
       // part of the night's snapshot.
+      // Absent for anyone but the owner — the API omits it — and then 0 is a
+      // preview input the engine only consults for a pot-funded mismatch
+      // strategy, which no club uses. The server settles with the real balance.
       currentPotBalance: club.clubPotBalance ?? 0,
       mismatchAcknowledged,
     });
@@ -2071,7 +2079,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       pushToast(
         'Night settled',
         `${settledNight} — ${formatUnit(settled.totalBuyIns)} in, ${formatUnit(settled.totalCashOuts)} out.` +
-          (settled.potContribution !== 0
+          // The pot is the owner's to see; an admin settling the night is told
+          // the totals and nothing about where the house's share went.
+          (isOwner && settled.potContribution !== 0
             ? ` Club Pot ${formatSignedUnit(settled.potContribution)}.`
             : ''),
         'success'
@@ -2818,20 +2828,63 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               Cashout lives below the Approvals list during a session. */}
           {isAdmin && (!activeSession || club.potEnabled) && (
             <div className="flex flex-wrap items-center gap-3">
-              {!activeSession && club.potEnabled && (
-                <button
-                  onClick={() => setActiveTab('pot')}
-                  className="bg-warning/15 hover:bg-warning/25 border border-accent px-3.5 py-1.5 rounded-2xl flex items-center gap-2 transition-colors cursor-pointer"
-                  title="View Club Pot Ledger"
-                >
-                  <Coins className="w-5 h-5 text-accent" />
-                  <div className="text-left">
-                    <div className="text-[9px] uppercase tracking-widest text-accent font-semibold">Club pot balance</div>
-                    <div className="text-xs font-mono font-semibold text-text">
-                      {formatVal(club.clubPotBalance || 0)}
+              {/*
+                The pot is the owner's to see — the API sends the balance to
+                nobody else — and even the owner sees it masked until they ask.
+                Option B: the WHOLE card is the mask toggle, the way tapping a
+                password field's eye works, so the card no longer opens the
+                ledger; a separate link beneath it does. Masked is a brass
+                strip, a material rather than a string of dots, so the figure's
+                length leaks nothing. The state is plain component state: every
+                mount starts masked, and nothing remembers a reveal.
+              */}
+              {isOwner && !activeSession && club.potEnabled && (
+                <div className="flex flex-col items-start gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPotRevealed((v) => !v)}
+                    aria-label={potRevealed ? 'Hide club pot balance' : 'Show club pot balance'}
+                    aria-pressed={potRevealed}
+                    className="bg-warning/15 hover:bg-warning/25 border border-accent rounded-2xl flex items-center gap-3 pl-3.5 pr-3 py-1.5 transition-colors cursor-pointer"
+                  >
+                    <Coins className="w-5 h-5 text-accent" />
+                    <div className="text-left">
+                      <div className="text-[9px] uppercase tracking-widest text-accent font-semibold">Club pot balance</div>
+                      {potRevealed ? (
+                        <div data-testid="club-pot-balance" className="text-xs font-mono font-semibold text-text tabular-nums">
+                          {formatVal(club.clubPotBalance ?? 0)}
+                        </div>
+                      ) : (
+                        <div data-testid="club-pot-balance" aria-hidden="true" className="flex items-center gap-1 h-4">
+                          <span
+                            className="block w-11 h-2 rounded-full"
+                            style={{ background: 'linear-gradient(180deg, var(--brass-mid), var(--brass-dark))' }}
+                          />
+                          <span
+                            className="block w-5 h-2 rounded-full"
+                            style={{ background: 'linear-gradient(180deg, var(--brass-mid), var(--brass-dark))' }}
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </button>
+                    <div className="flex flex-col items-end gap-0.5 pl-2.5 ml-0.5 border-l border-accent/35">
+                      {potRevealed ? (
+                        <EyeOff className="w-4 h-4 text-text-muted" />
+                      ) : (
+                        <Eye className="w-4 h-4 text-text-muted" />
+                      )}
+                      <span className="text-[9px] text-text-faint">{potRevealed ? 'tap to hide' : 'tap to show'}</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('pot')}
+                    className="flex items-center gap-1.5 px-1 text-xs text-accent hover:underline font-medium cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    View club pot ledger
+                  </button>
+                </div>
               )}
 
               {!activeSession && (
@@ -3600,12 +3653,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
             )}
 
             {/* TAB: CLUB POT LEDGER (ADMIN ONLY) */}
-            {activeTab === 'pot' && isAdmin && club.potEnabled && (
+            {activeTab === 'pot' && isOwner && club.potEnabled && (
               <div className="space-y-6">
                 <div className="furniture p-6 rounded-3xl space-y-4">
                   <div className="border-b border-line pb-3">
                     <h2 className="text-base font-semibold text-text flex items-center gap-2">
-                      <Coins className="w-5 h-5 text-accent" /> Club Pot Ledger & Transactions (Admin Only)
+                      <Coins className="w-5 h-5 text-accent" /> Club Pot Ledger & Transactions (Owner Only)
                     </h2>
                     {/*
                       This club's actual charges, not example figures. The old
@@ -3969,6 +4022,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               {pastCalculated && pastPreview && (
                 <SettlementPreview
+                  potBalanceRevealed={potRevealed}
+                  onTogglePotBalance={() => setPotRevealed((v) => !v)}
                   result={pastPreview}
                   club={club}
                   formatAmount={formatVal}
@@ -4316,6 +4371,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                   itself gates better. */}
               {allCashOutsEntered && preview && (
                 <SettlementPreview
+                  potBalanceRevealed={potRevealed}
+                  onTogglePotBalance={() => setPotRevealed((v) => !v)}
                   result={preview}
                   club={club}
                   // The night's own rules, so the breakdown explains the very
@@ -4978,6 +5035,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
               {editCalculated && editPreview && (
                 <SettlementPreview
+                  potBalanceRevealed={potRevealed}
+                  onTogglePotBalance={() => setPotRevealed((v) => !v)}
                   result={editPreview}
                   club={club}
                   formatAmount={formatVal}

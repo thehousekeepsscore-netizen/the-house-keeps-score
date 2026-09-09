@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import * as clubsService from "./clubs.service.js";
 
-function serializeClub(club: clubsService.ClubWithRoster, currentUserId: string) {
+function serializeClub(club: clubsService.ClubWithRoster, currentUserId: string, isSuperAdmin: boolean) {
   return {
     id: club.id,
     name: club.name,
@@ -13,7 +13,15 @@ function serializeClub(club: clubsService.ClubWithRoster, currentUserId: string)
     maxCapacity: club.maxCapacity,
     minBuyIn: club.minBuyIn,
     maxBuyIn: club.maxBuyIn,
-    clubPotBalance: club.clubPotBalance,
+    /*
+     * The pot is the owner's to see and nobody else's. Omitted rather than
+     * zeroed for everyone else, so a client can tell "not yours to see" from
+     * an empty pot; the ledger endpoint is owner-only for the same reason —
+     * hiding a balance whose transactions can be summed hides nothing.
+     * Settlement itself never reads this projection; the engine uses the
+     * real balance server-side regardless of who is looking.
+     */
+    ...(clubsService.isClubOwner(club, currentUserId, isSuperAdmin) ? { clubPotBalance: club.clubPotBalance } : {}),
     leaderboardVisibleToPlayers: club.leaderboardVisibleToPlayers,
     sessionRakeAmount: club.sessionRakeAmount,
     winnersCutPercent: club.winnersCutPercent,
@@ -102,7 +110,7 @@ export async function list(req: Request, res: Response) {
   return res.json(
     clubs.map((c) =>
       clubsService.isClubMember(c, userId, isSuperAdmin)
-        ? serializeClub(c, userId)
+        ? serializeClub(c, userId, isSuperAdmin)
         : serializeClubPublic(c, userId)
     )
   );
@@ -113,7 +121,7 @@ export async function getOne(req: Request, res: Response) {
   // Members only. Browsing reads the list, which carries the public projection;
   // nothing outside the club needs a single club's full record.
   clubsService.assertClubMember(club, req.user!.sub, req.user!.isSuperAdmin);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 const rakeMethodSchema = z.enum(['PERCENT_PROFIT', 'PERCENT_CASHOUT', 'FIXED_PER_WINNER', 'FIXED_PER_SESSION', 'CUSTOM']);
@@ -153,7 +161,7 @@ const createSchema = z.object({
 export async function create(req: Request, res: Response) {
   const input = createSchema.parse(req.body);
   const club = await clubsService.createClub(req.user!.sub, input);
-  return res.status(201).json(serializeClub(club, req.user!.sub));
+  return res.status(201).json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 const updateSchema = createSchema.partial().omit({ description: true });
@@ -161,7 +169,7 @@ const updateSchema = createSchema.partial().omit({ description: true });
 export async function update(req: Request, res: Response) {
   const input = updateSchema.parse(req.body);
   const club = await clubsService.updateClub(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, input);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 export async function remove(req: Request, res: Response) {
@@ -171,7 +179,7 @@ export async function remove(req: Request, res: Response) {
 
 export async function superuserJoin(req: Request, res: Response) {
   const club = await clubsService.superuserJoin(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 export async function requestToJoin(req: Request, res: Response) {
@@ -201,15 +209,15 @@ const targetUserSchema = z.object({ userId: z.string().min(1) });
 export async function promoteAdmin(req: Request, res: Response) {
   const { userId } = targetUserSchema.parse(req.body);
   const club = await clubsService.promoteAdmin(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, userId);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 export async function demoteAdmin(req: Request, res: Response) {
   const club = await clubsService.demoteAdmin(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, req.params.userId);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
 
 export async function removeMember(req: Request, res: Response) {
   const club = await clubsService.removeMember(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, req.params.userId);
-  return res.json(serializeClub(club, req.user!.sub));
+  return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
