@@ -392,3 +392,30 @@ describe('settling a night', () => {
     expect(document.body.textContent).not.toMatch(/club pot/i);
   });
 });
+
+/*
+ * The ledger is the owner's only money ledger, and it used to print every row
+ * with a hardcoded plus sign — a mismatch covered from the pot, written by the
+ * server as a negative row, rendered as "+-1,200 Chips" in the same colour as
+ * a credit.
+ */
+describe('the pot ledger rows', () => {
+  it('shows debits signed and toned as debits, and names what each row is', async () => {
+    vi.mocked(clubRecordsApi.listPotLog).mockResolvedValueOnce([
+      { id: 'l1', clubId: 'c1', sessionId: 's9', amount: 8800, source: 'fixed_rake', note: 'Seat fee from Night 9', createdAt: ago(60) },
+      { id: 'l2', clubId: 'c1', sessionId: 's9', amount: -1200, source: 'manual_adjustment', note: 'Mismatch covered from Club Pot for Night 9', createdAt: ago(50) },
+    ]);
+    renderAs('owner');
+    await loaded();
+    fireEvent.click(await screen.findByRole('button', { name: /view club pot ledger/i }));
+    await screen.findByText(/club pot ledger & transactions/i);
+
+    const amounts = await screen.findAllByTestId('pot-log-amount');
+    expect(amounts.map((a) => a.textContent)).toEqual(['+8,800 Chips', '-1,200 Chips']);
+    expect(amounts[0].className).toContain('text-accent');
+    expect(amounts[1].className).toContain('text-danger');
+    expect(document.body.textContent).not.toContain('+-');
+    expect(screen.getByText('Seat fee')).toBeInTheDocument();
+    expect(screen.getByText('Adjustment')).toBeInTheDocument();
+  });
+});

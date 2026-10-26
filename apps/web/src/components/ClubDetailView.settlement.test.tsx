@@ -1344,3 +1344,82 @@ describe('the count does not make iOS zoom the page', () => {
     expect(scroller!.querySelector('.sticky'), 'nothing is pinned inside the count').toBeNull();
   });
 });
+
+/*
+ * THE COMMIT IS THE FACT; THE REFETCHES ONLY CATCH THE SCREEN UP.
+ *
+ * The five refetches used to sit between the commit and the acknowledgement,
+ * inside the same try. A history fetch that failed — a phone hopping
+ * wifi→cellular at 1am — left the sheet open with a red "Failed to fetch" and
+ * a live Settle button, while every other phone had already watched the
+ * night close. The host's natural next move was to press it again.
+ *
+ * And the arm used to be cleared on the press itself, so for the whole commit
+ * the footer showed an enabled "Settle Session" and no spinner — "it didn't
+ * take", on the one button that must never be pressed twice.
+ */
+describe('what the host sees while and after the commit', () => {
+  // `afterOpen` runs once the screen is mounted: renderClub resets every mock
+  // to a resolved default, so a rejection meant for the post-commit refetch
+  // has to be installed after it, not before.
+  async function armAndConfirm(afterOpen?: () => void) {
+    await openSettlement();
+    afterOpen?.();
+    fireEvent.change(amountFields()[0], { target: { value: '8000' } });
+    fireEvent.change(amountFields()[1], { target: { value: '2000' } });
+    await findPreview();
+    fireEvent.click(screen.getByRole('button', { name: /^settle session$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /confirm & settle/i }));
+  }
+
+  it('a committed settlement is acknowledged before the refetches come back', async () => {
+    // A history fetch that never completes — the slow-network case. The
+    // acknowledgement used to wait on it, and on four others.
+    await armAndConfirm(() => {
+      vi.mocked(clubRecordsApi.listHistory).mockReturnValue(new Promise(() => {}));
+    });
+
+    expect(await screen.findByText(/night settled/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: /settle night/i })).not.toBeInTheDocument()
+    );
+    expect(offlineSessionsApi.settleSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays armed and shows "Settling…" on a disabled button until the commit resolves', async () => {
+    let resolveSettle: (v: never[]) => void = () => {};
+    vi.mocked(offlineSessionsApi.settleSession).mockReturnValueOnce(
+      new Promise<never[]>((resolve) => { resolveSettle = resolve; })
+    );
+    await armAndConfirm();
+
+    const settling = await screen.findByRole('button', { name: /settling…/i });
+    expect(settling).toBeDisabled();
+    expect(settling).toHaveAttribute('aria-busy', 'true');
+    // The confirm panel is still up and the way out is held too: nothing on
+    // screen invites a second press.
+    expect(screen.getByText(/settle this session\?/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /go back/i })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /^settle session$/i })).not.toBeInTheDocument();
+
+    await React.act(async () => { resolveSettle([]); });
+    expect(await screen.findByText(/night settled/i)).toBeInTheDocument();
+  });
+
+  it('the acknowledgement outlives the four-second default — it is read at a table', async () => {
+    // Installed before the commit, so the toast's own timer is a fake one.
+    // Time still advances on its own, which keeps the harness's waitFor alive.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await armAndConfirm();
+      expect(await screen.findByText(/night settled/i)).toBeInTheDocument();
+
+      await React.act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(screen.getByText(/night settled/i)).toBeInTheDocument();
+      await React.act(async () => { await vi.advanceTimersByTimeAsync(3500); });
+      expect(screen.queryByText(/night settled/i)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
