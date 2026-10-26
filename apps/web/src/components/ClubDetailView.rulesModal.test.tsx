@@ -185,3 +185,39 @@ describe('the Club Rules page shows the charges the engine applies', () => {
     expect(screen.getByText(/rake collection order/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * The player-facing "Club Rules & Info" modal — the `i` beside the club code,
+ * the one rules surface a non-admin can open — went on reading the legacy
+ * single-rule rake after the settings sheet was fixed, so a player checking
+ * why their net was lower than cash-out minus buy-in read "Rake: Disabled".
+ */
+describe('the Club Rules & Info modal says what the engine charges', () => {
+  async function openInfo(club: Club) {
+    renderClub(club);
+    await waitFor(() => expect(clubsApi.getClub).toHaveBeenCalled());
+    fireEvent.click(screen.getByTitle('Club Rules & Info'));
+    await screen.findByTestId('club-rules');
+  }
+
+  it('shows the seat fee and the winners cut, from the fields the engine reads', async () => {
+    await openInfo(chargingClub);
+    expect(screen.getByTestId('club-rules-seat-fee')).toHaveTextContent('1,000 Chips per player');
+    expect(screen.getByTestId('club-rules-winners-cut')).toHaveTextContent('5%');
+    expect(screen.getByText('Match the biggest bank')).toBeInTheDocument();
+  });
+
+  it('never shows the legacy rake, nor a buy-in range that is not enforced', async () => {
+    await openInfo(chargingClub);
+    const modal = screen.getByTestId('club-rules');
+    expect(modal.textContent).not.toMatch(/disabled/i);
+    expect(modal.textContent).not.toMatch(/min buy-in|max buy-in/i);
+    expect(modal.textContent).not.toMatch(/of profit/i);
+  });
+
+  it('says "none" at zero regardless of the legacy switch', async () => {
+    await openInfo(freeClub);
+    expect(screen.getByTestId('club-rules-seat-fee')).toHaveTextContent('none');
+    expect(screen.getByTestId('club-rules-winners-cut')).toHaveTextContent('none');
+  });
+});

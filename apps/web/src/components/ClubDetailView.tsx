@@ -35,7 +35,7 @@ import type { ApiOfflineSession, ApiBuyInRequest } from '../lib/offlineSessions-
 type SessionResource = { session: PokerSession | null; buyIns: BuyInRequest[] };
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { NormalizedSession, LeaderboardRow } from '../lib/clubRecords-api';
-import { computeSettlement, RakeMethod, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
+import { computeSettlement, MismatchStrategy, RakeOrder, WinnerDefinition, RoundingRule, SettlementResult, SettlementSettings } from '../lib/settlementEngine';
 import { SettlementPreview, SettlementConfirm } from './SettlementPreview';
 import {
   Club,
@@ -99,12 +99,15 @@ import { PokerTableRing } from './PokerTableRing';
 import { ToastContainer } from './ToastContainer';
 import { InfoHint } from './InfoHint';
 
-const RAKE_METHOD_LABELS: Record<RakeMethod, (value: number) => string> = {
-  PERCENT_PROFIT: (v) => `${v}% of profit`,
-  PERCENT_CASHOUT: (v) => `${v}% of cash-out`,
-  FIXED_PER_WINNER: (v) => `${v} flat / winner`,
-  FIXED_PER_SESSION: (v) => `${v} flat / session`,
-  CUSTOM: () => 'Custom',
+/** Two sentences of money, read at a table: longer than the four-second default. */
+const MONEY_TOAST_MS = 8000;
+
+/** What each pot-ledger row is, in the owner's words rather than the column's. */
+const POT_LOG_KIND: Record<ClubPotLog['source'], string> = {
+  fixed_rake: 'Seat fee',
+  winners_cut: "Winners' cut",
+  buyin_leftover: 'Surplus',
+  manual_adjustment: 'Adjustment',
 };
 
 const MISMATCH_STRATEGY_LABELS: Record<MismatchStrategy, string> = {
@@ -463,10 +466,13 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // over-max case can be surfaced without interrupting the flow.
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const pushToast = useCallback(
-    (title: string, message: string, type: ToastMessage['type'] = 'success') => {
+    (title: string, message: string, type: ToastMessage['type'] = 'success', lifetimeMs?: number) => {
       const id = `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       setToasts((prev) => [...prev, { id, title, message, type }]);
-      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+      // A warning is read after something went wrong and a money figure is
+      // read at a table; neither survives four seconds. Success stays short.
+      const ttl = lifetimeMs ?? (type === 'warning' ? MONEY_TOAST_MS : 4000);
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), ttl);
     },
     []
   );
@@ -2085,7 +2091,6 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
         manualWinner: manualWinnerInputs[uid],
       }));
       await offlineSessionsApi.settleSession(club.id, activeSession.id, { entries, mismatchAcknowledged });
-      await Promise.all([refreshActiveSession(), refreshHistory(), refreshLeaderboard(), refreshPotLog(), refreshClub()]);
       /*
        * The most irreversible act in the product used to say nothing at all.
        *
@@ -2111,7 +2116,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           (isOwner && settled.potContribution !== 0
             ? ` Club Pot ${formatSignedUnit(settled.potContribution)}.`
             : ''),
-        'success'
+        'success',
+        MONEY_TOAST_MS
       );
       setShowCashoutModal(false);
     } catch (err) {
@@ -2121,7 +2127,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       // figures that were fine.
       console.error('Failed to settle session:', err);
       setSettlementError(err instanceof Error ? err.message : 'Failed to settle session. Please check your inputs.');
+      // Disarm only now: the figures may need correcting before another try,
+      // and the error strip sits beside the button that re-arms.
+      setConfirmingSettle(false);
+      return;
     }
+    /*
+     * The refetches come AFTER the acknowledgement, and are not awaited.
+     *
+     * They used to sit between the commit and the toast, awaited, so the host
+     * watched a dead button for five round trips — seconds, on a phone at the
+     * table — before anything said the night was settled. The commit is the
+     * fact; these only catch the screen up to it, and a socket event or the
+     * next resume does that anyway. (A refresh never rejects — useResource
+     * swallows both outcomes — so there is no failure to report here.)
+     */
+    void Promise.all([refreshActiveSession(), refreshHistory(), refreshLeaderboard(), refreshPotLog(), refreshClub()]);
   };
 
   // Compile Comprehensive Leaderboard Data (From Settled Cashouts + Historical Paper Records)
@@ -2175,13 +2196,22 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     <>
       <button
         onClick={() => setConfirmingSettle(false)}
-        className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer"
+        disabled={settleAction.pending}
+        className="flex-1 bg-surface-alt border border-line-strong text-text font-medium py-3 rounded-xl text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Go Back
       </button>
+      {/*
+        The arm is NOT cleared on press. Clearing it before the run snapped the
+        footer back to an enabled "Settle Session" for the whole commit, which
+        on a money screen reads as "it didn't take". It stays armed and this
+        button carries the pending state until the sheet closes on success or
+        the error strip appears on failure.
+      */}
       <button
-        onClick={() => { setConfirmingSettle(false); settleAction.run(); }}
+        onClick={() => { void settleAction.run(); }}
         disabled={settleAction.pending}
+        aria-busy={settleAction.pending}
         className="flex-1 bg-accent text-accent-contrast font-semibold py-3 rounded-xl text-xs cursor-pointer shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {settleAction.pending ? 'Settling…' : 'Confirm & Settle'}
@@ -3709,13 +3739,20 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
                   <div className="space-y-2">
                     {potLogs.map(log => (
-                      <div key={log.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between text-xs font-mono">
-                        <div>
-                          <div className="font-semibold text-text">{log.note}</div>
-                          <div className="text-[10px] text-text-muted">{new Date(log.createdAt).toLocaleString()}</div>
+                      <div key={log.id} className="p-3 bg-bg border border-line rounded-xl flex items-center justify-between gap-3 text-xs font-mono">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-text">{POT_LOG_KIND[log.source] ?? 'Adjustment'}</div>
+                          <div className="text-[11px] text-text-muted truncate">{log.note}</div>
+                          <div className="text-[11px] text-text-faint">{new Date(log.createdAt).toLocaleString()}</div>
                         </div>
-                        <div className="text-warning font-medium text-sm">
-                          +{formatVal(log.amount)}
+                        {/* Signed, because the pot can be drawn down: a mismatch
+                            covered from the pot is written as a negative row,
+                            and it used to render as "+-1,200". */}
+                        <div
+                          data-testid="pot-log-amount"
+                          className={`font-medium text-sm tabular-nums shrink-0 ${log.amount < 0 ? 'text-danger' : 'text-accent'}`}
+                        >
+                          {formatSignedVal(log.amount)}
                         </div>
                       </div>
                     ))}
@@ -4474,44 +4511,57 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
               </button>
             </div>
 
-            <div className="p-5 space-y-2 text-xs font-mono">
+            {/*
+              The same facts the settings sheet shows, from the same fields the
+              engine reads. This modal is the one rules surface a player can
+              open, and it went on describing the legacy single-rule rake
+              ("Rake: Disabled") after #101 fixed the settings sheet — the exact
+              misreading that fix existed to end. Min/Max are gone for the
+              reason the settings sheet gives: they would imply a limit that is
+              not enforced.
+            */}
+            <dl className="p-5 space-y-2 text-xs font-mono" data-testid="club-rules">
               <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Min Buy-in</span>
-                <strong className="text-text">{formatVal(club.minBuyIn || 1000)}</strong>
+                <dt className="text-text-muted">Seat fee</dt>
+                <dd data-testid="club-rules-seat-fee" className="font-semibold text-text">
+                  {(club.sessionRakeAmount ?? 0) > 0 ? `${formatVal(club.sessionRakeAmount ?? 0)} per player` : 'none'}
+                </dd>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Max Buy-in</span>
-                <strong className="text-text">{formatVal(club.maxBuyIn || 5000)}</strong>
+                <dt className="text-text-muted">Winners' cut</dt>
+                <dd data-testid="club-rules-winners-cut" className="font-semibold text-text">
+                  {(club.winnersCutPercent ?? 0) > 0 ? `${club.winnersCutPercent}%` : 'none'}
+                </dd>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Rake</span>
-                <strong className="text-warning">{club.rakeEnabled ? RAKE_METHOD_LABELS[club.rakeMethod ?? 'PERCENT_PROFIT'](club.rakeValue ?? 5) : 'Disabled'}</strong>
+                <dt className="text-text-muted">Buy-in limit</dt>
+                <dd className="font-semibold text-text">{club.buyInMode === 'UNCAPPED' ? 'No limit' : 'Match the biggest bank'}</dd>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Club Pot</span>
-                <strong className="text-warning">{club.potEnabled ? 'Enabled' : 'Disabled'}</strong>
+                <dt className="text-text-muted">Mismatch</dt>
+                <dd className="font-semibold text-text">{MISMATCH_STRATEGY_LABELS[club.mismatchStrategy ?? 'PROPORTIONAL_WINNERS']}</dd>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-line/60">
-                <span className="text-text-muted">Mismatch Handling</span>
-                <strong className="text-warning">{MISMATCH_STRATEGY_LABELS[club.mismatchStrategy ?? 'PROPORTIONAL_WINNERS']}</strong>
+                <dt className="text-text-muted">Club pot</dt>
+                <dd className="font-semibold text-text">{club.potEnabled ? 'On' : 'Off'}</dd>
               </div>
 
               {activeSession && (
                 <>
                   <div className="flex items-center justify-between py-2 border-b border-line/60">
-                    <span className="text-text-muted">Largest Bank at Table</span>
-                    <strong className="text-warning">{formatVal(largestActiveBank)}</strong>
+                    <dt className="text-text-muted">Largest bank at table</dt>
+                    <dd className="font-semibold text-text">{formatVal(largestActiveBank)}</dd>
                   </div>
                   <div className="flex items-center justify-between py-2">
-                    <span className="text-text-muted">Current Allowed Max</span>
-                    <strong className="text-accent">{formatVal(dynamicMaxBuyIn)}</strong>
+                    <dt className="text-text-muted">Current allowed max</dt>
+                    <dd className="font-semibold text-accent">{formatVal(dynamicMaxBuyIn)}</dd>
                   </div>
-                  <p className="text-[10px] text-text-muted font-sans pt-1">
+                  <p className="text-[11px] text-text-muted font-sans pt-1">
                     No player may buy in for more than the largest active bank currently held at the table.
                   </p>
                 </>
               )}
-            </div>
+            </dl>
           </div>
         </div>
       )}
