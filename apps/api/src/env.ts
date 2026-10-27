@@ -28,6 +28,12 @@ const envSchema = z.object({
   WEB_ORIGIN: z.string().default("http://localhost:3000"),
 
   DATABASE_URL: z.string(),
+  /**
+   * How often the API pings the database so a quiet week cannot auto-pause a
+   * Free-plan Supabase project (see lib/dbKeepAlive.ts). Milliseconds; 0
+   * disables it. The default is four beats a day.
+   */
+  DB_KEEPALIVE_INTERVAL_MS: z.coerce.number().int().min(0).default(6 * 60 * 60 * 1000),
 
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_ACCESS_TTL: z.string().default("15m"),

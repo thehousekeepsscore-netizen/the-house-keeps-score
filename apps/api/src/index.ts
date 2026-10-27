@@ -5,6 +5,7 @@ import { prisma } from "./lib/prisma.js";
 import { describeMessaging } from "./lib/messaging.js";
 import { describeSeedCredentialRisk } from "./lib/seedGuard.js";
 import { initSocket, disconnectAllSockets } from "./realtime/socket.js";
+import { startDbKeepAlive } from "./lib/dbKeepAlive.js";
 // STOPPED alongside the Virtual Table route unmount in app.ts — see below.
 // import { sweepExpiredTurns } from "./modules/sessions/sessions.service.js";
 
@@ -94,6 +95,13 @@ httpServer.listen(env.PORT, () => {
   void printStartupSummary();
 });
 
+// Started once the server is up, stopped on shutdown. Never throws, never
+// holds the loop open; see lib/dbKeepAlive.ts for why it exists.
+const stopDbKeepAlive = startDbKeepAlive({
+  intervalMs: env.DB_KEEPALIVE_INTERVAL_MS,
+  probe: () => prisma.$queryRaw`SELECT 1`,
+});
+
 /**
  * Shut down without dropping work on the floor.
  *
@@ -129,6 +137,7 @@ async function shutdown(signal: string) {
 
 
   try {
+    stopDbKeepAlive();
     disconnectAllSockets();
     await new Promise<void>((resolve, reject) =>
       httpServer.close((err) => (err ? reject(err) : resolve()))
