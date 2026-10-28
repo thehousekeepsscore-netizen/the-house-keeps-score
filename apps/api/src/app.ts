@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { deploymentIdentity } from "./lib/deploymentIdentity.js";
+import { checkReadiness } from "./lib/readiness.js";
 import { env } from "./env.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { clubsRouter } from "./modules/clubs/clubs.routes.js";
@@ -62,6 +63,26 @@ app.use(cookieParser());
 // liveness probe, and a query here would turn a slow database into a restart
 // loop.
 app.get("/api/health", (_req, res) => res.json(deploymentIdentity()));
+
+// Readiness is the question health refuses to ask: can a request that needs
+// the database be served right now? One bounded round trip; 503 when it
+// cannot. Above the limiter like health, because a monitor polls it — and
+// with its own small ceiling, because unlike health it does cost a query.
+// Nothing on the platform restarts the process on this answer; it exists so
+// that a paused or unreachable database is visible the hour it happens
+// rather than the week a user reports "sign-in is broken".
+app.get(
+  "/api/ready",
+  rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false }),
+  async (_req, res) => {
+    const readiness = await checkReadiness();
+    res.status(readiness.ready ? 200 : 503).json({
+      status: readiness.ready ? "ready" : "unavailable",
+      ...readiness,
+      commitShort: deploymentIdentity().commitShort,
+    });
+  }
+);
 
 /**
  * A ceiling on API traffic per client.

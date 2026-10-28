@@ -303,7 +303,10 @@ describe('buy-in provenance is additive to the contract', () => {
     const stamped = inputs({ buyInSource: BUY_IN_SOURCE_APPROVED_BANKS });
     expect(stamped.buyInSource).toBe('approved-banks');
     expect(validateCanonicalInputs(stamped)).toEqual([]);
-    expect(replayCanonical(stamped)).toEqual(replayCanonical(inputs()));
+    // Two replays stamp two `computedAt`s; across a millisecond boundary they
+    // differ, and CI once failed on exactly that. The figures are the claim.
+    const sansClock = (o: object) => { const { computedAt: _clock, ...rest } = o as { computedAt?: unknown }; return rest; };
+    expect(sansClock(replayCanonical(stamped))).toEqual(sansClock(replayCanonical(inputs())));
   });
 
   it('rejects a provenance the contract does not know', () => {
