@@ -137,7 +137,7 @@ export interface PokerSession {
   clubId: string;
   sessionName: string;
   sessionType?: 'Offline Session' | 'Lazy Dealer Session' | 'Virtual Table Session';
-  status: 'active' | 'settled';
+  status: 'active' | 'settled' | 'cancelled';
   activePlayerUids: string[];
   pendingSitInUids?: string[];
   /**

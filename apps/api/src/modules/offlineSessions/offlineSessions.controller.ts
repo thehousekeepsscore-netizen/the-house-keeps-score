@@ -55,6 +55,13 @@ export async function removeFromLobby(req: Request, res: Response) {
   return res.json(session);
 }
 
+/** Close a night that never happened. Only while nothing is banked. Admins only. */
+export async function cancelNight(req: Request, res: Response) {
+  const session = await offlineSessionsService.cancelNight(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin);
+  return res.json(session);
+}
+
 /** Stop the table so the figures can be agreed. Reversible. Admins only. */
 export async function beginSettling(req: Request, res: Response) {
   const session = await offlineSessionsService.beginSettling(

@@ -179,6 +179,9 @@ enum SessionType {
 enum SessionStatus {
   active
   settled
+  /// Closed before anything was banked. Audit log only: never history, never
+  /// ranks, never the pot. The row stays so the audit row has something to name.
+  cancelled
 }
 
 model PokerSession {

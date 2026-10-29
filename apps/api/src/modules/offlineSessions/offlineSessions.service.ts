@@ -46,6 +46,9 @@ interface OfflineEngineState {
    * mis-tap must not hold a room hostage.
    */
   settlingAt?: string | null;
+  /** Stamped by cancelNight. The row's status is the authority; these say who and when. */
+  cancelledAt?: string | null;
+  cancelledBy?: string;
   /**
    * When the host chose to carry on with no limit.
    *
@@ -221,9 +224,10 @@ async function mutateSessionState<T>(
  * `settled` is terminal. There is no transition out of it, which is the whole
  * point of a receipt.
  */
-export type SessionPhase = 'lobby' | 'playing' | 'settling' | 'settled';
+export type SessionPhase = 'lobby' | 'playing' | 'settling' | 'settled' | 'cancelled';
 
 export function sessionPhase(status: string, state: OfflineEngineState): SessionPhase {
+  if (status === 'cancelled') return 'cancelled';
   if (status !== 'active') return 'settled';
   if (state.settlingAt) return 'settling';
   // `undefined` is a session created before the lobby existed. Those are being
@@ -237,6 +241,7 @@ const PHASE_REFUSAL: Record<SessionPhase, string> = {
   playing: 'The night is still being played',
   settling: 'This night is being settled — resume it to make changes',
   settled: 'This night has already been settled',
+  cancelled: 'This night was cancelled',
 };
 
 /**
@@ -921,7 +926,11 @@ export async function removeFromLobby(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
-    assertPhase(row, state, ['lobby']);
+    // Playing too, not only the lobby. A player seated after the night began
+    // who never took a bank has nothing at the table, and until this allowed
+    // it the only way to clear their chair was to count them out at zero.
+    // The chip guard below is what keeps it safe in either phase.
+    assertPhase(row, state, ['lobby', 'playing']);
 
     const banked = await tx.buyInRequest.aggregate({
       where: { sessionId, userId, status: 'approved' },
@@ -940,7 +949,7 @@ export async function removeFromLobby(
       where: { sessionId, userId, status: 'pending' },
     });
     if (!seated && !waiting && pending === 0) {
-      throw new HttpError(404, 'That player is not in this lobby');
+      throw new HttpError(404, 'That player is not at this table');
     }
 
     // A question with nobody left to answer for it.
@@ -1052,6 +1061,88 @@ export async function resumeNight(
   });
 
   emitToClub(clubId, 'club:settling-cancelled', { sessionId, session });
+  return session;
+}
+
+/**
+ * Close a night that never happened.
+ *
+ * Until now a night opened by mistake had no way out: settle refuses fewer
+ * than two players, the lobby cannot be emptied once play has begun, and the
+ * club cannot open another night while this one is active. The only exit was
+ * to seat two people, bank them, count them and settle a night nobody played
+ * into history. This is the honest exit.
+ *
+ * It is allowed only while nothing is banked: an approved buy-in is money on
+ * the table, and the way to undo money is to void it or settle it, both
+ * audited. Voided banks do not count — nothing happened. Pending requests are
+ * refused on the way out, as the lobby removal does, so no question is left
+ * with nobody to answer it.
+ *
+ * A cancelled night is audit-log only. It never reaches history, the ranks or
+ * the pot; `status: 'cancelled'` is what keeps it out of every active-session
+ * query, and the audit row is what keeps it from being forgotten.
+ */
+export async function cancelNight(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean
+) {
+  const club = await clubsService.getClubOrThrow(clubId);
+  clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
+
+  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    // Settling included: that is exactly where a host who pressed "Settle
+    // night" on an empty table ends up, with nothing to count.
+    assertPhase(row, state, ['lobby', 'playing', 'settling']);
+
+    const banked = await tx.buyInRequest.aggregate({
+      where: { sessionId, status: 'approved' },
+      _sum: { amount: true },
+    });
+    if ((banked._sum.amount ?? 0) > 0) {
+      throw new HttpError(
+        409,
+        'This night has chips on the table — void the banks or settle it instead'
+      );
+    }
+
+    const refused = await tx.buyInRequest.updateMany({
+      where: { sessionId, status: 'pending' },
+      data: { status: 'rejected', approvedBy: requesterId },
+    });
+
+    const actor = await tx.user.findUnique({ where: { id: requesterId }, select: { displayName: true } });
+    const seated = (state.activePlayerUids || []).length;
+    await tx.auditLog.create({
+      data: {
+        clubId: row.clubId,
+        sessionId,
+        sessionTitle: row.sessionName,
+        action: 'cancel_night',
+        changedBy: requesterId,
+        changedByName: actor?.displayName ?? 'Unknown',
+        details:
+          `Cancelled ${row.sessionName} before anything was banked` +
+          ` (${seated} seated, ${refused.count} pending request${refused.count === 1 ? '' : 's'} refused).` +
+          ' Nothing was recorded to history, the ranks or the pot.',
+        changes: {
+          phase: sessionPhase(row.status, state),
+          seated: state.activePlayerUids ?? [],
+          pendingRequestsRefused: refused.count,
+          cancelledBy: requesterId,
+          cancelledByName: actor?.displayName ?? null,
+        } as never,
+      },
+    });
+
+    await tx.pokerSession.update({ where: { id: sessionId }, data: { status: 'cancelled', endedAt: new Date() } });
+
+    return {
+      state: { ...state, cancelledAt: new Date().toISOString(), cancelledBy: requesterId },
+      result: null,
+    };
+  });
+
+  emitToClub(clubId, 'club:session-cancelled', { sessionId, cancelledBy: requesterId, session });
   return session;
 }
 
@@ -1488,11 +1579,9 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
     // still played and their figures must settle — otherwise their buy-ins
     // vanish from the totals and every mismatch/rake number comes out wrong.
     const confirmedCashOuts = (state.cashOuts || []).filter((c) => c.status === 'confirmed');
-    const activePlayerUids: string[] = Array.from(
+    const seatedOrCountedUids: string[] = Array.from(
       new Set([...(state.activePlayerUids || []), ...confirmedCashOuts.map((c) => c.userId)])
     );
-    // Same floor as a back-dated night: two players minimum.
-    if (input.entries.length < 2) throw new HttpError(400, 'A session needs at least two players');
     const entryByUid = new Map(input.entries.map((e) => [e.userId, e]));
     // A confirmed early cash-out is the authority on that player's figure — an
     // admin already counted and signed off on it, so it wins over the form.
@@ -1530,6 +1619,22 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
     const authoritativeBuyIn = new Map(
       approvedByPlayer.map((r) => [r.userId, r._sum.amount ?? 0])
     );
+
+    /*
+     * A seat with no bank and no counted cash-out has nothing to settle.
+     *
+     * A player who sat down after the night began and never bought in used to
+     * block the whole night: the form demanded a count for them, and the only
+     * way through was to "count" them at zero and write a 0/0 line into
+     * history. They are skipped here, by the same rule the screen uses, and the
+     * two-player floor is applied to who actually played rather than to how
+     * many entries the form sent.
+     */
+    const activePlayerUids = seatedOrCountedUids.filter(
+      (uid) => authoritativeBuyIn.has(uid) || lockedCashOut.has(uid)
+    );
+    // Same floor as a back-dated night: two players minimum.
+    if (activePlayerUids.length < 2) throw new HttpError(400, 'A session needs at least two players');
 
     const users = await tx.user.findMany({ where: { id: { in: activePlayerUids } }, select: { id: true, displayName: true } });
     const nameByUid = new Map(users.map((u) => [u.id, u.displayName]));

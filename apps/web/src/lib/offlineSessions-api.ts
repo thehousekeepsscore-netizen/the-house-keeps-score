@@ -10,7 +10,7 @@ export interface ApiOfflineSession {
   clubId: string;
   sessionName: string;
   sessionType: 'OFFLINE' | 'LAZY_DEALER';
-  status: 'active' | 'settled';
+  status: 'active' | 'settled' | 'cancelled';
   startedById: string;
   createdAt: string;
   endedAt: string | null;
@@ -179,6 +179,16 @@ export async function removeFromLobby(
 export async function resumeNight(clubId: string, sessionId: string): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/resume`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/**
+ * Close a night that never happened. Admins only, and only while nothing is
+ * banked; the server refuses otherwise. Audit log only — never history.
+ */
+export async function cancelNight(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/cancel`, { method: 'POST' });
   return toPokerSession(s);
 }
 
