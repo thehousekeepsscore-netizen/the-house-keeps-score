@@ -39,6 +39,11 @@ export interface LobbyProps {
    * and no record — that is standing up, not being removed.
    */
   onRemoveFromLobby?: (userId: string) => void;
+  /**
+   * Admins only, and only while nothing is banked: close a night that was
+   * opened by mistake. Audit log only; nothing reaches history.
+   */
+  onCancelNight?: () => void;
 }
 
 /** The four states of getting ready, in the order they happen. */
@@ -72,6 +77,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   onStartPlaying,
   starting = false,
   onRemoveFromLobby,
+  onCancelNight,
 }) => {
   const seatOf = new Map([...night.seats, ...night.room].map((s) => [s.userId, s]));
 
@@ -182,6 +188,14 @@ export const Lobby: React.FC<LobbyProps> = ({
             <p className="py-3 text-center text-sm text-text-muted">
               Two players need chips before the night can start.
             </p>
+          )}
+          {/* Opened by mistake, or nobody came. Ghost, under the primary: the
+              exit should be findable without competing with the way forward.
+              Withheld by the caller the moment anybody has chips. */}
+          {onCancelNight && (
+            <Button variant="ghost" size="sm" fullWidth className="mt-1" onClick={onCancelNight}>
+              Cancel this night
+            </Button>
           )}
         </div>
       )}

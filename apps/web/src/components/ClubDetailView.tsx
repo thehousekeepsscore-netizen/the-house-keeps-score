@@ -818,10 +818,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   // of the night — the server settles the union of seated players and confirmed
   // cash-outs, so the form has to iterate the same set or it silently drops
   // them from the preview, the submit, and the "all cash-outs entered" gate.
+  // A seat with no bank and no counted cash-out has nothing to settle — a
+  // player who sat down and never bought in used to block the whole night
+  // until somebody "counted" them at zero. The server skips the same seats.
   const settlementUids = useMemo(
     () =>
-      Array.from(new Set([...(activeSession?.activePlayerUids || []), ...Object.keys(confirmedCashOutByUid)])),
-    [JSON.stringify(activeSession?.activePlayerUids), confirmedCashOutByUid]
+      Array.from(new Set([...(activeSession?.activePlayerUids || []), ...Object.keys(confirmedCashOutByUid)]))
+        .filter((uid) => (playerBanks[uid] || 0) > 0 || uid in confirmedCashOutByUid),
+    [JSON.stringify(activeSession?.activePlayerUids), confirmedCashOutByUid, JSON.stringify(playerBanks)]
   );
 
   useEffect(() => {
@@ -1212,6 +1216,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       refreshPotLog();
       refreshClub();
     };
+    // The table closed with nothing in it. Every phone drops to "No session
+    // running"; the one that pressed the button already said so and is not
+    // told twice.
+    const onSessionCancelled = (p: { cancelledBy?: string }) => {
+      cache.update<SessionResource>(`club:${initialClub.id}:active-session`, () => ({ session: null, buyIns: [] }), write);
+      if (p.cancelledBy === currentUser.uid) return;
+      pushToast('Night cancelled', 'The host closed the table. Nothing was recorded.', 'info');
+    };
     const onHistoryUpdated = () => {
       refreshHistory();
       refreshLeaderboard();
@@ -1253,6 +1265,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     socket.on('club:buyin-voided', onBuyinVoided);
     for (const [event, handler] of sessionHandlers) socket.on(event, handler);
     socket.on('club:session-settled', onSessionSettled);
+    socket.on('club:session-cancelled', onSessionCancelled);
     socket.on('club:history-updated', onHistoryUpdated);
     socket.on('club:pending-request', onPendingRequest);
     socket.on('club:pending-request-decided', onPendingRequestDecided);
@@ -1266,6 +1279,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:buyin-voided', onBuyinVoided);
       for (const [event, handler] of sessionHandlers) socket.off(event, handler);
       socket.off('club:session-settled', onSessionSettled);
+      socket.off('club:session-cancelled', onSessionCancelled);
       socket.off('club:history-updated', onHistoryUpdated);
       socket.off('club:pending-request', onPendingRequest);
       socket.off('club:pending-request-decided', onPendingRequestDecided);
@@ -2046,7 +2060,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     // gates this client-side; this one did not, so a single-player session
     // reached the server and came back as a generic failure.
     if (settlementUids.length < 2) {
-      pushToast('Not enough players', 'A session needs at least two players to settle.', 'warning');
+      pushToast('Not enough players', 'A night needs at least two players with chips to settle.', 'warning');
       return;
     }
     if (!allCashOutsEntered) {
@@ -2444,6 +2458,37 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }, 'Please try again.');
 
   /** Hand the table back. A mis-tap must not end somebody's evening. */
+  /**
+   * Close a night that never happened. Confirmed first: it is the one action
+   * on this screen that ends a night, even if nothing was in it. The server
+   * refuses once anything is banked, and the control is withheld before that.
+   */
+  const cancelNight = () => {
+    if (!activeSession) return;
+    const sessionId = activeSession.id;
+    confirmAction({
+      title: 'Cancel this night?',
+      description: 'Nothing has been banked, so nothing is lost. The table closes for everyone, and the night is kept in the audit log only — never in history or the ranks.',
+      confirmLabel: 'Cancel the night',
+      cancelLabel: 'Keep it open',
+      onConfirm: async () => {
+        try {
+          await offlineSessionsApi.cancelNight(club.id, sessionId);
+          cache.update<SessionResource>(`club:${initialClub.id}:active-session`, () => ({ session: null, buyIns: [] }), write);
+          setShowCashoutModal(false);
+          pushToast('Night cancelled', 'The table is closed. Nothing was recorded.', 'info');
+          refreshAuditTrail();
+        } catch (err) {
+          pushToast('Could not cancel', err instanceof Error ? err.message : 'Please try again.', 'warning');
+        }
+      },
+    });
+  };
+
+  // Offered only while nothing is banked: the moment an approved buy-in exists
+  // the exit is void-or-settle, and the control disappears rather than failing.
+  const nothingBanked = activeSessionBuyIns.length === 0;
+
   const resumeNight = async () => {
     if (!activeSession || clockBusy) return;
     setClockBusy(true);
@@ -3032,6 +3077,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
                 onKeepPlaying={keepPlaying}
                 onResumeNight={resumeNight}
                 onRemoveFromLobby={removeFromLobby}
+                onCancelNight={isAdmin && nothingBanked ? cancelNight : undefined}
                 formatAmount={formatUnit}
                 waiting={waitingForYou}
                 onSelectPlayer={(uid) => { setSheetAsksForChips(false); setSheetUid(uid); }}

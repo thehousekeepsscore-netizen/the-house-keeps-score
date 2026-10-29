@@ -450,10 +450,21 @@ describe('the lobby ghost', () => {
     expect((await stateNow()).activePlayerUids).toContain(priyaId);
   });
 
-  it('is a lobby action only — a running night has cash-outs for this', async () => {
+  it('clears a chip-less seat from a running night too — a late arrival who never bought in', async () => {
+    // The seed is already playing, and Priya sits with no bank. Until this was
+    // allowed, the only way to clear her chair was to count her out at zero.
+    await removeFromLobby(sessionId, clubId, ownerId, false, priyaId);
+    expect((await stateNow()).activePlayerUids).not.toContain(priyaId);
+  });
+
+  it('still refuses to clear a seat holding chips while the night runs — that is a cash-out', async () => {
+    const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
+    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+
     await expect(
       removeFromLobby(sessionId, clubId, ownerId, false, priyaId)
     ).rejects.toMatchObject({ status: 409 });
+    expect((await stateNow()).activePlayerUids).toContain(priyaId);
   });
 
   it('is not a thing a player can do', async () => {
@@ -601,8 +612,19 @@ describe('settling a night that never started', () => {
     expect(session.endedAt).toBeNull();
   });
 
+  // Settlement derives each player's buy-in from their approved banks and
+  // skips seats that have none, so a night that settles has to have banked
+  // its players, exactly as a real one would have.
+  const bankBoth = () =>
+    prisma.buyInRequest.createMany({
+      data: [ownerId, priyaId].map((userId) => ({
+        sessionId, clubId, userId, amount: 5_000, status: 'approved', requestedBy: userId,
+      })),
+    });
+
   it('still settles a night being played, which the lifecycle allows', async () => {
     await setPhase({ startedPlayingAt: new Date().toISOString() });
+    await bankBoth();
 
     await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
@@ -611,6 +633,7 @@ describe('settling a night that never started', () => {
 
   it('still settles a night frozen for settlement, which is the normal path', async () => {
     await setPhase({ startedPlayingAt: new Date().toISOString() });
+    await bankBoth();
     await beginSettling(sessionId, clubId, ownerId, false);
 
     await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();

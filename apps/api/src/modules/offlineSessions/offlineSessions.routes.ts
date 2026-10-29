@@ -16,6 +16,7 @@ offlineSessionsRouter.post('/:sessionId/cash-out-requests/amend', asyncHandler(o
 offlineSessionsRouter.post('/:sessionId/remove-from-lobby', asyncHandler(offlineSessionsController.removeFromLobby));
 offlineSessionsRouter.post('/:sessionId/begin-settling', asyncHandler(offlineSessionsController.beginSettling));
 offlineSessionsRouter.post('/:sessionId/resume', asyncHandler(offlineSessionsController.resumeNight));
+offlineSessionsRouter.post('/:sessionId/cancel', asyncHandler(offlineSessionsController.cancelNight));
 offlineSessionsRouter.post('/:sessionId/lift-time-limit', asyncHandler(offlineSessionsController.liftTimeLimit));
 offlineSessionsRouter.post('/:sessionId/sit-in-requests', asyncHandler(offlineSessionsController.requestSitIn));
 offlineSessionsRouter.post(

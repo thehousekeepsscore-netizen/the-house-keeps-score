@@ -93,6 +93,11 @@ export interface LiveSessionProps {
   onResumeNight?: () => void;
   /** Admins only, in the lobby: take out somebody who said they were coming. */
   onRemoveFromLobby?: (userId: string) => void;
+  /**
+   * Admins only, and only while nothing is banked — the caller passes it in
+   * no other case. Closes a night that never happened; audit log only.
+   */
+  onCancelNight?: () => void;
 }
 
 /** Ticks slowly on purpose: the header shows minutes, so a 1s timer would
@@ -168,6 +173,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   onKeepPlaying,
   onResumeNight,
   onRemoveFromLobby,
+  onCancelNight,
 }) => {
   const elapsed = useElapsed(session?.createdAt);
   const clock = useClock(session);
@@ -240,6 +246,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               )}
             </div>
           )}
+          {/* The way OUT, for the host who pressed "Settle night" on an empty
+              table and found nothing to count. Offered only while nothing is
+              banked; the caller withholds it otherwise. */}
+          {isAdmin && onCancelNight && (
+            <Button variant="ghost" size="sm" fullWidth className="mt-1" onClick={onCancelNight}>
+              Nothing banked? Cancel this night
+            </Button>
+          )}
         </div>
       ) : live && night.startedPlayingAt !== null && (
         <NightClockBanner
@@ -295,6 +309,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onStartPlaying={onStartPlaying}
           starting={starting}
           onRemoveFromLobby={onRemoveFromLobby}
+          onCancelNight={onCancelNight}
         />
       </div>
 
@@ -594,9 +609,10 @@ const Stage: React.FC<{
   onStartPlaying?: () => void;
   starting?: boolean;
   onRemoveFromLobby?: (userId: string) => void;
+  onCancelNight?: () => void;
 }> = ({
   night, club, users, currentUserId, isAdmin, onSelectPlayer, formatAmount,
-  onAddPlayer, onAskForChips, feed, onStartPlaying, starting, onRemoveFromLobby,
+  onAddPlayer, onAskForChips, feed, onStartPlaying, starting, onRemoveFromLobby, onCancelNight,
 }) => {
   // The feed speaks in the second person wherever it is about the viewer, which
   // is what makes it their view of the night rather than a system log.
@@ -620,6 +636,7 @@ const Stage: React.FC<{
           onStartPlaying={onStartPlaying}
           starting={starting}
           onRemoveFromLobby={onRemoveFromLobby}
+          onCancelNight={onCancelNight}
         />
       );
     case 'ready':

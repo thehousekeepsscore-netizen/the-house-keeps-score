@@ -269,19 +269,47 @@ describe('the buy-in that settles is the one the banks say', () => {
     expect((await settledBuyIns())[ownerId], '2,000 + 1,000 — the voided 5,000 is gone').toBe(3000);
   });
 
-  it('gives a player with no approved banks zero, not the submitted figure', async () => {
+  it('leaves a seat with no approved banks out of the settlement entirely', async () => {
+    // Seated, never bought in — a late arrival who watched. They used to be
+    // settled at zero (and the form's figure for them was ignored); now they
+    // are not settled at all, and the night is not blocked by them.
     await seed();
+    await prisma.pokerSession.update({
+      where: { id: sessionId },
+      data: { engineState: { ...((await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } })).engineState as object),
+        activePlayerUids: [ownerId, playerId, thirdId] } as never },
+    });
+    await bank(ownerId, 2000);
     await bank(playerId, 4000);
     await enterSettling();
 
     await settleSession(sessionId, ownerId, false, {
       entries: [
-        { userId: ownerId, buyIn: 7500, cashOut: 1000 },
+        { userId: ownerId, buyIn: 2000, cashOut: 3000 },
         { userId: playerId, buyIn: 4000, cashOut: 3000 },
+        { userId: thirdId, buyIn: 7500, cashOut: 1000 },
       ],
     });
 
-    expect((await settledBuyIns())[ownerId], 'no banks means nothing was put in').toBe(0);
+    const settled = await settledBuyIns();
+    expect(settled, 'the chip-less seat is not a participant').not.toHaveProperty(thirdId);
+    expect(settled[ownerId]).toBe(2000);
+    expect(settled[playerId]).toBe(4000);
+  });
+
+  it('refuses a night where fewer than two seats actually hold chips', async () => {
+    await seed();
+    await bank(playerId, 4000);
+    await enterSettling();
+
+    await expect(
+      settleSession(sessionId, ownerId, false, {
+        entries: [
+          { userId: ownerId, buyIn: 7500, cashOut: 1000 },
+          { userId: playerId, buyIn: 4000, cashOut: 3000 },
+        ],
+      })
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('reconciles each player independently', async () => {
