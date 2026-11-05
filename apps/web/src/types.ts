@@ -254,7 +254,8 @@ export interface BuyInRequest {
   userId: string;
   userDisplayName: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected' | 'voided';
+  /** `withdrawn` is the player taking back their own pending request. */
+  status: 'pending' | 'approved' | 'rejected' | 'voided' | 'withdrawn';
   /** Set only on a voided row; the original `amount` is never rewritten. */
   voidedAt?: string | null;
   voidedBy?: string | null;

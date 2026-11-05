@@ -477,3 +477,91 @@ export async function removeMember(clubId: string, adminUserId: string, isSuperA
   ]);
   return getClubOrThrow(clubId);
 }
+
+/**
+ * Leaving a club yourself.
+ *
+ * Until now only an admin could take somebody out, so a member who joined the
+ * wrong club stayed in it until somebody noticed. Admins may leave too: the
+ * owner is always an administrator and can never leave, so a club is never
+ * left with nobody to run it. The owner's way out is handing the club over,
+ * which is its own change.
+ *
+ * Refused while you are part of tonight's night — seated, waiting for a seat,
+ * holding or asking for chips, or counted out — because the night settles by
+ * the people in it, and a settlement that names somebody no longer in the club
+ * is a record nobody can be asked about. Leave once it is settled or cancelled.
+ *
+ * Past results stay: history and the ranks are keyed to the night, not to the
+ * membership. Audited, because the roster changing is something an owner will
+ * one day ask about.
+ */
+export async function leaveClub(clubId: string, userId: string) {
+  const club = await getClubOrThrow(clubId);
+  if (club.ownerId === userId) {
+    throw new HttpError(400, "The club owner can't leave the club");
+  }
+  const wasAdmin = club.admins.some((a) => a.userId === userId);
+  const wasMember = wasAdmin || club.members.some((m) => m.userId === userId);
+  if (!wasMember) throw new HttpError(404, "You are not a member of this club");
+
+  const night = await prisma.pokerSession.findFirst({
+    where: { clubId, status: "active" },
+    select: { id: true, engineState: true },
+  });
+  if (night) {
+    const state = night.engineState as {
+      activePlayerUids?: string[];
+      pendingSitInUids?: string[];
+      cashOuts?: { userId: string }[];
+    };
+    const requests = await prisma.buyInRequest.count({
+      where: { sessionId: night.id, userId, status: { in: ["approved", "pending"] } },
+    });
+    const inTonight =
+      requests > 0 ||
+      (state.activePlayerUids ?? []).includes(userId) ||
+      (state.pendingSitInUids ?? []).includes(userId) ||
+      (state.cashOuts ?? []).some((c) => c.userId === userId);
+    if (inTonight) {
+      throw new HttpError(409, "You're part of tonight's night — leave once it has been settled or cancelled");
+    }
+  }
+
+  const leaver = await prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } });
+  await prisma.$transaction(async (tx) => {
+    await tx.clubAdmin.deleteMany({ where: { clubId, userId } });
+    await tx.clubMember.deleteMany({ where: { clubId, userId } });
+    await tx.auditLog.create({
+      data: {
+        clubId,
+        action: "leave_club",
+        changedBy: userId,
+        changedByName: leaver?.displayName ?? "Unknown",
+        details:
+          `${leaver?.displayName ?? "A member"} left ${club.name}` +
+          `${wasAdmin ? " (they were an admin)" : ""}. Their past results stay on the ranks.`,
+        changes: { userId, wasAdmin } as never,
+      },
+    });
+  });
+}
+
+/**
+ * Taking back your own request to join.
+ *
+ * Deleted rather than marked: nobody decided it, so there is nothing to keep —
+ * the request simply never happened. An admin who taps it in the moment after
+ * is answered 404, which the admin list reads as "no longer waiting".
+ */
+export async function cancelJoinRequest(clubId: string, requestId: string, userId: string) {
+  const removed = await prisma.clubJoinRequest.deleteMany({
+    where: { id: requestId, clubId, userId, status: "pending" },
+  });
+  if (removed.count > 0) return;
+
+  const request = await prisma.clubJoinRequest.findUnique({ where: { id: requestId } });
+  if (!request || request.clubId !== clubId) throw new HttpError(404, "Join request not found");
+  if (request.userId !== userId) throw new HttpError(403, "Only the person who asked can cancel a join request");
+  throw new HttpError(409, "This request has already been decided");
+}

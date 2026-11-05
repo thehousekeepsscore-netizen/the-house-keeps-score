@@ -193,6 +193,31 @@ export async function requestBuyIn(req: Request, res: Response) {
   return res.status(201).json(request);
 }
 
+/*
+ * Withdrawals. The actor is always the token's user and the request is always
+ * their own — the service refuses anything else — so there is no body to read.
+ */
+export async function withdrawBuyIn(req: Request, res: Response) {
+  await assertMemberOfClub(req);
+  const request = await offlineSessionsService.withdrawBuyInRequest(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.params.requestId);
+  return res.json(request);
+}
+
+export async function withdrawSitIn(req: Request, res: Response) {
+  await assertMemberOfClub(req);
+  const session = await offlineSessionsService.withdrawSitIn(
+    req.params.sessionId, req.params.clubId, req.user!.sub);
+  return res.json(session);
+}
+
+export async function withdrawCashOut(req: Request, res: Response) {
+  await assertMemberOfClub(req);
+  const session = await offlineSessionsService.withdrawCashOut(
+    req.params.sessionId, req.params.clubId, req.user!.sub);
+  return res.json(session);
+}
+
 export async function listBuyInRequests(req: Request, res: Response) {
   await assertMemberOfClub(req);
   const requests = await offlineSessionsService.listBuyInRequests(req.params.sessionId);

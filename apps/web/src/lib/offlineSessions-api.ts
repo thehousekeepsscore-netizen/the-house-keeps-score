@@ -77,7 +77,7 @@ export interface ApiBuyInRequest {
   clubId: string;
   userId: string;
   amount: number;
-  status: 'pending' | 'approved' | 'rejected' | 'voided';
+  status: 'pending' | 'approved' | 'rejected' | 'voided' | 'withdrawn';
   requestedBy: string;
   approvedBy: string | null;
   createdAt: string;
@@ -304,6 +304,31 @@ export async function voidBuyInRequest(
     { method: 'POST', body: { reason } }
   );
   return s ? toPokerSession(s) : null;
+}
+
+/** The player taking back their own pending bank. */
+export async function withdrawBuyInRequest(
+  clubId: string, sessionId: string, requestId: string
+): Promise<BuyInRequest> {
+  const r = await apiFetch<ApiBuyInRequest>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests/${requestId}/withdraw`,
+    { method: 'POST' }
+  );
+  return toBuyInRequest(r);
+}
+
+/** The player taking back their own request for a seat. */
+export async function withdrawSitIn(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/sit-in-requests/withdraw`, { method: 'POST' });
+  return toPokerSession(s);
+}
+
+/** The player taking back a count they sent before an admin confirmed it. */
+export async function withdrawCashOut(clubId: string, sessionId: string): Promise<PokerSession> {
+  const s = await apiFetch<ApiOfflineSession>(
+    `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/withdraw`, { method: 'POST' });
+  return toPokerSession(s);
 }
 
 export interface SettleInput {

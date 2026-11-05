@@ -111,6 +111,9 @@ export function toClubJoinRequest(r: ApiJoinRequest): ClubJoinRequest {
   };
 }
 
+/** The dashboard's club list in the resource cache. Here so the club screen can drop a club it just left. */
+export const CLUBS_KEY = 'clubs';
+
 export async function listClubsRaw(): Promise<ApiClub[]> {
   return apiFetch<ApiClub[]>('/clubs');
 }
@@ -244,6 +247,16 @@ export async function superuserJoin(clubId: string): Promise<Club> {
 export async function removeMember(clubId: string, userId: string): Promise<Club> {
   const club = await apiFetch<ApiClub>(`/clubs/${clubId}/members/${userId}`, { method: 'DELETE' });
   return toClub(club);
+}
+
+/** Leaving a club yourself. The owner is refused; so is anyone part of tonight. */
+export async function leaveClub(clubId: string): Promise<void> {
+  await apiFetch(`/clubs/${clubId}/leave`, { method: 'POST' });
+}
+
+/** Taking back your own pending request to join. */
+export async function cancelJoinRequest(clubId: string, requestId: string): Promise<void> {
+  await apiFetch(`/clubs/${clubId}/join-requests/${requestId}`, { method: 'DELETE' });
 }
 
 export async function deleteClub(clubId: string): Promise<void> {

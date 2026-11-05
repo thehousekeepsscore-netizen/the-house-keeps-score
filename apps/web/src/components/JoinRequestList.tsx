@@ -51,6 +51,14 @@ export function classifyJoinRequestError(err: unknown): JoinRequestFailure {
       message: 'Another admin already handled that request.',
     };
   }
+  // A requester can now cancel their own request, which deletes it. Deciding it
+  // a moment later finds nothing — the list was stale, not the action wrong.
+  if (status === 404) {
+    return {
+      kind: 'stale',
+      message: 'That request is no longer waiting — it was withdrawn.',
+    };
+  }
   if (status === 403) {
     return {
       kind: 'forbidden',

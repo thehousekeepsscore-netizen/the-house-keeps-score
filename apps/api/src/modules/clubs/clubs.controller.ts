@@ -221,3 +221,15 @@ export async function removeMember(req: Request, res: Response) {
   const club = await clubsService.removeMember(req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, req.params.userId);
   return res.json(serializeClub(club, req.user!.sub, req.user!.isSuperAdmin));
 }
+
+/** The token's user leaving. No body; it can only ever be yourself. */
+export async function leave(req: Request, res: Response) {
+  await clubsService.leaveClub(req.params.clubId, req.user!.sub);
+  return res.status(204).send();
+}
+
+/** The token's user taking back their own pending request to join. */
+export async function cancelJoinRequest(req: Request, res: Response) {
+  await clubsService.cancelJoinRequest(req.params.clubId, req.params.requestId, req.user!.sub);
+  return res.status(204).send();
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Settings, ChevronRight, Trophy, UserCircle, Pencil, LogOut } from 'lucide-react';
+import { X, Settings, ChevronRight, Trophy, UserCircle, Pencil, LogOut, DoorOpen } from 'lucide-react';
 import { useAuth } from '../lib/auth-context';
 import * as clubRecordsApi from '../lib/clubRecords-api';
 import { LeaderboardRow } from '../lib/clubRecords-api';
@@ -22,9 +22,11 @@ interface AccountSettingsModalProps {
   club?: Club;
   isClubAdmin?: boolean;
   onOpenClubSettings?: () => void;
+  /** Passed only inside a club, and never to its owner. The caller confirms. */
+  onLeaveClub?: () => void;
 }
 
-export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onClose, club, isClubAdmin, onOpenClubSettings }) => {
+export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onClose, club, isClubAdmin, onOpenClubSettings, onLeaveClub }) => {
   const { user, updateProfile, logout } = useAuth();
 
   // Details editing. Phone matters most — it was captured once at signup with
@@ -263,6 +265,19 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({ onCl
                 <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
               </button>
             </div>
+          )}
+
+          {/* Quiet, and above Sign Out rather than beside it: leaving a club and
+              leaving the app are different exits and should not be one tap
+              apart in the same colour. */}
+          {club && onLeaveClub && (
+            <button
+              type="button"
+              onClick={onLeaveClub}
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl text-xs font-medium text-text-muted hover:text-danger transition-colors cursor-pointer"
+            >
+              <DoorOpen className="w-4 h-4" /> Leave {club.name}
+            </button>
           )}
 
           <button

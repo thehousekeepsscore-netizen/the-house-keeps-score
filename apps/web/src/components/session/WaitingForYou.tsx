@@ -45,6 +45,13 @@ export interface WaitingRow extends QueuedRequest {
   onApprove: () => void;
   onDismiss: () => void;
   pending?: boolean;
+  /**
+   * Set when the viewer is the one who asked and is not an admin. The row is
+   * then a receipt, not a decision: "waiting for the host", and the one thing
+   * the asker can do with their own question — take it back. Approve and
+   * reject are never shown on it; they were refused by the server anyway.
+   */
+  onWithdraw?: () => void;
 }
 
 /** One row, and the region shows exactly two of them. Keep in step with the CSS. */
@@ -192,7 +199,32 @@ export const WaitingForYou: React.FC<{
                 </p>
               </div>
 
-              {row.blockedReason ? (
+              {row.onWithdraw ? (
+                /* The asker's own row. Asks first, because a withdrawn bank has
+                   to be asked for again and the host sees it vanish. */
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-text-faint whitespace-nowrap">Waiting for the host</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={row.pending}
+                    onClick={() =>
+                      confirm({
+                        title: 'Withdraw your request?',
+                        description: `${tagOf(row)}${
+                          row.amount !== undefined ? ` · ${formatAmount(row.amount)}` : ''
+                        }. You can ask again at any time.`,
+                        confirmLabel: 'Withdraw',
+                        cancelLabel: 'Keep it',
+                        onConfirm: row.onWithdraw!,
+                      })
+                    }
+                    className="whitespace-nowrap"
+                  >
+                    Withdraw
+                  </Button>
+                </div>
+              ) : row.blockedReason ? (
                 /* No tick at all, in either state. A control that looks live
                    and is refused teaches the rule by refusing, and this is the
                    one row where the reason is worth the width. */
