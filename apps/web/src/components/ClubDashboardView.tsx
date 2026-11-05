@@ -51,7 +51,7 @@ const POLL_INTERVAL_MS = 15_000;
 
 // Cache keys for the shared server-state layer. Exported so mutations elsewhere
 // can invalidate these lists without duplicating the string.
-export const CLUBS_KEY = 'clubs';
+export const CLUBS_KEY = clubsApi.CLUBS_KEY;
 
 
 
@@ -252,6 +252,22 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
       console.error('Failed to send join request:', err);
       alert('Failed to send join request. Please try again.');
     }
+  });
+
+  /**
+   * Taking back your own request to join. Keyed by request id; the failure is
+   * shown beside the button rather than in an alert, and the list refreshes
+   * either way — a 409 means an admin decided it a moment ago.
+   */
+  const [cancelError, setCancelError] = useState<{ requestId: string; message: string } | null>(null);
+  const cancelJoin = useAction(async (requestId: string, clubId: string) => {
+    setCancelError(null);
+    try {
+      await clubsApi.cancelJoinRequest(clubId, requestId);
+    } catch (err) {
+      setCancelError({ requestId, message: err instanceof Error ? err.message : 'Could not cancel. Please try again.' });
+    }
+    await refresh();
   });
 
   // Admin Approve / Reject Request
@@ -567,12 +583,27 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                             <Play className="w-3.5 h-3.5 fill-current" /> Enter club
                           </button>
                         ) : myPendingReq ? (
-                          <button
-                            disabled
-                            className="w-full min-h-[44px] furniture text-text-muted font-medium py-2.5 px-4 rounded-xl text-xs cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            <Clock className="w-3.5 h-3.5 text-warning" /> Request pending
-                          </button>
+                          /* Pending, and now takeable back: a request to the
+                             wrong club used to sit there until an admin
+                             noticed. No confirm — asking again is one tap. */
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="flex-1 min-h-[44px] flex items-center justify-center gap-2 text-text-muted font-medium text-xs">
+                                <Clock className="w-3.5 h-3.5 text-warning" /> Request pending
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => cancelJoin.run(myPendingReq.id, club.id)}
+                                disabled={cancelJoin.isPending(myPendingReq.id)}
+                                className="min-h-[44px] px-4 rounded-xl text-xs font-medium text-text-muted hover:text-text border border-line hover:border-line-strong transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                Cancel request
+                              </button>
+                            </div>
+                            {cancelError?.requestId === myPendingReq.id && (
+                              <p role="alert" className="text-xs text-warning text-center">{cancelError.message}</p>
+                            )}
+                          </div>
                         ) : isFull ? (
                           <button
                             disabled
@@ -861,8 +892,19 @@ export const ClubDashboardView: React.FC<ClubDashboardViewProps> = ({
                       </div>
                       <div>
                         {req.status === 'pending' && (
-                          <span className="px-2.5 py-0.5 bg-warning/15 border border-warning/40 text-warning font-medium text-[10px] uppercase rounded-full flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> Pending Review
+                          <span className="flex items-center gap-2">
+                            <span className="px-2.5 py-0.5 bg-warning/15 border border-warning/40 text-warning font-medium text-[10px] uppercase rounded-full flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> Pending Review
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => cancelJoin.run(req.id, req.clubId)}
+                              disabled={cancelJoin.isPending(req.id)}
+                              aria-label={`Cancel request to join ${req.clubName}`}
+                              className="tap-44 text-[11px] font-medium text-text-muted hover:text-text cursor-pointer disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
                           </span>
                         )}
                         {req.status === 'accepted' && (

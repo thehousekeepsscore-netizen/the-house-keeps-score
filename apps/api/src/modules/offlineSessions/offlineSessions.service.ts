@@ -1312,6 +1312,103 @@ export async function requestBuyIn(
   return request;
 }
 
+/*
+ * TAKING BACK A QUESTION YOU ASKED.
+ *
+ * Every request here is a question put to the host — "may I have 5,000", "may
+ * I sit in", "here is my count" — and until now only the host could close one.
+ * A player who mistyped 50,000, tapped Join by accident, or sent a count before
+ * the last stack was counted could only wait to be rejected, and the rejection
+ * reached them as their request quietly vanishing.
+ *
+ * Each withdraw is the requester's alone, works only while the question is
+ * still open, and takes the session lock that every decision takes — so a
+ * withdraw and an approval racing for the same request cannot both succeed:
+ * whichever reaches the lock second finds nothing pending. Withdrawing is not
+ * money moving, so it is not audited; the request row (for a bank) keeps its
+ * own record as `withdrawn`, which every live calculation ignores because they
+ * all read `approved` and `pending` by equality.
+ *
+ * Lobby and playing only, as asking is: a frozen table refuses every change.
+ */
+
+/** A player taking back their own pending bank. */
+export async function withdrawBuyInRequest(
+  sessionId: string, clubId: string, userId: string, requestId: string
+) {
+  const { result: request } = await mutateSessionState(sessionId, async (state, tx, row) => {
+    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    const claimed = await tx.buyInRequest.updateMany({
+      where: { id: requestId, sessionId, userId, status: 'pending' },
+      data: { status: 'withdrawn' },
+    });
+    if (claimed.count === 0) {
+      const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
+      if (!req || req.sessionId !== sessionId) throw new HttpError(404, 'Buy-in request not found');
+      if (req.userId !== userId) throw new HttpError(403, 'Only the player it is for can withdraw a buy-in request');
+      throw new HttpError(409, 'This request has already been decided');
+    }
+    const withdrawn = await tx.buyInRequest.findUniqueOrThrow({ where: { id: requestId } });
+    return { state, result: withdrawn };
+  });
+
+  emitToClub(clubId, 'club:buyin-withdrawn', { sessionId, requestId, userId, request });
+  return request;
+}
+
+/** A player taking back their own request for a seat. */
+export async function withdrawSitIn(sessionId: string, clubId: string, userId: string) {
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    if (!(state.pendingSitInUids || []).includes(userId)) {
+      throw new HttpError(409, 'You have no seat request waiting');
+    }
+    const sitInRequestedAt = { ...(state.sitInRequestedAt || {}) };
+    delete sitInRequestedAt[userId];
+    return {
+      state: {
+        ...state,
+        pendingSitInUids: (state.pendingSitInUids || []).filter((u) => u !== userId),
+        sitInRequestedAt,
+      },
+      result: null,
+    };
+  });
+
+  emitToClub(clubId, 'club:sitin-withdrawn', { sessionId, userId, session });
+  return session;
+}
+
+/**
+ * A player taking back a count they sent too early.
+ *
+ * Only while it is pending: once an admin has confirmed it the count is the
+ * night's record, and the way to change it is the admin's amend.
+ */
+export async function withdrawCashOut(sessionId: string, clubId: string, userId: string) {
+  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+    assertPhase(row, state, ['lobby', 'playing']);
+
+    const entry = (state.cashOuts || []).find((c) => c.userId === userId);
+    if (!entry) throw new HttpError(409, 'You have no cash-out waiting');
+    if (entry.status !== 'pending') {
+      throw new HttpError(409, 'Your count has already been confirmed — ask an admin to correct it');
+    }
+    return {
+      state: { ...state, cashOuts: (state.cashOuts || []).filter((c) => c.userId !== userId) },
+      result: null,
+    };
+  });
+
+  emitToClub(clubId, 'club:cashout-withdrawn', { sessionId, userId, session });
+  return session;
+}
+
 export async function listBuyInRequests(sessionId: string) {
   return prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } });
 }

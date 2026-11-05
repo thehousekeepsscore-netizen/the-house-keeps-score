@@ -141,6 +141,18 @@ describe('when another admin got there first', () => {
     expect(onStale).toHaveBeenCalledTimes(1);
   });
 
+  it('reads a request the asker withdrew as stale, not a failure', async () => {
+    const onDecide = vi.fn().mockRejectedValue(new ApiError(404, 'Join request not found'));
+    const onStale = vi.fn();
+    setup({ onDecide, onStale });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Accept Priya Shah' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/no longer waiting/i));
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
   it('does not treat a genuine failure as stale', async () => {
     const onDecide = vi.fn().mockRejectedValue(new Error('network down'));
     const onStale = vi.fn();
@@ -167,6 +179,7 @@ describe('a refusal from the API is its own message', () => {
 
   it('classifies the three cases apart', () => {
     expect(classifyJoinRequestError(new ApiError(409, 'x')).kind).toBe('stale');
+    expect(classifyJoinRequestError(new ApiError(404, 'x')).kind).toBe('stale');
     expect(classifyJoinRequestError(new ApiError(403, 'x')).kind).toBe('forbidden');
     expect(classifyJoinRequestError(new ApiError(500, 'x')).kind).toBe('unknown');
     expect(classifyJoinRequestError(new Error('boom')).kind).toBe('unknown');

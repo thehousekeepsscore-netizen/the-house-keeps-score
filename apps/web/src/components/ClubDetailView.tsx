@@ -163,6 +163,10 @@ export const SESSION_PATCH_EVENTS = [
   'club:settling-cancelled',
   'club:cashout-amended',
   'club:lobby-player-removed',
+  // A player taking back their own seat request or early count: the queue row
+  // leaves every screen at once, not on the next refetch.
+  'club:sitin-withdrawn',
+  'club:cashout-withdrawn',
   // Setting a night's rake or winners' cut decides what every player's chips
   // are worth at the end. Nobody should learn that by refreshing.
   'club:settlement-rules-set',
@@ -1263,6 +1267,9 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     socket.on('club:buyin-requested', onBuyinRequested);
     socket.on('club:buyin-decided', onBuyinDecided);
     socket.on('club:buyin-voided', onBuyinVoided);
+    // The row comes back marked `withdrawn`; patching it is what drops it from
+    // every host's queue, exactly as a decision does.
+    socket.on('club:buyin-withdrawn', onBuyinVoided);
     for (const [event, handler] of sessionHandlers) socket.on(event, handler);
     socket.on('club:session-settled', onSessionSettled);
     socket.on('club:session-cancelled', onSessionCancelled);
@@ -1277,6 +1284,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       socket.off('club:buyin-requested', onBuyinRequested);
       socket.off('club:buyin-decided', onBuyinDecided);
       socket.off('club:buyin-voided', onBuyinVoided);
+      socket.off('club:buyin-withdrawn', onBuyinVoided);
       for (const [event, handler] of sessionHandlers) socket.off(event, handler);
       socket.off('club:session-settled', onSessionSettled);
       socket.off('club:session-cancelled', onSessionCancelled);
@@ -2238,6 +2246,56 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   const standUpAction = useAction(handleStandUp);
   const decideSitInAction = useAction(handleDecideSitIn);
   const decideCashOutAction = useAction(handleDecideCashOut);
+
+  /**
+   * A player taking back their own question. Keyed by the queue row's id so
+   * one withdraw in flight never disables another row.
+   */
+  const withdrawAction = useAction(async (_rowId: string, q: { id: string; kind: string }) => {
+    if (!activeSession) return;
+    try {
+      if (q.kind === 'buy-in') {
+        const row = await offlineSessionsApi.withdrawBuyInRequest(club.id, activeSession.id, q.id);
+        cache.update<SessionResource>(`${clubKey}:active-session`, (prev) =>
+          prev ? { ...prev, buyIns: prev.buyIns.map((b) => (b.id === row.id ? { ...b, ...row } : b)) } : { session: null, buyIns: [] },
+        write);
+      } else if (q.kind === 'sit-in') {
+        applySession(await offlineSessionsApi.withdrawSitIn(club.id, activeSession.id));
+      } else {
+        applySession(await offlineSessionsApi.withdrawCashOut(club.id, activeSession.id));
+      }
+      pushToast('Request withdrawn', 'The host no longer sees it. You can ask again at any time.', 'info');
+    } catch (err) {
+      pushToast('Could not withdraw', err instanceof Error ? err.message : 'Please try again.', 'warning');
+    }
+  });
+
+  /**
+   * Leaving the club. Through the confirm dialog — it takes the club off this
+   * person's list — and the profile sheet closes first so the dialog is not
+   * stacked under it. Refused by the server for the owner (who is never
+   * offered it) and for anyone part of tonight, which comes back as the reason.
+   */
+  const leaveClub = () => {
+    setShowProfileModal(false);
+    confirmAction({
+      title: `Leave ${club.name}?`,
+      description: "You'll stop seeing its nights and history. Your past results stay on the ranks. To come back, ask to join again.",
+      confirmLabel: 'Leave club',
+      cancelLabel: 'Stay',
+      onConfirm: async () => {
+        try {
+          await clubsApi.leaveClub(club.id);
+          // Off the dashboard list at once, then refetched when it mounts.
+          cache.update<clubsApi.ApiClub[]>(clubsApi.CLUBS_KEY, (prev) => (prev ?? []).filter((c) => c.id !== club.id), write);
+          cache.invalidate(clubsApi.CLUBS_KEY);
+          onBackToDashboard();
+        } catch (err) {
+          pushToast('Could not leave', err instanceof Error ? err.message : 'Please try again.', 'warning');
+        }
+      },
+    });
+  };
   const approveBuyInAction = useAction(handleApproveBuyIn);
   const rejectBuyInAction = useAction(handleRejectBuyIn);
 
@@ -2291,6 +2349,18 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       const name = q.userId === currentUser.uid ? 'You' : allUsers[q.userId]?.displayName || 'Player';
       const base = { ...q, name, avatarUrl: allUsers[q.userId]?.avatarUrl };
 
+      // A player's own question is a receipt with one action — take it back.
+      // Approve and reject were never theirs, and the server refused both.
+      if (q.userId === currentUser.uid && !isAdmin) {
+        return {
+          ...base,
+          pending: withdrawAction.isPending(q.id),
+          onApprove: () => {},
+          onDismiss: () => {},
+          onWithdraw: () => withdrawAction.run(q.id, q),
+        };
+      }
+
       if (q.kind === 'buy-in') {
         const req = buyInRequests.find((r) => r.id === q.id);
         // An admin may not wave through a buy-in that credits themselves —
@@ -2336,8 +2406,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     });
   }, [
     activeSession, night.queue, allUsers, buyInRequests, currentUser.uid,
-    whoIsHere, isSuperUser,
-    approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction,
+    whoIsHere, isSuperUser, isAdmin,
+    approveBuyInAction, rejectBuyInAction, decideSitInAction, decideCashOutAction, withdrawAction,
   ]);
 
   /**
@@ -4619,6 +4689,8 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           club={club}
           isClubAdmin={isAdmin}
           onOpenClubSettings={() => { setShowProfileModal(false); setShowSettingsModal(true); }}
+          // The owner cannot leave; handing the club over is its own change.
+          onLeaveClub={isOwner ? undefined : leaveClub}
         />
       )}
 

@@ -19,6 +19,14 @@ offlineSessionsRouter.post('/:sessionId/resume', asyncHandler(offlineSessionsCon
 offlineSessionsRouter.post('/:sessionId/cancel', asyncHandler(offlineSessionsController.cancelNight));
 offlineSessionsRouter.post('/:sessionId/lift-time-limit', asyncHandler(offlineSessionsController.liftTimeLimit));
 offlineSessionsRouter.post('/:sessionId/sit-in-requests', asyncHandler(offlineSessionsController.requestSitIn));
+// The requester taking back their own question. A named path rather than a
+// third decision verb: approve/reject are an admin's, this is the player's.
+offlineSessionsRouter.post('/:sessionId/sit-in-requests/withdraw', asyncHandler(offlineSessionsController.withdrawSitIn));
+offlineSessionsRouter.post('/:sessionId/cash-out-requests/withdraw', asyncHandler(offlineSessionsController.withdrawCashOut));
+offlineSessionsRouter.post(
+  '/:sessionId/buy-in-requests/:requestId/withdraw',
+  asyncHandler(offlineSessionsController.withdrawBuyIn)
+);
 offlineSessionsRouter.post(
   '/:sessionId/sit-in-requests/:decision(approve|reject)',
   asyncHandler(offlineSessionsController.decideSitIn)
