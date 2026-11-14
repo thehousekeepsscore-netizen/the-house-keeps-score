@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Sheet } from './Sheet';
 import { Button } from './Button';
 
@@ -33,8 +33,15 @@ export interface ConfirmDialogProps {
   /** Label for the destructive action. Say the verb: "Remove", not "OK". */
   confirmLabel?: string;
   cancelLabel?: string;
+  /**
+   * An optional line of free text gathered with the confirmation — the "why"
+   * of a refusal. Never required: the confirm button works with it empty, and
+   * `onConfirm` then receives nothing. Kept to one line and 200 characters,
+   * the same as a void's reason, because it is read on a phone at a table.
+   */
+  reasonField?: { label: string; placeholder?: string };
   /** May be async; the dialog shows a pending state until it settles. */
-  onConfirm: () => void | Promise<void>;
+  onConfirm: (reason?: string) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -44,21 +51,29 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   description,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  reasonField,
   onConfirm,
   onCancel,
 }) => {
   const [pending, setPending] = useState(false);
+  const [reason, setReason] = useState('');
+
+  // One dialog instance serves every question on a screen, so a reason typed
+  // for one refusal must never be waiting in the box for the next.
+  useEffect(() => {
+    if (open) setReason('');
+  }, [open, title, description]);
 
   const handleConfirm = useCallback(async () => {
     setPending(true);
     try {
-      await onConfirm();
+      await onConfirm(reasonField ? reason.trim() || undefined : undefined);
     } finally {
       // Reset even on failure: the sheet may stay open to show an error, and a
       // permanently spinning button would strand the user with no way forward.
       setPending(false);
     }
-  }, [onConfirm]);
+  }, [onConfirm, reasonField, reason]);
 
   return (
     <Sheet
@@ -78,7 +93,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </Button>
         </>
       }
-    />
+    >
+      {reasonField && (
+        <input
+          aria-label={reasonField.label}
+          placeholder={reasonField.placeholder ?? reasonField.label}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          maxLength={200}
+          disabled={pending}
+          className="w-full min-h-[48px] px-3 rounded-[var(--radius-sm)] bg-bg text-base text-text outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        />
+      )}
+    </Sheet>
   );
 };
 
@@ -97,7 +124,8 @@ export interface ConfirmRequest {
   description?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  onConfirm: () => void | Promise<void>;
+  reasonField?: { label: string; placeholder?: string };
+  onConfirm: (reason?: string) => void | Promise<void>;
 }
 
 export function useConfirm() {
@@ -113,9 +141,10 @@ export function useConfirm() {
       description={request?.description}
       confirmLabel={request?.confirmLabel}
       cancelLabel={request?.cancelLabel}
+      reasonField={request?.reasonField}
       onCancel={close}
-      onConfirm={async () => {
-        await request?.onConfirm();
+      onConfirm={async (reason) => {
+        await request?.onConfirm(reason);
         close();
       }}
     />

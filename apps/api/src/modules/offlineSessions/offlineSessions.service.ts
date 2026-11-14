@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { emitToClub } from '../../realtime/socket.js';
+import type { PersonalPayload } from '../../realtime/socket.js';
 import * as clubsService from '../clubs/clubs.service.js';
 import * as notificationsService from '../notifications/notifications.service.js';
 import { computeSettlement, SettlementSettings, SETTLEMENT_ENGINE_VERSION } from './settlementEngine.js';
@@ -596,13 +597,33 @@ export async function requestSitIn(
   return session;
 }
 
+/**
+ * The reason a request was declined, for the one player it concerns.
+ *
+ * Declining used to reach the asker as their request quietly vanishing. An
+ * admin may now say why, and the "why" is delivered only to the socket of the
+ * player who asked: it is a note to them, not an announcement to the club.
+ * Nothing is returned for an approval, or when no reason was given, so the
+ * event is then an ordinary broadcast.
+ *
+ * Deliberately not stored. There is no column for it, a rejected request is
+ * not an audited money event, and adding either is a schema change this does
+ * not need — a player whose phone is asleep still sees the request gone, as
+ * before, and the notification that will reach a sleeping phone is Web Push.
+ */
+function declinedBecause(userId: string, approve: boolean, reason?: string): PersonalPayload | undefined {
+  if (approve || !reason) return undefined;
+  return (viewerUid) => (viewerUid === userId ? { reason } : undefined);
+}
+
 export async function decideSitIn(
   sessionId: string,
   clubId: string,
   requesterId: string,
   isSuperAdmin: boolean,
   userId: string,
-  approve: boolean
+  approve: boolean,
+  reason?: string
 ) {
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
@@ -634,7 +655,11 @@ export async function decideSitIn(
   });
 
 
-  emitToClub(clubId, 'club:sitin-decided', { sessionId, userId, approved: approve, session });
+  emitToClub(
+    clubId, 'club:sitin-decided',
+    { sessionId, userId, approved: approve, decidedBy: requesterId, session },
+    declinedBecause(userId, approve, reason)
+  );
   return session;
 }
 
@@ -1182,7 +1207,7 @@ export async function requestCashOut(sessionId: string, clubId: string, userId: 
  */
 export async function decideCashOut(
   sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean,
-  userId: string, approve: boolean, amount?: number
+  userId: string, approve: boolean, amount?: number, reason?: string
 ) {
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
@@ -1221,7 +1246,11 @@ export async function decideCashOut(
   });
 
 
-  emitToClub(clubId, 'club:cashout-decided', { sessionId, userId, approved: approve, session });
+  emitToClub(
+    clubId, 'club:cashout-decided',
+    { sessionId, userId, approved: approve, decidedBy: requesterId, session },
+    declinedBecause(userId, approve, reason)
+  );
   return session;
 }
 
@@ -1418,7 +1447,8 @@ export async function decideBuyInRequest(
   requesterId: string,
   isSuperAdmin: boolean,
   requestId: string,
-  approve: boolean
+  approve: boolean,
+  reason?: string
 ) {
   const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new HttpError(404, 'Session not found');
@@ -1476,9 +1506,11 @@ export async function decideBuyInRequest(
 
   // Emitted after the commit, never inside it: an event sent from within a
   // transaction is a claim about state that may still roll back.
-  emitToClub(session.clubId, 'club:buyin-decided', {
-    sessionId, requestId, userId: result.req.userId, approve, request: result.decided,
-  });
+  emitToClub(
+    session.clubId, 'club:buyin-decided',
+    { sessionId, requestId, userId: result.req.userId, approve, decidedBy: requesterId, request: result.decided },
+    declinedBecause(result.req.userId, approve, reason)
+  );
 
   // Only approvals are messaged, and never awaited — a slow or failing SMS
   // provider must not hold up (or fail) the approval that already committed.
@@ -1994,7 +2026,22 @@ export async function settleSession(sessionId: string, requesterId: string, isSu
     return { clubId: row.clubId, settlement, sessionName: row.sessionName, summaries };
   });
 
-  emitToClub(result.clubId, 'club:session-settled', { sessionId });
+  /*
+   * The event says what was settled, and tells each player their own result.
+   *
+   * It used to carry only the session id, so every phone at the table learned
+   * that *something* had ended and had to go and look. The title and the
+   * record id are everybody's. A net result is one person's: a player reads
+   * only their own line in History, so each figure goes to the socket whose
+   * authenticated user it belongs to and is never in the shared payload.
+   * Someone who did not play is told the night is settled, and no number.
+   */
+  const netByUser = new Map(result.summaries.map((s) => [s.userId, s.netResult]));
+  emitToClub(
+    result.clubId, 'club:session-settled',
+    { sessionId, recordId: result.settlement.id, title: result.sessionName, settledBy: requesterId },
+    (viewerUid) => (netByUser.has(viewerUid) ? { you: { net: netByUser.get(viewerUid)! } } : undefined)
+  );
 
   // Sent only after the settlement transaction has committed, and never
   // awaited — each player is told their own result and their own running

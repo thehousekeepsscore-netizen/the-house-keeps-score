@@ -116,3 +116,53 @@ describe('initSettlementRules specifically', () => {
     expect(JSON.parse(lastRequest().raw!)).toEqual({ sessionRakeAmount: 1000, winnersCutPercent: 5 });
   });
 });
+
+describe('the reason for a refusal', () => {
+  // Several calls per test, and a Response body can be read only once.
+  beforeEach(() => {
+    fetchMock.mockImplementation(async () =>
+      new Response(JSON.stringify({ session: { id: SESSION, engineState: {} } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+  });
+
+  const body = () => {
+    const { raw } = lastRequest();
+    return raw === undefined ? undefined : JSON.parse(raw);
+  };
+
+  it('travels with a rejected bank, to the reject route', async () => {
+    await api.decideBuyInRequest(CLUB, SESSION, 'r1', false, 'Settle up first');
+    expect(lastRequest().url).toMatch(/\/buy-in-requests\/r1\/reject$/);
+    expect(lastRequest().contentType).toBe('application/json');
+    expect(body()).toEqual({ reason: 'Settle up first' });
+  });
+
+  it('sends a rejected bank with no body at all when there is no reason', async () => {
+    await api.decideBuyInRequest(CLUB, SESSION, 'r1', false);
+    expect(lastRequest().raw).toBeUndefined();
+  });
+
+  it('never travels with an approval, whatever the caller passed', async () => {
+    await api.decideBuyInRequest(CLUB, SESSION, 'r1', true, 'ignored');
+    expect(lastRequest().raw).toBeUndefined();
+
+    await api.decideSitIn(CLUB, SESSION, 'u1', true, 'ignored');
+    expect(body()).toEqual({ userId: 'u1' });
+
+    await api.decideCashOut(CLUB, SESSION, 'u1', true, 3000, 'ignored');
+    expect(body()).toEqual({ userId: 'u1', amount: 3000 });
+  });
+
+  it('travels with a declined seat request and a count sent back', async () => {
+    await api.decideSitIn(CLUB, SESSION, 'u1', false, 'Table is full');
+    expect(lastRequest().url).toMatch(/\/sit-in-requests\/reject$/);
+    expect(body()).toEqual({ userId: 'u1', reason: 'Table is full' });
+
+    await api.decideCashOut(CLUB, SESSION, 'u1', false, undefined, 'Two stacks short');
+    expect(lastRequest().url).toMatch(/\/cash-out-requests\/reject$/);
+    expect(body()).toEqual({ userId: 'u1', reason: 'Two stacks short' });
+  });
+});

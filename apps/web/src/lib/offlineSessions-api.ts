@@ -232,10 +232,17 @@ export async function requestSitIn(clubId: string, sessionId: string, userId?: s
   return toPokerSession(s);
 }
 
-export async function decideSitIn(clubId: string, sessionId: string, userId: string, approve: boolean): Promise<PokerSession> {
+/**
+ * `reason` on the three decisions below is the admin's optional note to the
+ * player being declined. The server reads it only on a reject and delivers it
+ * only to that player.
+ */
+export async function decideSitIn(
+  clubId: string, sessionId: string, userId: string, approve: boolean, reason?: string
+): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/sit-in-requests/${approve ? 'approve' : 'reject'}`,
-    { method: 'POST', body: { userId } }
+    { method: 'POST', body: { userId, ...(!approve && reason ? { reason } : {}) } }
   );
   return toPokerSession(s);
 }
@@ -247,11 +254,11 @@ export async function requestCashOut(clubId: string, sessionId: string, amount: 
 
 /** `amount` corrects the player's own count on the way through — see the service. */
 export async function decideCashOut(
-  clubId: string, sessionId: string, userId: string, approve: boolean, amount?: number
+  clubId: string, sessionId: string, userId: string, approve: boolean, amount?: number, reason?: string
 ): Promise<PokerSession> {
   const s = await apiFetch<ApiOfflineSession>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/cash-out-requests/${approve ? 'approve' : 'reject'}`,
-    { method: 'POST', body: { userId, amount } });
+    { method: 'POST', body: { userId, amount, ...(!approve && reason ? { reason } : {}) } });
   return toPokerSession(s);
 }
 
@@ -281,10 +288,12 @@ export async function requestBuyIn(
   return toBuyInRequest(created);
 }
 
-export async function decideBuyInRequest(clubId: string, sessionId: string, requestId: string, approve: boolean): Promise<PokerSession | null> {
+export async function decideBuyInRequest(
+  clubId: string, sessionId: string, requestId: string, approve: boolean, reason?: string
+): Promise<PokerSession | null> {
   const s = await apiFetch<ApiOfflineSession | null>(
     `/clubs/${clubId}/offline-sessions/${sessionId}/buy-in-requests/${requestId}/${approve ? 'approve' : 'reject'}`,
-    { method: 'POST' }
+    { method: 'POST', ...(!approve && reason ? { body: { reason } } : {}) }
   );
   return s ? toPokerSession(s) : null;
 }

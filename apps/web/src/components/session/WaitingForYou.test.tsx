@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WaitingForYou, WaitingRow } from './WaitingForYou';
 
@@ -225,8 +225,44 @@ describe('acting on a row', () => {
     await userEvent.click(screen.getByRole('button', { name: /^approve$/i }));
     expect(onApprove).toHaveBeenCalledTimes(1);
 
+    // Reject opens the sheet where the host can say why, then acts.
     await userEvent.click(screen.getByRole('button', { name: /^reject$/i }));
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByText(/reject this request\?/i)).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^reject$/i }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledWith(undefined);
+  });
+
+  it('passes the reason the host typed, trimmed, and nothing when left empty', async () => {
+    const onDismiss = vi.fn();
+    render(<WaitingForYou rows={[row({ name: 'Priya', onDismiss })]} formatAmount={fmt} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /reject priya/i }));
+    await userEvent.type(screen.getByLabelText(/tell priya why \(optional\)/i), '  Settle up first ');
+    await userEvent.click(screen.getByRole('button', { name: /^reject$/i }));
+    expect(onDismiss).toHaveBeenCalledWith('Settle up first');
+  });
+
+  it('never carries a reason typed for one person into the next question', async () => {
+    render(
+      <WaitingForYou
+        rows={[row({ id: 'q1', name: 'Priya' }), row({ id: 'q2', userId: 'dev', name: 'Dev' })]}
+        formatAmount={fmt}
+      />
+    );
+    await userEvent.click(screen.getByRole('button', { name: /reject priya/i }));
+    await userEvent.type(screen.getByLabelText(/tell priya why/i), 'Not tonight');
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await userEvent.click(screen.getByRole('button', { name: /reject dev/i }));
+    expect(screen.getByLabelText(/tell dev why/i)).toHaveValue('');
+  });
+
+  it('asks for no reason when approving', async () => {
+    render(<WaitingForYou rows={[row({ name: 'Priya' })]} formatAmount={fmt} />);
+    await userEvent.click(screen.getByRole('button', { name: /approve priya/i }));
+    expect(screen.queryByLabelText(/why/i)).toBeNull();
   });
 
   it('asks before a tick moves money', async () => {

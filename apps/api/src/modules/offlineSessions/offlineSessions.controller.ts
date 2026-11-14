@@ -146,6 +146,21 @@ export async function requestSitIn(req: Request, res: Response) {
 
 const sitInDecisionSchema = z.object({ userId: z.string().min(1) });
 
+/**
+ * Why a request was declined. Optional free text from the admin, for the
+ * player it concerns. Trimmed, capped and dropped if empty, exactly as a
+ * void's reason is, so nobody is ever shown a blank explanation. Lenient on
+ * purpose: a reason that is not a string is ignored rather than refused,
+ * because failing a decision over its footnote would be the wrong way round.
+ *
+ * This only cleans the text. Whether it is used at all — only on a reject, and
+ * only for the player concerned — is the service's rule, kept in one place.
+ */
+function declineReason(req: Request): string | undefined {
+  const raw = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  return raw ? raw.slice(0, 200) : undefined;
+}
+
 export async function decideSitIn(req: Request, res: Response) {
   const { userId } = sitInDecisionSchema.parse(req.body);
   const session = await offlineSessionsService.decideSitIn(
@@ -154,7 +169,8 @@ export async function decideSitIn(req: Request, res: Response) {
     req.user!.sub,
     req.user!.isSuperAdmin,
     userId,
-    req.params.decision === 'approve'
+    req.params.decision === 'approve',
+    declineReason(req)
   );
   return res.json(session);
 }
@@ -179,7 +195,7 @@ export async function decideCashOut(req: Request, res: Response) {
   const { userId, amount } = cashOutDecisionSchema.parse(req.body);
   const session = await offlineSessionsService.decideCashOut(
     req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin,
-    userId, req.params.decision === 'approve', amount);
+    userId, req.params.decision === 'approve', amount, declineReason(req));
   return res.json(session);
 }
 
@@ -247,7 +263,8 @@ export async function decideBuyInRequest(req: Request, res: Response) {
     req.user!.sub,
     req.user!.isSuperAdmin,
     req.params.requestId,
-    approve
+    approve,
+    declineReason(req)
   );
   return res.json(session);
 }
