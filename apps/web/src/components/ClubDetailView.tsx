@@ -25,6 +25,7 @@ import * as clubsApi from '../lib/clubs-api';
 import { ClubRosterEntry } from '../lib/clubs-api';
 import { JOIN_REQUESTS_KEY } from '../lib/clubs-api';
 import * as offlineSessionsApi from '../lib/offlineSessions-api';
+import { declinedToast, settledToast, type DecisionEvent, type DeclinedKind, type SettledEvent } from '../lib/event-messages';
 import type { ApiOfflineSession, ApiBuyInRequest } from '../lib/offlineSessions-api';
 
 /**
@@ -1205,15 +1206,28 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
       once, since every one of them is derived from these rows.
     */
     const onBuyinVoided = (p: { userId?: string; request?: ApiBuyInRequest }) => patchBuyIn(p);
-    const onBuyinDecided = (p: { userId?: string; expired?: boolean; request?: ApiBuyInRequest }) => {
+    // A decline used to reach its asker as the request vanishing. The event
+    // now names who decided and — on the asker's phone only — why.
+    const sayIfDeclined = (kind: DeclinedKind, p: DecisionEvent) => {
+      const toast = declinedToast(kind, p, currentUser.uid, (n) => `${Math.round(n).toLocaleString()} Chips`);
+      if (toast) pushToast(toast.title, toast.message, toast.type);
+    };
+    const onBuyinDecided = (p: DecisionEvent & { request?: ApiBuyInRequest }) => {
       notifyIfExpired(p, 'Buy-in request', 'Ask for chips again.');
+      sayIfDeclined('buy-in', p);
       // An approval also seats the player, which lives in the session's
       // engineState and is not in this payload. The row patch is what makes
       // the pending entry disappear immediately; the session catches up on the
       // next revalidation rather than on a blocking round trip.
       patchBuyIn(p);
     };
-    const onSessionSettled = () => {
+    const onSessionSettled = (p?: SettledEvent) => {
+      // Each player is told their own result; the figure is in this phone's
+      // copy of the event and nobody else's. The host who settled is not told
+      // twice, and an older API that sends no title says nothing, as before.
+      const toast = settledToast(p, currentUser.uid, (n) =>
+        `${n > 0 ? '+' : '-'}${Math.abs(Math.round(n)).toLocaleString()} Chips`);
+      if (toast) pushToast(toast.title, toast.message, toast.type, MONEY_TOAST_MS);
       refreshActiveSession();
       refreshHistory();
       refreshLeaderboard();
@@ -1241,14 +1255,16 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
      * they all produce is the same patch, so it is written once.
      */
     const onSessionEvent = (
-      p: { userId?: string; expired?: boolean; session?: ApiOfflineSession | null },
+      p: DecisionEvent & { session?: ApiOfflineSession | null },
       event?: string
     ) => {
       if (event === 'club:sitin-decided') {
         notifyIfExpired(p, 'Sit-in request', 'Ask again when someone is at the console.');
+        sayIfDeclined('sit-in', p);
       }
       if (event === 'club:cashout-decided') {
         notifyIfExpired(p, 'Cash-out', 'Re-count your chips and send it again.');
+        sayIfDeclined('cash-out', p);
       }
       patchSession(p);
     };
@@ -1629,14 +1645,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
 
   // Ask to be dealt in — goes to an admin rather than seating immediately.
 
-  const handleDecideSitIn = async (userId: string, approve: boolean) => {
+  const handleDecideSitIn = async (userId: string, approve: boolean, reason?: string) => {
     if (!isAdmin || !activeSession) {
       pushToast(!activeSession ? 'No live session' : 'Not allowed', !activeSession ? 'There is nothing running right now.' : 'Only a Club Admin can do this.', 'warning');
       return;
     }
     const name = allUsers[userId]?.displayName || 'Player';
     try {
-      applySession(await offlineSessionsApi.decideSitIn(club.id, activeSession.id, userId, approve));
+      applySession(await offlineSessionsApi.decideSitIn(club.id, activeSession.id, userId, approve, reason));
       pushToast(
         approve ? 'Player seated' : 'Request declined',
         approve ? `${name} is now at the table.` : `${name} was not seated.`,
@@ -1713,14 +1729,14 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     }
   };
 
-  const handleDecideCashOut = async (userId: string, approve: boolean) => {
+  const handleDecideCashOut = async (userId: string, approve: boolean, reason?: string) => {
     if (!isAdmin || !activeSession) {
       pushToast(!activeSession ? 'No live session' : 'Not allowed', !activeSession ? 'There is nothing running right now.' : 'Only a Club Admin can do this.', 'warning');
       return;
     }
     const name = userId === currentUser.uid ? 'You' : (allUsers[userId]?.displayName || 'Player');
     try {
-      applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, userId, approve));
+      applySession(await offlineSessionsApi.decideCashOut(club.id, activeSession.id, userId, approve, undefined, reason));
       pushToast(approve ? 'Cash-out confirmed' : 'Cash-out rejected',
         approve ? `${name} has left the table. The amount is locked for settlement.`
                 : `${name} can re-count and try again.`,
@@ -1797,7 +1813,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
    * hand-rolled inverse: the server may have refused for a reason that changed
    * more than this row, and the next revalidation reconciles the rest.
    */
-  const decideBuyIn = async (request: BuyInRequest, approve: boolean) => {
+  const decideBuyIn = async (request: BuyInRequest, approve: boolean, reason?: string) => {
     const key = `${clubKey}:active-session`;
     // Both taken before the request goes out: the snapshot for the rollback, the
     // token so the write-through below can prove which identity authorised it.
@@ -1818,7 +1834,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
     );
 
     try {
-      const session = await offlineSessionsApi.decideBuyInRequest(club.id, activeSession!.id, request.id, approve);
+      const session = await offlineSessionsApi.decideBuyInRequest(club.id, activeSession!.id, request.id, approve, reason);
       // The POST already returns the updated session, including the seating
       // change an approval causes. Taking it from the response is what removes
       // the last GET from this path.
@@ -1852,12 +1868,12 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
   };
 
   // Reject Buy-In Request
-  const handleRejectBuyIn = async (request: BuyInRequest) => {
+  const handleRejectBuyIn = async (request: BuyInRequest, reason?: string) => {
     if (!isAdmin || !activeSession) {
       pushToast('Cannot reject', !activeSession ? 'There is no live session right now.' : 'Only a Club Admin can reject buy-ins.', 'warning');
       return;
     }
-    await decideBuyIn(request, false);
+    await decideBuyIn(request, false, reason);
   };
 
   // Calculate Settlement Preview for Cash-Outs
@@ -2378,7 +2394,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           blockedReason: blocked,
           pending: req ? approveBuyInAction.isPending(req.id) || rejectBuyInAction.isPending(req.id) : false,
           onApprove: () => req && approveBuyInAction.run(req),
-          onDismiss: () => req && rejectBuyInAction.run(req),
+          onDismiss: (reason?: string) => req && rejectBuyInAction.run(req, reason),
         };
       }
 
@@ -2387,7 +2403,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           ...base,
           pending: decideSitInAction.isPending(q.userId),
           onApprove: () => decideSitInAction.run(q.userId, true),
-          onDismiss: () => decideSitInAction.run(q.userId, false),
+          onDismiss: (reason?: string) => decideSitInAction.run(q.userId, false, reason),
         };
       }
 
@@ -2401,7 +2417,7 @@ export const ClubDetailView: React.FC<ClubDetailViewProps> = ({
           : selfApprovalBlock(whoIsHere, currentUser.uid, q.userId, 'cash-out'),
         pending: decideCashOutAction.isPending(q.userId),
         onApprove: () => decideCashOutAction.run(q.userId, true),
-        onDismiss: () => decideCashOutAction.run(q.userId, false),
+        onDismiss: (reason?: string) => decideCashOutAction.run(q.userId, false, reason),
       };
     });
   }, [

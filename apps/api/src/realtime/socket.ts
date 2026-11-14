@@ -175,6 +175,54 @@ export async function emitToSessionPerUser(
   }
 }
 
-export function emitToClub(clubId: string, event: string, payload: unknown) {
-  io?.to(`club:${clubId}`).emit(event, payload);
+/**
+ * What one viewer is told on top of what everybody is told.
+ *
+ * Returns the extra fields for that viewer, or nothing. Used where part of an
+ * event is one person's business: a player's own result when a night settles,
+ * or the reason their request was declined.
+ */
+export type PersonalPayload = (viewerUid: string) => Record<string, unknown> | undefined;
+
+/**
+ * Tell a club's room something.
+ *
+ * With `personal`, every socket still receives the event, and each one also
+ * receives whatever `personal` returns for its own authenticated user — the
+ * id set during the handshake, never one the client supplied. A player sees
+ * only their own line of a night's results in History; the event that
+ * announces those results must not be the place the whole table's figures
+ * leak, so they are never put in the shared payload.
+ *
+ * Never throws and never rejects. An event is a courtesy on top of a commit
+ * that has already happened, and a rejection here would be unhandled — which
+ * in this process means shutdown. If the per-socket path fails, the shared
+ * payload is still broadcast: everybody learns that something happened, and
+ * nobody is told anything that was not theirs.
+ */
+export function emitToClub(clubId: string, event: string, payload: unknown, personal?: PersonalPayload) {
+  if (!io) return;
+  const room = `club:${clubId}`;
+  if (!personal) {
+    io.to(room).emit(event, payload);
+    return;
+  }
+  const server = io;
+  void (async () => {
+    try {
+      const sockets = await server.in(room).fetchSockets();
+      // Every viewer's payload is worked out before anything is sent, so a
+      // failure part-way cannot leave half the room told and then, through the
+      // fallback below, told a second time.
+      const deliveries = sockets.map((socket) => {
+        const viewerUid = (socket.data as { userId?: string }).userId;
+        const extra = viewerUid ? personal(viewerUid) : undefined;
+        return { socket, body: extra ? { ...(payload as object), ...extra } : payload };
+      });
+      for (const { socket, body } of deliveries) socket.emit(event, body);
+    } catch (err) {
+      console.error(`[socket] personal emit failed for ${event}:`, err);
+      server.to(room).emit(event, payload);
+    }
+  })();
 }

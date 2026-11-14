@@ -43,7 +43,8 @@ export interface WaitingRow extends QueuedRequest {
   /** Blocks the action with a reason — e.g. an admin approving their own. */
   blockedReason?: string | null;
   onApprove: () => void;
-  onDismiss: () => void;
+  /** `reason` is the host's optional note to the player being declined. */
+  onDismiss: (reason?: string) => void;
   pending?: boolean;
   /**
    * Set when the viewer is the one who asked and is not an admin. The row is
@@ -53,6 +54,9 @@ export interface WaitingRow extends QueuedRequest {
    */
   onWithdraw?: () => void;
 }
+
+/** The optional "why" on a refusal. Named for the person who will read it. */
+const whyField = (name: string) => ({ label: `Tell ${name} why (optional)` });
 
 /** One row, and the region shows exactly two of them. Keep in step with the CSS. */
 /*
@@ -251,6 +255,7 @@ export const WaitingForYou: React.FC<{
                           row.amount !== undefined ? ` · ${formatAmount(row.amount)}` : ''
                         }`,
                         confirmLabel: 'Reject',
+                        reasonField: whyField(row.name),
                         onConfirm: row.onDismiss,
                       })
                     }
@@ -283,14 +288,27 @@ export const WaitingForYou: React.FC<{
                    a mis-tap there is socially expensive at a real table, and the
                    fix is hierarchy rather than an extra step.
                 
-                   These are labelled and deliberate, so they act directly; the
-                   ticks in the collapsed state are the ones that ask first. */
+                   Approve is labelled and deliberate, so it acts directly; the
+                   tick in the collapsed state is the one that asks first.
+                   Reject opens the same sheet the cross does, because that
+                   sheet is where the host can say why — a refusal with no
+                   reason reaches the player as their request vanishing. */
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="ghost"
                     size="sm"
                     disabled={row.pending}
-                    onClick={row.onDismiss}
+                    onClick={() =>
+                      confirm({
+                        title: 'Reject this request?',
+                        description: `${row.name} · ${tagOf(row)}${
+                          row.amount !== undefined ? ` · ${formatAmount(row.amount)}` : ''
+                        }`,
+                        confirmLabel: 'Reject',
+                        reasonField: whyField(row.name),
+                        onConfirm: row.onDismiss,
+                      })
+                    }
                     className="whitespace-nowrap"
                   >
                     Reject
