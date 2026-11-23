@@ -159,7 +159,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 5000, cashOut: 6000 },
         { userId: playerId, buyIn: 5000, cashOut: 4000 },
@@ -183,7 +183,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 2000, cashOut: 6000 },
         { userId: playerId, buyIn: 5000, cashOut: 4000 },
@@ -201,7 +201,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 5000, cashOut: 3000 },
         { userId: playerId, buyIn: 5000, cashOut: 4000 },
@@ -218,11 +218,11 @@ describe('the buy-in that settles is the one the banks say', () => {
     const wrong = await bank(ownerId, 5000);
     await bank(playerId, 5000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, wrong.id, 'approved the wrong amount');
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, wrong.id, 'approved the wrong amount');
     await bank(ownerId, 2000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 999999, cashOut: 3000 },
         { userId: playerId, buyIn: 999999, cashOut: 4000 },
@@ -240,7 +240,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(playerId, 3000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 0, cashOut: 9000 },
         { userId: playerId, buyIn: 0, cashOut: 2000 },
@@ -256,10 +256,10 @@ describe('the buy-in that settles is the one the banks say', () => {
     const voided = await bank(ownerId, 5000);
     await bank(ownerId, 1000);
     await bank(playerId, 3000);
-    await voidBuyInRequest(sessionId, ownerId, false, voided.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, voided.id);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 8000, cashOut: 2000 },
         { userId: playerId, buyIn: 3000, cashOut: 3000 },
@@ -283,7 +283,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(playerId, 4000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 2000, cashOut: 3000 },
         { userId: playerId, buyIn: 4000, cashOut: 3000 },
@@ -303,7 +303,7 @@ describe('the buy-in that settles is the one the banks say', () => {
     await enterSettling();
 
     await expect(
-      settleSession(sessionId, ownerId, false, {
+      settleSession(sessionId, clubId, ownerId, false, {
         entries: [
           { userId: ownerId, buyIn: 7500, cashOut: 1000 },
           { userId: playerId, buyIn: 4000, cashOut: 3000 },
@@ -317,10 +317,10 @@ describe('the buy-in that settles is the one the banks say', () => {
     await bank(ownerId, 5000);
     const gone = await bank(playerId, 5000);
     await bank(playerId, 1000);
-    await voidBuyInRequest(sessionId, ownerId, false, gone.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, gone.id);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 1, cashOut: 4000 },
         { userId: playerId, buyIn: 1, cashOut: 2000 },
@@ -351,7 +351,7 @@ describe('the two server-authoritative mechanisms do not collide', () => {
       },
     });
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 111, cashOut: 5500 },
         // Both figures wrong on the form: the cash-out is locked, the buy-in derived.
@@ -378,7 +378,7 @@ describe('the money rules are untouched by where the buy-in came from', () => {
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         // Wildly wrong submissions; the outcome must depend only on the banks.
         { userId: ownerId, buyIn: 40000, cashOut: 7000 },
@@ -414,7 +414,7 @@ describe('the persisted record shows the derived figure, never the submitted one
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 123456, cashOut: 6000 },
         { userId: playerId, buyIn: 654321, cashOut: 4000 },
@@ -435,7 +435,7 @@ describe('both routes into settleSession reconcile', () => {
     await bank(playerId, 5000);
     await enterSettling();
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 1, cashOut: 6000 },
         { userId: playerId, buyIn: 1, cashOut: 4000 },
@@ -458,7 +458,7 @@ describe('both routes into settleSession reconcile', () => {
     await bank(playerId, 5000);
     // NOTE: no enterSettling() — straight from `playing`.
 
-    await settleSession(sessionId, ownerId, false, {
+    await settleSession(sessionId, clubId, ownerId, false, {
       entries: [
         { userId: ownerId, buyIn: 99, cashOut: 6000 },
         { userId: playerId, buyIn: 99, cashOut: 4000 },

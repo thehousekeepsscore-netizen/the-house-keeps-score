@@ -120,7 +120,7 @@ export async function getActive(req: Request, res: Response) {
 
 export async function joinSession(req: Request, res: Response) {
   await assertMemberOfClub(req);
-  const session = await offlineSessionsService.joinSession(req.params.sessionId, req.user!.sub);
+  const session = await offlineSessionsService.joinSession(req.params.sessionId, req.params.clubId, req.user!.sub);
   return res.json(session);
 }
 
@@ -236,7 +236,7 @@ export async function withdrawCashOut(req: Request, res: Response) {
 
 export async function listBuyInRequests(req: Request, res: Response) {
   await assertMemberOfClub(req);
-  const requests = await offlineSessionsService.listBuyInRequests(req.params.sessionId);
+  const requests = await offlineSessionsService.listBuyInRequests(req.params.sessionId, req.params.clubId);
   return res.json(requests);
 }
 
@@ -248,6 +248,7 @@ export async function voidBuyInRequest(req: Request, res: Response) {
   const raw = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
   const session = await offlineSessionsService.voidBuyInRequest(
     req.params.sessionId,
+    req.params.clubId,
     req.user!.sub,
     req.user!.isSuperAdmin,
     req.params.requestId,
@@ -260,6 +261,7 @@ export async function decideBuyInRequest(req: Request, res: Response) {
   const approve = req.params.decision === 'approve';
   const session = await offlineSessionsService.decideBuyInRequest(
     req.params.sessionId,
+    req.params.clubId,
     req.user!.sub,
     req.user!.isSuperAdmin,
     req.params.requestId,
@@ -286,7 +288,9 @@ const settleSchema = z.object({
 
 export async function settleSession(req: Request, res: Response) {
   const input = settleSchema.parse(req.body);
-  const settlement = await offlineSessionsService.settleSession(req.params.sessionId, req.user!.sub, req.user!.isSuperAdmin, input);
+  const settlement = await offlineSessionsService.settleSession(
+    req.params.sessionId, req.params.clubId, req.user!.sub, req.user!.isSuperAdmin, input
+  );
   return res.status(201).json(settlement);
 }
 

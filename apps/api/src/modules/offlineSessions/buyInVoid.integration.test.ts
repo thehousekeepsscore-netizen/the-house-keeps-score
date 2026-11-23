@@ -120,7 +120,7 @@ describe('voiding an approved buy-in', () => {
     await seed();
     const req = await bank(playerId, 5000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, req.id, 'approved the wrong amount');
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id, 'approved the wrong amount');
 
     const after = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(after.status).toBe('voided');
@@ -137,7 +137,7 @@ describe('voiding an approved buy-in', () => {
     const big = await bank(ownerId, 5000);
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(5000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, big.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, big.id);
 
     // Falls back to the next real bank, not to the voided one.
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(2000);
@@ -149,7 +149,7 @@ describe('voiding an approved buy-in', () => {
     await bank(playerId, 1000);
     expect(await approvedTotal(playerId)).toBe(6000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, first.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, first.id);
 
     expect(await approvedTotal(playerId)).toBe(1000);
   });
@@ -163,7 +163,7 @@ describe('voiding an approved buy-in', () => {
     });
     expect(readyBefore.map((r) => r.userId)).toContain(playerId);
 
-    await voidBuyInRequest(sessionId, ownerId, false, only.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, only.id);
 
     const readyAfter = await prisma.buyInRequest.findMany({
       where: { sessionId, status: 'approved' }, select: { userId: true },
@@ -174,7 +174,7 @@ describe('voiding an approved buy-in', () => {
   it('survives a refetch — the state is in the row, not in a cache', async () => {
     await seed();
     const req = await bank(playerId, 5000);
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
 
     const reread = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(reread.status).toBe('voided');
@@ -185,7 +185,7 @@ describe('voiding an approved buy-in', () => {
     await seed();
     const req = await bank(playerId, 5000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, req.id, 'fat finger');
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id, 'fat finger');
 
     const logs = await prisma.auditLog.findMany({ where: { clubId, action: 'void_buy_in' } });
     expect(logs).toHaveLength(1);
@@ -200,7 +200,7 @@ describe('what may not be voided', () => {
   it('refuses a pending request — that is what reject is for', async () => {
     await seed();
     const req = await bank(playerId, 5000, 'pending');
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow(
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow(
       /only an approved buy-in/i
     );
     const after = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
@@ -210,7 +210,7 @@ describe('what may not be voided', () => {
   it('refuses a rejected request', async () => {
     await seed();
     const req = await bank(playerId, 5000, 'rejected');
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow(
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow(
       /only an approved buy-in/i
     );
   });
@@ -222,7 +222,7 @@ describe('what may not be voided', () => {
     const req = await bank(playerId, 5000);
     await setPhase({ settlingAt: new Date().toISOString() });
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow(
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow(
       /settled|resume/i
     );
     const after = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
@@ -232,9 +232,9 @@ describe('what may not be voided', () => {
   it('refuses a second void — the state is terminal', async () => {
     await seed();
     const req = await bank(playerId, 5000);
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow(
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow(
       /already been voided/i
     );
   });
@@ -244,8 +244,8 @@ describe('what may not be voided', () => {
     const req = await bank(playerId, 5000);
 
     const settled = await Promise.allSettled([
-      voidBuyInRequest(sessionId, ownerId, false, req.id),
-      voidBuyInRequest(sessionId, adminId, false, req.id),
+      voidBuyInRequest(sessionId, clubId, ownerId, false, req.id),
+      voidBuyInRequest(sessionId, clubId, adminId, false, req.id),
     ]);
     const ok = settled.filter((r) => r.status === 'fulfilled');
     const failed = settled.filter((r) => r.status === 'rejected');
@@ -265,7 +265,7 @@ describe('what may not be voided', () => {
     await seed({ withSecondAdmin: true });
     const mine = await bank(adminId, 5000);
 
-    await expect(voidBuyInRequest(sessionId, adminId, false, mine.id)).rejects.toThrow(
+    await expect(voidBuyInRequest(sessionId, clubId, adminId, false, mine.id)).rejects.toThrow(
       /another club admin/i
     );
   });
@@ -275,13 +275,13 @@ describe('what may not be voided', () => {
     await seed();
     const mine = await bank(ownerId, 5000);
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, mine.id)).resolves.toBeTruthy();
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, mine.id)).resolves.toBeTruthy();
   });
 
   it('refuses a non-admin outright', async () => {
     await seed();
     const req = await bank(playerId, 5000);
-    await expect(voidBuyInRequest(sessionId, playerId, false, req.id)).rejects.toThrow();
+    await expect(voidBuyInRequest(sessionId, clubId, playerId, false, req.id)).rejects.toThrow();
   });
 });
 
@@ -306,7 +306,7 @@ describe('the void and its audit row commit together or not at all', () => {
     await seed();
     const req = await bank(playerId, 5000);
 
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
 
     const after = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     const logs = await prisma.auditLog.findMany({ where: { clubId, action: 'void_buy_in' } });
@@ -319,7 +319,7 @@ describe('the void and its audit row commit together or not at all', () => {
     const req = await bank(playerId, 5000);
     await setPhase({ settlingAt: new Date().toISOString() });
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow();
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow();
 
     const after = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     const logs = await prisma.auditLog.findMany({ where: { clubId, action: 'void_buy_in' } });
@@ -353,7 +353,7 @@ describe('invariant: the ceiling is the largest surviving bank', () => {
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(await expected());
 
     for (const id of [b1.id, a1.id, c1.id, a2.id]) {
-      await voidBuyInRequest(sessionId, ownerId, false, id);
+      await voidBuyInRequest(sessionId, clubId, ownerId, false, id);
       expect(await getBuyInCeiling(sessionId, clubId)).toBe(await expected());
     }
 
@@ -375,7 +375,7 @@ describe('the realtime event follows the commit, never leads it', () => {
     const req = await bank(playerId, 5000);
     vi.mocked(emitToClub).mockClear();
 
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
 
     expect(emitToClub).toHaveBeenCalledTimes(1);
     const [, event, payload] = vi.mocked(emitToClub).mock.calls[0];
@@ -391,7 +391,7 @@ describe('the realtime event follows the commit, never leads it', () => {
     await setPhase({ settlingAt: new Date().toISOString() });
     vi.mocked(emitToClub).mockClear();
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow();
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow();
 
     expect(emitToClub, 'nothing happened, so nothing is announced').not.toHaveBeenCalled();
   });
@@ -399,10 +399,10 @@ describe('the realtime event follows the commit, never leads it', () => {
   it('announces nothing on a losing double void', async () => {
     await seed();
     const req = await bank(playerId, 5000);
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
     vi.mocked(emitToClub).mockClear();
 
-    await expect(voidBuyInRequest(sessionId, ownerId, false, req.id)).rejects.toThrow();
+    await expect(voidBuyInRequest(sessionId, clubId, ownerId, false, req.id)).rejects.toThrow();
 
     expect(emitToClub).not.toHaveBeenCalled();
   });

@@ -242,7 +242,7 @@ describe('freezing the table to settle', () => {
     });
 
     await expect(
-      decideBuyInRequest(sessionId, ownerId, false, req.id, true)
+      decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true)
     ).rejects.toMatchObject({ status: 409 });
   });
 
@@ -375,7 +375,7 @@ describe('starting with a queue still open', () => {
     // Two ready.
     for (const uid of [ownerId, priyaId]) {
       const req = await requestBuyIn(sessionId, clubId, uid, 5_000);
-      await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+      await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     }
     // And one still asking.
     return requestBuyIn(sessionId, clubId, priyaId, 3_000);
@@ -393,7 +393,7 @@ describe('starting with a queue still open', () => {
   it('still approves it normally afterwards', async () => {
     const pending = await lobbyWithPending();
     await startPlaying(sessionId, clubId, ownerId, false);
-    await decideBuyInRequest(sessionId, ownerId, false, pending.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, pending.id, true);
 
     const row = await prisma.buyInRequest.findUnique({ where: { id: pending.id } });
     expect(row?.status).toBe('approved');
@@ -442,7 +442,7 @@ describe('the lobby ghost', () => {
     // it goes through the count like everybody else's.
     await lobby();
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
 
     await expect(
       removeFromLobby(sessionId, clubId, ownerId, false, priyaId)
@@ -459,7 +459,7 @@ describe('the lobby ghost', () => {
 
   it('still refuses to clear a seat holding chips while the night runs — that is a cash-out', async () => {
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
 
     await expect(
       removeFromLobby(sessionId, clubId, ownerId, false, priyaId)
@@ -496,7 +496,7 @@ describe('the ceiling ignores what is only asked for', () => {
     });
 
     const req = await requestBuyIn(sessionId, clubId, priyaId, 10_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(10_000);
 
     await expect(requestBuyIn(sessionId, clubId, ownerId, 15_000)).rejects.toMatchObject({
@@ -515,14 +515,14 @@ describe('the ceiling ignores what is only asked for', () => {
     });
 
     const first = await requestBuyIn(sessionId, clubId, priyaId, 4_000);
-    await decideBuyInRequest(sessionId, ownerId, false, first.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, first.id, true);
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
 
     // Asked for, not agreed: the table maximum must not move on a question.
     const asked = await requestBuyIn(sessionId, clubId, ownerId, 4_000);
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
 
-    await decideBuyInRequest(sessionId, ownerId, false, asked.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, asked.id, true);
     expect(await getBuyInCeiling(sessionId, clubId)).toBe(4_000);
   });
 });
@@ -598,13 +598,13 @@ describe('settling a night that never started', () => {
   it('refuses to settle from the lobby', async () => {
     await setPhase({ startedPlayingAt: null });
 
-    await expect(settleSession(sessionId, ownerId, false, entries()))
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries()))
       .rejects.toThrow(/has not started/i);
   });
 
   it('books nothing at all when it refuses', async () => {
     await setPhase({ startedPlayingAt: null });
-    await expect(settleSession(sessionId, ownerId, false, entries())).rejects.toThrow();
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries())).rejects.toThrow();
 
     expect(await prisma.cashOutSettlement.count({ where: { clubId } })).toBe(0);
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
@@ -626,7 +626,7 @@ describe('settling a night that never started', () => {
     await setPhase({ startedPlayingAt: new Date().toISOString() });
     await bankBoth();
 
-    await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries())).resolves.toBeDefined();
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
     expect(session.status).not.toBe('active');
   });
@@ -636,7 +636,7 @@ describe('settling a night that never started', () => {
     await bankBoth();
     await beginSettling(sessionId, clubId, ownerId, false);
 
-    await expect(settleSession(sessionId, ownerId, false, entries())).resolves.toBeDefined();
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries())).resolves.toBeDefined();
     const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
     expect(session.status).not.toBe('active');
   });
@@ -668,7 +668,7 @@ describe('a pending request does not expire', () => {
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
     await prisma.buyInRequest.update({ where: { id: req.id }, data: { createdAt: longAgo(60) } });
 
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
 
     const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(row.status).toBe('approved');
@@ -679,7 +679,7 @@ describe('a pending request does not expire', () => {
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
     await prisma.buyInRequest.update({ where: { id: req.id }, data: { createdAt: longAgo(90) } });
 
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, false);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, false);
 
     const row = await prisma.buyInRequest.findUniqueOrThrow({ where: { id: req.id } });
     expect(row.status).toBe('rejected');
@@ -711,7 +711,7 @@ describe('a pending request does not expire', () => {
 
   it('leaves an old cash-out standing, so the count is still the player\'s', async () => {
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     await requestCashOut(sessionId, clubId, priyaId, 7_400);
 
     const before = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });

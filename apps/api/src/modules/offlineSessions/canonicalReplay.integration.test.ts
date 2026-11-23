@@ -66,10 +66,10 @@ async function playAndSettle() {
   const id = (session as { id: string }).id;
   for (const uid of [ownerId, priyaId]) {
     const req = await requestBuyIn(id, clubId, uid, 10_000);
-    await decideBuyInRequest(id, ownerId, false, req.id, true);
+    await decideBuyInRequest(id, clubId, ownerId, false, req.id, true);
   }
   await startPlaying(id, clubId, ownerId, false);
-  await settleSession(id, ownerId, false, {
+  await settleSession(id, clubId, ownerId, false, {
     entries: [
       { userId: ownerId, buyIn: 10_000, cashOut: 15_000 },
       { userId: priyaId, buyIn: 10_000, cashOut: 5_000 },

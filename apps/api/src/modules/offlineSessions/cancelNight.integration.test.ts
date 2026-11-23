@@ -166,8 +166,8 @@ describe('a night with nothing banked', () => {
     await cleanup();
     await seed('playing');
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
-    await voidBuyInRequest(sessionId, ownerId, false, req.id);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, req.id);
 
     const session = await cancelNight(sessionId, clubId, ownerId, false);
     expect(session.status).toBe('cancelled');
@@ -195,7 +195,7 @@ describe('a night with chips on the table', () => {
 
   it('cannot be cancelled — the way to undo money is to void it or settle it', async () => {
     const req = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
 
     await expect(cancelNight(sessionId, clubId, ownerId, false))
       .rejects.toMatchObject({ status: 409, message: /chips on the table/ });
