@@ -71,7 +71,7 @@ async function playANight(): Promise<string> {
 
   for (const uid of [ownerId, priyaId]) {
     const req = await requestBuyIn(id, clubId, uid, 10_000);
-    await decideBuyInRequest(id, ownerId, false, req.id, true);
+    await decideBuyInRequest(id, clubId, ownerId, false, req.id, true);
   }
   await startPlaying(id, clubId, ownerId, false);
   return id;
@@ -118,7 +118,7 @@ describe('a night that started free of rake stays free of it', () => {
   it('settles at 0/0 even after the club starts charging', async () => {
     await changeClubTo(RAKED);
 
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
     // The exact failure this prevents: chips bought under a house take of
@@ -129,7 +129,7 @@ describe('a night that started free of rake stays free of it', () => {
 
   it('moves nothing into the club pot either', async () => {
     await changeClubTo(RAKED);
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
 
     expect(await prisma.clubPotLog.count({ where: { sessionId } })).toBe(0);
   });
@@ -203,7 +203,7 @@ describe('a night that started raked stays raked', () => {
   it('settles at 1,000 + 5% even after the club stops charging', async () => {
     await changeClubTo(NO_RAKE as typeof RAKED);
 
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
     // Owner's 5,000 profit → 5% = 250, plus 1,000 EACH from two players.
@@ -288,12 +288,12 @@ describe('a night that predates snapshots', () => {
     // own settling at whatever the club happens to say tonight.
     await changeClubTo(RAKED);
 
-    await expect(settleSession(sessionId, ownerId, false, entries()))
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries()))
       .rejects.toThrow(/before settlement rules were recorded/i);
   });
 
   it('books nothing at all when it refuses', async () => {
-    await expect(settleSession(sessionId, ownerId, false, entries())).rejects.toThrow();
+    await expect(settleSession(sessionId, clubId, ownerId, false, entries())).rejects.toThrow();
 
     expect(await prisma.cashOutSettlement.count({ where: { clubId } })).toBe(0);
     const row = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
@@ -304,7 +304,7 @@ describe('a night that predates snapshots', () => {
     await changeClubTo(RAKED);
     await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
 
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
 
     const settled = await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } });
     // 1,000 a seat from two players, plus 5% of the winner's 5,000.
@@ -313,7 +313,7 @@ describe('a night that predates snapshots', () => {
 
   it('records the rules that decided it, on the settlement record', async () => {
     await initSettlementRules(sessionId, clubId, ownerId, false, RAKED);
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
 
     const audit = await prisma.auditLog.findFirstOrThrow({
       where: { clubId, action: 'settle_session' },
@@ -477,7 +477,7 @@ describe('the next night', () => {
   it('picks up whatever the club says when it starts', async () => {
     await seed(NO_RAKE);
     const first = await playANight();
-    await settleSession(first, ownerId, false, entries());
+    await settleSession(first, clubId, ownerId, false, entries());
 
     await changeClubTo(RAKED);
     sessionId = await playANight();
@@ -504,7 +504,7 @@ describe('editing a settled night', () => {
   beforeEach(async () => {
     await seed(RAKED);
     sessionId = await playANight();
-    await settleSession(sessionId, ownerId, false, entries());
+    await settleSession(sessionId, clubId, ownerId, false, entries());
     settlementId = (await prisma.cashOutSettlement.findFirstOrThrow({ where: { sessionId } })).id;
     // The club stops charging AFTER the night settled — the exact drift.
     await changeClubTo(NO_RAKE as typeof RAKED);

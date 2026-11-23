@@ -116,8 +116,8 @@ describe('two admins approve the same request', () => {
     const req = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, req.id, true)),
-      settle(decideBuyInRequest(sessionId, adminId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true)),
     ]);
 
     expect(await bankedTotal(rahulId)).toBe(3_000);
@@ -127,8 +127,8 @@ describe('two admins approve the same request', () => {
     const req = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, req.id, true)),
-      settle(decideBuyInRequest(sessionId, adminId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true)),
     ]);
 
     const state = (await prisma.pokerSession.findUnique({ where: { id: sessionId } }))!
@@ -142,8 +142,8 @@ describe('two admins approve the same request', () => {
     const req = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
 
     const [a, b] = await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, req.id, true)),
-      settle(decideBuyInRequest(sessionId, adminId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true)),
     ]);
 
     // Exactly one press should win; the other should be told it was already
@@ -173,8 +173,8 @@ describe('two admins approve different requests at the same moment', () => {
     const priya = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, rahul.id, true)),
-      settle(decideBuyInRequest(sessionId, adminId, false, priya.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, rahul.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, adminId, false, priya.id, true)),
     ]);
 
     const state = (await prisma.pokerSession.findUnique({ where: { id: sessionId } }))!
@@ -188,8 +188,8 @@ describe('two admins approve different requests at the same moment', () => {
     const priya = await requestBuyIn(sessionId, clubId, priyaId, 5_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, rahul.id, true)),
-      settle(decideBuyInRequest(sessionId, adminId, false, priya.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, rahul.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, adminId, false, priya.id, true)),
     ]);
 
     const state = (await prisma.pokerSession.findUnique({ where: { id: sessionId } }))!
@@ -213,7 +213,7 @@ describe('approvals racing everything else that writes the table', () => {
     const rahul = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, rahul.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, rahul.id, true)),
       settle(decideCashOut(sessionId, clubId, ownerId, false, adminId, true)),
     ]);
 
@@ -231,7 +231,7 @@ describe('approvals racing everything else that writes the table', () => {
     const rahul = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
 
     await Promise.all([
-      settle(decideBuyInRequest(sessionId, ownerId, false, rahul.id, true)),
+      settle(decideBuyInRequest(sessionId, clubId, ownerId, false, rahul.id, true)),
       settle(decideSitIn(sessionId, clubId, adminId, false, priyaId, true)),
     ]);
 
@@ -265,7 +265,7 @@ describe('the owner opens the table and leaves', () => {
   it('lets the admins who stayed approve everybody else', async () => {
     await ownerGoesHome();
     const req = await requestBuyIn(sessionId, clubId, rahulId, 3_000);
-    await decideBuyInRequest(sessionId, adminId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true);
 
     const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
     expect(row?.status).toBe('approved');
@@ -278,7 +278,7 @@ describe('the owner opens the table and leaves', () => {
     // home and cannot approve anything.
     await ownerGoesHome();
     const req = await requestBuyIn(sessionId, clubId, adminId, 3_000);
-    await decideBuyInRequest(sessionId, adminId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true);
 
     const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
     expect(row?.status).toBe('approved');
@@ -287,7 +287,7 @@ describe('the owner opens the table and leaves', () => {
   it('still refuses self-approval while another admin is actually here', async () => {
     const req = await requestBuyIn(sessionId, clubId, adminId, 3_000);
     await expect(
-      decideBuyInRequest(sessionId, adminId, false, req.id, true)
+      decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true)
     ).rejects.toMatchObject({ status: 403 });
   });
 
@@ -305,7 +305,7 @@ describe('the owner opens the table and leaves', () => {
     });
     for (const uid of [adminId, rahulId]) {
       const r = await requestBuyIn(sessionId, clubId, uid, 5_000);
-      await decideBuyInRequest(sessionId, ownerId, false, r.id, true);
+      await decideBuyInRequest(sessionId, clubId, ownerId, false, r.id, true);
     }
 
     const started: any = await startPlaying(sessionId, clubId, adminId, false);

@@ -133,7 +133,7 @@ const enterSettling = async () => {
 /** Settles the seeded night through the real path and returns the record id. */
 async function settle(): Promise<string> {
   await enterSettling();
-  await settleSession(sessionId, ownerId, false, {
+  await settleSession(sessionId, clubId, ownerId, false, {
     entries: [
       { userId: ownerId, buyIn: 0, cashOut: 6000 },
       { userId: playerId, buyIn: 0, cashOut: 4000 },
@@ -279,7 +279,7 @@ describe('editing a stamped night derives the buy-in again', () => {
     const voided = await bank(playerId, 5000);
     await bank(playerId, 1000);
     // Voided on the live table, before settling — the supported correction.
-    await voidBuyInRequest(sessionId, ownerId, false, voided.id, 'wrong amount');
+    await voidBuyInRequest(sessionId, clubId, ownerId, false, voided.id, 'wrong amount');
     const id = await settle();
 
     await editWithBuyIns(id, { [playerId]: 8000 });

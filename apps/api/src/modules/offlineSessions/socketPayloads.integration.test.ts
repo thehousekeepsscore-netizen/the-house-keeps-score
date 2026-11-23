@@ -128,7 +128,7 @@ describe('buy-in events carry the row', () => {
     const created = await requestBuyIn(sessionId, clubId, playerId, 5_000);
     emitted.length = 0;
 
-    await decideBuyInRequest(sessionId, ownerId, false, created.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, created.id, true);
 
     const p = only('club:buyin-decided');
     expect(p.request).toMatchObject({ id: created.id, status: 'approved', approvedBy: ownerId });
@@ -140,7 +140,7 @@ describe('buy-in events carry the row', () => {
     const created = await requestBuyIn(sessionId, clubId, playerId, 5_000);
     emitted.length = 0;
 
-    await decideBuyInRequest(sessionId, ownerId, false, created.id, false);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, created.id, false);
 
     expect(only('club:buyin-decided').request).toMatchObject({ id: created.id, status: 'rejected' });
   });
@@ -148,7 +148,7 @@ describe('buy-in events carry the row', () => {
   it('the payload row matches what the REST list would have returned', async () => {
     const created = await requestBuyIn(sessionId, clubId, playerId, 5_000);
     emitted.length = 0;
-    await decideBuyInRequest(sessionId, ownerId, false, created.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, created.id, true);
 
     // The whole point of pushing the row is that a client patching from it ends
     // up where a refetch would have put it. If these ever diverge, the cache

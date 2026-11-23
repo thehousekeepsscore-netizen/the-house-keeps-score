@@ -139,13 +139,13 @@ describe('the second pair of eyes', () => {
   it('refuses an admin approving chips they handed out themselves', async () => {
     const req = await requestBuyIn(sessionId, clubId, playerId, 5_000, adminId);
     await expect(
-      decideBuyInRequest(sessionId, adminId, false, req.id, true)
+      decideBuyInRequest(sessionId, clubId, adminId, false, req.id, true)
     ).rejects.toMatchObject({ status: 403 });
   });
 
   it('lets a different admin approve it', async () => {
     const req = await requestBuyIn(sessionId, clubId, playerId, 5_000, adminId);
-    const decided = await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    const decided = await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     expect(decided).toBeTruthy();
     const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
     expect(row?.status).toBe('approved');
@@ -154,7 +154,7 @@ describe('the second pair of eyes', () => {
   it('lets the last admin in the room approve their own, so a game cannot deadlock', async () => {
     await demoteTheOtherAdmin();
     const req = await requestBuyIn(sessionId, clubId, playerId, 5_000, ownerId);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     const row = await prisma.buyInRequest.findUnique({ where: { id: req.id } });
     expect(row?.status).toBe('approved');
   });
@@ -248,7 +248,7 @@ describe('the night begins when the host says so', () => {
       data: { engineState: { ...(s as any), startedPlayingAt: null, activePlayerUids: [ownerId, playerId] } as any },
     });
     const req = await requestBuyIn(s.id, clubId, ownerId, 5_000);
-    await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+    await decideBuyInRequest(s.id, clubId, ownerId, false, req.id, true);
 
     await expect(startPlaying(s.id, clubId, ownerId, false)).rejects.toMatchObject({ status: 409 });
   });
@@ -261,7 +261,7 @@ describe('the night begins when the host says so', () => {
     });
     for (const uid of [ownerId, playerId]) {
       const req = await requestBuyIn(s.id, clubId, uid, 5_000);
-      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+      await decideBuyInRequest(s.id, clubId, ownerId, false, req.id, true);
     }
 
     const started: any = await startPlaying(s.id, clubId, ownerId, false);
@@ -276,7 +276,7 @@ describe('the night begins when the host says so', () => {
     });
     for (const uid of [ownerId, playerId]) {
       const req = await requestBuyIn(s.id, clubId, uid, 5_000);
-      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+      await decideBuyInRequest(s.id, clubId, ownerId, false, req.id, true);
     }
     await startPlaying(s.id, clubId, ownerId, false);
     await expect(startPlaying(s.id, clubId, ownerId, false)).rejects.toMatchObject({ status: 409 });
@@ -401,7 +401,7 @@ describe('the clock is a plan, not a deadline', () => {
     });
     for (const uid of [ownerId, playerId]) {
       const req = await requestBuyIn(s.id, clubId, uid, 5_000);
-      await decideBuyInRequest(s.id, ownerId, false, req.id, true);
+      await decideBuyInRequest(s.id, clubId, ownerId, false, req.id, true);
     }
     return startPlaying(s.id, clubId, ownerId, false) as any;
   }
@@ -621,7 +621,7 @@ describe('settling with a queue', () => {
 
   it('begins once the queue is empty', async () => {
     const req = await requestBuyIn(sessionId, clubId, playerId, 3_000);
-    await decideBuyInRequest(sessionId, ownerId, false, req.id, true);
+    await decideBuyInRequest(sessionId, clubId, ownerId, false, req.id, true);
     const after: any = await beginSettling(sessionId, clubId, ownerId, false);
     expect(after.settlingAt).toBeTruthy();
   });

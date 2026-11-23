@@ -112,14 +112,14 @@ describe('settleSession is atomic with its audit record', () => {
     beforeEach(() => seedClub(NEAR_OVERFLOW));
 
     it('leaves neither a settlement nor an audit record', async () => {
-      await expect(settleSession(sessionId, ownerId, false, settleEntries())).rejects.toThrow();
+      await expect(settleSession(sessionId, clubId, ownerId, false, settleEntries())).rejects.toThrow();
 
       expect(await prisma.cashOutSettlement.count({ where: { clubId } })).toBe(0);
       expect(await prisma.auditLog.count({ where: { clubId } })).toBe(0);
     });
 
     it('leaves the session open rather than half-settled', async () => {
-      await expect(settleSession(sessionId, ownerId, false, settleEntries())).rejects.toThrow();
+      await expect(settleSession(sessionId, clubId, ownerId, false, settleEntries())).rejects.toThrow();
 
       const session = await prisma.pokerSession.findUniqueOrThrow({ where: { id: sessionId } });
       expect(session.status).toBe('active');
@@ -127,7 +127,7 @@ describe('settleSession is atomic with its audit record', () => {
     });
 
     it('leaves the club pot untouched', async () => {
-      await expect(settleSession(sessionId, ownerId, false, settleEntries())).rejects.toThrow();
+      await expect(settleSession(sessionId, clubId, ownerId, false, settleEntries())).rejects.toThrow();
 
       const club = await prisma.club.findUniqueOrThrow({ where: { id: clubId } });
       expect(club.clubPotBalance).toBe(NEAR_OVERFLOW);
@@ -141,7 +141,7 @@ describe('settleSession is atomic with its audit record', () => {
     beforeEach(() => seedClub(0));
 
     it('writes exactly one settlement and one audit record, keyed to each other', async () => {
-      const settlement = await settleSession(sessionId, ownerId, false, settleEntries());
+      const settlement = await settleSession(sessionId, clubId, ownerId, false, settleEntries());
 
       const audits = await prisma.auditLog.findMany({ where: { clubId, action: 'settle_session' } });
       expect(audits).toHaveLength(1);
@@ -150,7 +150,7 @@ describe('settleSession is atomic with its audit record', () => {
     });
 
     it('stamps engine and schema provenance onto the audit record', async () => {
-      await settleSession(sessionId, ownerId, false, settleEntries());
+      await settleSession(sessionId, clubId, ownerId, false, settleEntries());
 
       const audit = await prisma.auditLog.findFirstOrThrow({ where: { clubId, action: 'settle_session' } });
       const meta = (audit.changes as any).meta;
@@ -160,8 +160,8 @@ describe('settleSession is atomic with its audit record', () => {
     });
 
     it('cannot be settled twice, so a second audit record is impossible', async () => {
-      await settleSession(sessionId, ownerId, false, settleEntries());
-      await expect(settleSession(sessionId, ownerId, false, settleEntries())).rejects.toThrow(/already settled/i);
+      await settleSession(sessionId, clubId, ownerId, false, settleEntries());
+      await expect(settleSession(sessionId, clubId, ownerId, false, settleEntries())).rejects.toThrow(/already settled/i);
 
       expect(await prisma.auditLog.count({ where: { clubId, action: 'settle_session' } })).toBe(1);
     });

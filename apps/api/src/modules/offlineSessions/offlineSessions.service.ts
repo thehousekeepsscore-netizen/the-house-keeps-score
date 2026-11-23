@@ -178,6 +178,7 @@ function serialize(row: SessionRow) {
  */
 async function mutateSessionState<T>(
   sessionId: string,
+  clubId: string,
   mutate: (
     state: OfflineEngineState,
     tx: Prisma.TransactionClient,
@@ -192,6 +193,13 @@ async function mutateSessionState<T>(
     `;
     const row = rows[0];
     if (!row) throw new HttpError(404, 'Session not found');
+    // The club in the URL is what the caller was authorised against; the
+    // session in the URL is what is about to change. They were never compared,
+    // so a member of one club could read, and an admin of one club could
+    // freeze or cancel, a night that belonged to another. Checked here, under
+    // the same lock as the mutation, and as a 404 rather than a 403: a night
+    // that is not yours does not exist as far as your club is concerned.
+    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
 
     const { state, result } = await mutate(row.engineState, tx, row);
     const updated = await tx.pokerSession.update({
@@ -478,8 +486,8 @@ export async function startSession(clubId: string, requesterId: string, isSuperA
 // Lets a player mark themselves "at the table" before they've requested a
 // bank yet — mirrors the original app's plain join-table action, separate
 // from requesting/approving an actual buy-in.
-export async function joinSession(sessionId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+export async function joinSession(sessionId: string, clubId: string, userId: string) {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
     const cleared = clearCashOutFor(state, userId);
     const activePlayerUids = Array.from(new Set([...(cleared.activePlayerUids || []), userId]));
@@ -528,7 +536,7 @@ export async function requestSitIn(
     clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
   }
 
-  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     if ((state.activePlayerUids || []).includes(targetUserId)) {
@@ -629,7 +637,7 @@ export async function decideSitIn(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     // Only ever act on someone who actually asked — otherwise an approve call
@@ -744,6 +752,7 @@ export async function startPlaying(
 
   const { session, result: startedPlayingAt } = await mutateSessionState(
     sessionId,
+    clubId,
     async (state, tx, row) => {
       assertPhase(row, state, ['lobby']);
       // Under the lock, so two hosts tapping together cannot both start a night
@@ -805,7 +814,7 @@ export async function extendSession(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['playing']);
     if (!state.durationMinutes) throw new HttpError(409, 'This night has no time limit to extend');
     if (state.timeLimitLiftedAt) {
@@ -858,7 +867,7 @@ export async function liftTimeLimit(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['playing']);
     if (state.timeLimitLiftedAt) return { state, result: null };
     return { state: { ...state, timeLimitLiftedAt: new Date().toISOString() }, result: null };
@@ -891,7 +900,7 @@ export async function amendCashOut(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     const entry = (state.cashOuts || []).find(
@@ -950,7 +959,7 @@ export async function removeFromLobby(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     // Playing too, not only the lobby. A player seated after the night began
     // who never took a bank has nothing at the table, and until this allowed
     // it the only way to clear their chair was to count them out at zero.
@@ -1007,7 +1016,7 @@ export async function beginSettling(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     assertPhase(row, state, ['playing']);
 
     /*
@@ -1080,7 +1089,7 @@ export async function resumeNight(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['settling']);
     return { state: { ...state, settlingAt: null }, result: null };
   });
@@ -1114,7 +1123,7 @@ export async function cancelNight(
   const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { session } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     // Settling included: that is exactly where a host who pressed "Settle
     // night" on an empty table ends up, with nothing to count.
     assertPhase(row, state, ['lobby', 'playing', 'settling']);
@@ -1172,7 +1181,7 @@ export async function cancelNight(
 }
 
 export async function requestCashOut(sessionId: string, clubId: string, userId: string, amount: number) {
-  const { session, result } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session, result } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
     if (!(state.activePlayerUids || []).includes(userId)) {
       throw new HttpError(409, 'That player is not seated at this table');
@@ -1213,7 +1222,7 @@ export async function decideCashOut(
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
 
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
     const entry = (state.cashOuts || []).find((c) => c.userId === userId && c.status === 'pending');
     if (!entry) throw new HttpError(404, 'No pending cash-out from that player');
@@ -1277,7 +1286,7 @@ export async function requestBuyIn(
    * Priya taps Join: both calls looked, both found nothing pending, and the
    * host was asked the same question twice about one seat.
    */
-  const { result: request } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { result: request } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     // Enforced here, not only in the UI — the cap was previously client-side
@@ -1365,8 +1374,7 @@ export async function requestBuyIn(
 export async function withdrawBuyInRequest(
   sessionId: string, clubId: string, userId: string, requestId: string
 ) {
-  const { result: request } = await mutateSessionState(sessionId, async (state, tx, row) => {
-    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+  const { result: request } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     const claimed = await tx.buyInRequest.updateMany({
@@ -1389,8 +1397,7 @@ export async function withdrawBuyInRequest(
 
 /** A player taking back their own request for a seat. */
 export async function withdrawSitIn(sessionId: string, clubId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     if (!(state.pendingSitInUids || []).includes(userId)) {
@@ -1419,8 +1426,7 @@ export async function withdrawSitIn(sessionId: string, clubId: string, userId: s
  * night's record, and the way to change it is the admin's amend.
  */
 export async function withdrawCashOut(sessionId: string, clubId: string, userId: string) {
-  const { session } = await mutateSessionState(sessionId, async (state, _tx, row) => {
-    if (row.clubId !== clubId) throw new HttpError(404, 'Session not found');
+  const { session } = await mutateSessionState(sessionId, clubId, async (state, _tx, row) => {
     assertPhase(row, state, ['lobby', 'playing']);
 
     const entry = (state.cashOuts || []).find((c) => c.userId === userId);
@@ -1438,21 +1444,25 @@ export async function withdrawCashOut(sessionId: string, clubId: string, userId:
   return session;
 }
 
-export async function listBuyInRequests(sessionId: string) {
+export async function listBuyInRequests(sessionId: string, clubId: string) {
+  // The night must be this club's, said the same way every mutation says it.
+  // Filtering the requests by club instead would answer an empty list, which
+  // reads as "nobody has bought in" rather than "not yours".
+  const night = await prisma.pokerSession.findFirst({ where: { id: sessionId, clubId }, select: { id: true } });
+  if (!night) throw new HttpError(404, 'Session not found');
   return prisma.buyInRequest.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } });
 }
 
 export async function decideBuyInRequest(
   sessionId: string,
+  clubId: string,
   requesterId: string,
   isSuperAdmin: boolean,
   requestId: string,
   approve: boolean,
   reason?: string
 ) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  const club = await clubsService.getClubOrThrow(session.clubId);
+  const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
   /*
@@ -1469,6 +1479,7 @@ export async function decideBuyInRequest(
    */
   const { session: updatedSession, result } = await mutateSessionState(
     sessionId,
+    clubId,
     async (state, tx, row) => {
       assertPhase(row, state, ['lobby', 'playing']);
       const req = await tx.buyInRequest.findUnique({ where: { id: requestId } });
@@ -1476,7 +1487,7 @@ export async function decideBuyInRequest(
       if (req.status !== 'pending') throw new HttpError(409, 'This request has already been decided');
 
       if (approve) {
-        await assertWithinBuyInCeiling(sessionId, session.clubId, req.amount, tx);
+        await assertWithinBuyInCeiling(sessionId, clubId, req.amount, tx);
         // No exception for the owner. "Nobody can give themselves chips" is the
         // rule, and an owner who wrote the request is exactly as much its author
         // as anyone else. Somebody alone at the table still approves their own —
@@ -1507,7 +1518,7 @@ export async function decideBuyInRequest(
   // Emitted after the commit, never inside it: an event sent from within a
   // transaction is a claim about state that may still roll back.
   emitToClub(
-    session.clubId, 'club:buyin-decided',
+    clubId, 'club:buyin-decided',
     { sessionId, requestId, userId: result.req.userId, approve, decidedBy: requesterId, request: result.decided },
     declinedBecause(result.req.userId, approve, reason)
   );
@@ -1517,13 +1528,13 @@ export async function decideBuyInRequest(
   if (approve) {
     void notificationsService.notifyBuyInApproved({
       userId: result.req.userId,
-      clubId: session.clubId,
+      clubId,
       amount: result.req.amount,
     });
   }
 
   void updatedSession;
-  return getActiveOfflineSession(session.clubId);
+  return getActiveOfflineSession(clubId);
 }
 
 /**
@@ -1551,17 +1562,16 @@ export async function decideBuyInRequest(
  */
 export async function voidBuyInRequest(
   sessionId: string,
+  clubId: string,
   requesterId: string,
   isSuperAdmin: boolean,
   requestId: string,
   reason?: string
 ) {
-  const session = await prisma.pokerSession.findUnique({ where: { id: sessionId } });
-  if (!session) throw new HttpError(404, 'Session not found');
-  const club = await clubsService.getClubOrThrow(session.clubId);
+  const club = await clubsService.getClubOrThrow(clubId);
   clubsService.assertClubAdmin(club, requesterId, isSuperAdmin);
 
-  const { result } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { result } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     /*
      * Not `settling`. Once the table is frozen the host is reading a count that
      * was seeded from these very rows, and moving one underneath them would
@@ -1612,7 +1622,7 @@ export async function voidBuyInRequest(
      */
     await tx.auditLog.create({
       data: {
-        clubId: session.clubId,
+        clubId,
         sessionId,
         sessionTitle: row.sessionName,
         action: 'void_buy_in',
@@ -1645,7 +1655,7 @@ export async function voidBuyInRequest(
 
   // After the commit, never inside it: an event emitted from within a
   // transaction is a claim about state that may still roll back.
-  emitToClub(session.clubId, 'club:buyin-voided', {
+  emitToClub(clubId, 'club:buyin-voided', {
     sessionId,
     requestId,
     userId: result.req.userId,
@@ -1653,7 +1663,7 @@ export async function voidBuyInRequest(
     request: result.voided,
   });
 
-  return getActiveOfflineSession(session.clubId);
+  return getActiveOfflineSession(clubId);
 }
 
 export interface SettleInput {
@@ -1682,14 +1692,16 @@ export interface SettleInput {
   mismatchAcknowledged?: boolean;
 }
 
-export async function settleSession(sessionId: string, requesterId: string, isSuperAdmin: boolean, input: SettleInput) {
+export async function settleSession(
+  sessionId: string, clubId: string, requesterId: string, isSuperAdmin: boolean, input: SettleInput
+) {
   const result = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<SessionRow[]>`
       SELECT id, "clubId", "sessionName", "sessionType", status, "startedById", "createdAt", "endedAt", "engineState"
       FROM "PokerSession" WHERE id = ${sessionId} FOR UPDATE
     `;
     const row = rows[0];
-    if (!row) throw new HttpError(404, 'Session not found');
+    if (!row || row.clubId !== clubId) throw new HttpError(404, 'Session not found');
     if (row.status !== 'active') throw new HttpError(409, 'Session is already settled');
     // The phases the diagram above already grants this transition, stated to the
     // one gate that enforces them. This was the only mutation not declaring its
@@ -2092,7 +2104,7 @@ export async function initSettlementRules(
     throw new HttpError(400, "The winners' cut must be a whole percentage between 0 and 100");
   }
 
-  const { session, result } = await mutateSessionState(sessionId, async (state, tx, row) => {
+  const { session, result } = await mutateSessionState(sessionId, clubId, async (state, tx, row) => {
     assertPhase(row, state, ['playing']);
 
     // Inside the lock. Two admins arriving together both read the state fresh
